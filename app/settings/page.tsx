@@ -1,0 +1,186 @@
+import { Save, LogOut } from 'lucide-react';
+import { Header } from '@/components/Header';
+import { loadSettings } from '@/lib/data';
+import { saveSettings, signOut } from '@/lib/actions';
+import { CUT_TYPE_LABELS } from '@/lib/rules';
+
+export const dynamic = 'force-dynamic';
+
+export default async function SettingsPage() {
+  const s = await loadSettings();
+
+  function Segment({
+    name, value, options,
+  }: { name: string; value: string; options: { value: string; label: string }[] }) {
+    return (
+      <div className="toggle-group">
+        {options.map((opt) => (
+          <label key={opt.value} className={`toggle-btn ${value === opt.value ? 'active' : ''}`} style={{ cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name={name}
+              value={opt.value}
+              defaultChecked={value === opt.value}
+              style={{ display: 'none' }}
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingBottom: 80 }}>
+      <Header title="Settings" />
+      <form action={saveSettings}>
+        <div style={{ padding: 16 }}>
+          {/* Units */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 10 }}>Display units</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Bag fertiliser</div>
+              <Segment
+                name="bag_fert_unit"
+                value={s.bagFertUnit}
+                options={[
+                  { value: 'kg/ha', label: 'kg/ha' },
+                  { value: 'kg/ac', label: 'kg/ac' },
+                  { value: 'lb/ac', label: 'lb/ac' },
+                ]}
+              />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Slurry</div>
+              <Segment
+                name="slurry_unit"
+                value={s.slurryUnit}
+                options={[
+                  { value: 'gal/ac', label: 'gal/ac' },
+                  { value: 'm3/ha', label: 'm³/ha' },
+                ]}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Lime</div>
+              <Segment
+                name="lime_unit"
+                value={s.limeUnit}
+                options={[
+                  { value: 't/ac', label: 't/ac' },
+                  { value: 't/ha', label: 't/ha' },
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Yield class multipliers */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Yield class multipliers</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              Multiplied against the modelled yield to compute actual offtake.
+            </div>
+            {(['light', 'average', 'heavy'] as const).map((key) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{key}</div>
+                <input
+                  type="number" step="0.05" name={`yield_${key}`}
+                  className="input" style={{ width: 80, textAlign: 'right' }}
+                  defaultValue={s.yieldMultipliers[key]}
+                />
+                <span style={{ fontSize: 12, color: 'var(--muted)', width: 30 }}>×</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Cut type multipliers */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Cut type multipliers</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              How much of the modelled yield each cut type lifts. Silage = 1.0, bales typically lighter, grazing matches silage but most nutrients return.
+            </div>
+            {(['silage', 'bales', 'grazing'] as const).map((key) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{CUT_TYPE_LABELS[key]}</div>
+                <input
+                  type="number" step="0.05" name={`ct_${key}`}
+                  className="input" style={{ width: 80, textAlign: 'right' }}
+                  defaultValue={s.cutTypeMultipliers[key]}
+                />
+                <span style={{ fontSize: 12, color: 'var(--muted)', width: 30 }}>×</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Grazing return */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Grazing nutrient return</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              Percentage of grazed nutrients returned via dung and urine.
+            </div>
+            <input
+              type="number" min="0" max="100" step="5" name="grazing_return"
+              className="input"
+              defaultValue={Math.round(s.grazingReturnPct * 100)}
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>0–100 %</div>
+          </div>
+
+          {/* N targets */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>N target per cut</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              How much available N each cut should receive (kg/ha).
+            </div>
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>Cut {n}</div>
+                <input
+                  type="number" name={`n_cut${n}`}
+                  className="input" style={{ width: 90, textAlign: 'right' }}
+                  defaultValue={s.nTargets[n as 1|2|3|4] ?? 0}
+                />
+                <span style={{ fontSize: 12, color: 'var(--muted)', width: 50 }}>kg/ha</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Soil targets */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Soil targets</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              Field cards colour-code each metric against these targets. RB209 grass-silage defaults: pH 6.0, P 2, K 2.
+            </div>
+            {[
+              { name: 'target_ph',   label: 'pH',      value: s.soilTargets.pH,   step: '0.1' },
+              { name: 'target_pidx', label: 'P index', value: s.soilTargets.pIdx, step: '0.1' },
+              { name: 'target_kidx', label: 'K index', value: s.soilTargets.kIdx, step: '0.1' },
+            ].map((row) => (
+              <div key={row.name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{row.label}</div>
+                <input type="number" step={row.step} name={row.name} className="input" style={{ width: 90, textAlign: 'right' }} defaultValue={row.value} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="sticky-footer">
+          <button type="submit" className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Save size={18} /> Save settings
+          </button>
+        </div>
+      </form>
+
+      <div style={{ padding: 16 }}>
+        <form action={signOut}>
+          <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <LogOut size={16} /> Sign out
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- background -->
+  <rect width="512" height="512" rx="96" fill="#3B5A3A"/>
+
+  <!-- furrow stripes (earth lines) -->
+  <g fill="none" stroke="#E1E6D9" stroke-width="6" stroke-linecap="round" opacity="0.35">
+    <path d="M64 380 Q 256 360 448 380"/>
+    <path d="M64 408 Q 256 388 448 408"/>
+    <path d="M64 436 Q 256 416 448 436"/>
+  </g>
+
+  <!-- leaf mark -->
+  <g transform="translate(256 256)">
+    <!-- main leaf -->
+    <path
+      d="M -90 80
+         C -90 -10, -10 -100, 90 -90
+         C 100 0, 10 100, -90 80 Z"
+      fill="#F5EFE3"
+    />
+    <!-- vein -->
+    <path
+      d="M -85 75 C -40 30, 30 -40, 85 -85"
+      stroke="#3B5A3A" stroke-width="10" stroke-linecap="round" fill="none"
+    />
+    <!-- side veins -->
+    <path d="M -30 25 L 0 5" stroke="#3B5A3A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 10 -15 L 40 -35" stroke="#3B5A3A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M -55 55 L -30 35" stroke="#3B5A3A" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
