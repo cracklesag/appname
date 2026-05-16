@@ -321,7 +321,7 @@ export default async function FieldDetailPage({
             const items: Array<{ kind: 'app' | 'cut'; date: string; key: string; node: React.ReactNode }> = [];
             seasonApps.forEach((a) => items.push({
               kind: 'app', date: a.date_applied, key: `app-${a.id}`,
-              node: <ApplicationCard app={a} products={products} settings={settings} />,
+              node: <ApplicationCard app={a} products={products} settings={settings} fieldId={field.id} />,
             }));
             fCuts.forEach((c) => items.push({
               kind: 'cut', date: c.cut_date, key: `cut-${c.id}`,

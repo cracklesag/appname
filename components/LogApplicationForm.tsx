@@ -3,40 +3,76 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Droplets, Sprout, Mountain, Save } from 'lucide-react';
-import { Field, Product, Settings } from '@/lib/types';
+import { Application, Field, Product, Settings, SlurryMethod } from '@/lib/types';
 import {
   calcNutrients, fmt, METHOD_LABELS,
 } from '@/lib/rules';
-import { saveApplication } from '@/lib/actions';
+import { saveApplication, updateApplication } from '@/lib/actions';
+import { validateApplicationRate, validateDate } from '@/lib/validation';
+import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 const LIME_RATES = [1, 1.5, 2, 2.5, 3] as const;
 
 export function LogApplicationForm({
-  field, products, settings,
+  field, products, settings, existing,
 }: {
   field: Field;
   products: Product[];
   settings: Settings;
+  existing?: Application;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [type, setType] = useState<'slurry' | 'bag_fert' | 'lime'>('slurry');
-  const [productId, setProductId] = useState<number>(() => products.find((p) => p.type === 'slurry')?.id ?? 4);
-  const [date, setDate] = useState(today);
-  const [rateValue, setRateValue] = useState('');
-  const [method, setMethod] = useState<'splash_plate' | 'dribble_bar' | 'trail_shoe'>('splash_plate');
-  const [limeRate, setLimeRate] = useState<number>(2);
-  const [notes, setNotes] = useState('');
+  const isEdit = !!existing;
+
+  // Determine initial type from existing application's product
+  const initialType = useMemo<'slurry' | 'bag_fert' | 'lime'>(() => {
+    if (!existing) return 'slurry';
+    const p = products.find((p) => p.id === existing.product_id);
+    return (p?.type as 'slurry' | 'bag_fert' | 'lime') ?? 'slurry';
+  }, [existing, products]);
+
+  const [type, setType] = useState<'slurry' | 'bag_fert' | 'lime'>(initialType);
+  const [productId, setProductId] = useState<number>(() => {
+    if (existing) return existing.product_id;
+    return products.find((p) => p.type === 'slurry')?.id ?? 4;
+  });
+  const [date, setDate] = useState(existing?.date_applied ?? today);
+  const [rateValue, setRateValue] = useState(() => {
+    if (!existing) return '';
+    if (initialType === 'lime') return '';
+    return String(existing.rate_value);
+  });
+  const [method, setMethod] = useState<SlurryMethod>(
+    (existing?.method as SlurryMethod) ?? 'splash_plate'
+  );
+  const [limeRate, setLimeRate] = useState<number>(
+    existing && initialType === 'lime' ? existing.rate_value : 2
+  );
+  const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const product = products.find((p) => p.id === productId);
   const availableProducts = products.filter((p) => p.type === type);
 
-  const displayUnit =
-    type === 'slurry' ? settings.slurryUnit :
-    type === 'lime' ? settings.limeUnit :
-    settings.bagFertUnit;
+  // Unit-aware edit: when editing, respect the stored unit rather than the user's
+  // current display setting. New applications use the user's preferred unit.
+  const displayUnit = useMemo(() => {
+    if (isEdit && existing) {
+      // For lime, always t/ac. Otherwise honour stored rate_unit so the displayed
+      // number matches what was entered originally.
+      if (existing.rate_unit === 't/ha' || existing.rate_unit === 't/ac') return existing.rate_unit;
+      if (existing.rate_unit === 'kg/ha' || existing.rate_unit === 'kg/ac' || existing.rate_unit === 'lb/ac') return existing.rate_unit;
+      if (existing.rate_unit === 'gal/ac' || existing.rate_unit === 'm3/ha') return existing.rate_unit;
+    }
+    return type === 'slurry' ? settings.slurryUnit
+         : type === 'lime' ? settings.limeUnit
+         : settings.bagFertUnit;
+  }, [isEdit, existing, type, settings]);
 
   // When type changes, swap to first product of that type and clear rate
   function changeType(newType: typeof type) {
+    if (isEdit) return; // Type is locked when editing — products differ per type
     setType(newType);
     const first = products.find((p) => p.type === newType);
     if (first) setProductId(first.id);
@@ -63,10 +99,38 @@ export function LogApplicationForm({
     return { value: kgPerHa * field.ha, unit: 'kg' };
   }, [type, limeRate, numericRate, displayUnit, field]);
 
-  const canSave = product && date && numericRate > 0;
+  const rateWarning = useMemo(
+    () => validateApplicationRate(numericRate, type, displayUnit),
+    [numericRate, type, displayUnit]
+  );
+  const dateWarning = useMemo(() => validateDate(date), [date]);
+
+  const hasBlockingError = !!(rateWarning?.kind === 'error' || dateWarning?.kind === 'error');
+  const canSave = product && date && numericRate > 0 && !hasBlockingError && !submitting;
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitError(null);
+    setSubmitting(true);
+    const fd = new FormData(e.currentTarget);
+    try {
+      if (isEdit) {
+        await updateApplication(fd);
+      } else {
+        await saveApplication(fd);
+      }
+      // Server action will redirect on success
+    } catch (err) {
+      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) {
+        setSubmitError(err.message);
+      }
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <form action={saveApplication} style={{ paddingBottom: 100 }}>
+    <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
+      {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
       <input type="hidden" name="field_id" value={field.id} />
       <input type="hidden" name="product_id" value={productId} />
       <input type="hidden" name="rate_value" value={numericRate} />
@@ -74,11 +138,13 @@ export function LogApplicationForm({
       {type === 'slurry' && <input type="hidden" name="method" value={method} />}
 
       <div style={{ padding: 16 }}>
-        <div className="toggle-group" style={{ marginBottom: 16 }}>
-          <button type="button" className={`toggle-btn ${type === 'slurry' ? 'active' : ''}`} onClick={() => changeType('slurry')}><Droplets size={16} /> Slurry</button>
-          <button type="button" className={`toggle-btn ${type === 'bag_fert' ? 'active' : ''}`} onClick={() => changeType('bag_fert')}><Sprout size={16} /> Bag fert</button>
-          <button type="button" className={`toggle-btn ${type === 'lime' ? 'active' : ''}`} onClick={() => changeType('lime')}><Mountain size={16} /> Lime</button>
-        </div>
+        {!isEdit && (
+          <div className="toggle-group" style={{ marginBottom: 16 }}>
+            <button type="button" className={`toggle-btn ${type === 'slurry' ? 'active' : ''}`} onClick={() => changeType('slurry')}><Droplets size={16} /> Slurry</button>
+            <button type="button" className={`toggle-btn ${type === 'bag_fert' ? 'active' : ''}`} onClick={() => changeType('bag_fert')}><Sprout size={16} /> Bag fert</button>
+            <button type="button" className={`toggle-btn ${type === 'lime' ? 'active' : ''}`} onClick={() => changeType('lime')}><Mountain size={16} /> Lime</button>
+          </div>
+        )}
 
         {type !== 'lime' && (
           <div style={{ marginBottom: 14 }}>
@@ -92,6 +158,7 @@ export function LogApplicationForm({
         <div style={{ marginBottom: 14 }}>
           <div className="label">Date applied</div>
           <input type="date" name="date_applied" className="input" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <InlineWarning warning={dateWarning} />
         </div>
 
         {type === 'lime' ? (
@@ -111,6 +178,7 @@ export function LogApplicationForm({
               type="number"
               inputMode="decimal"
               step="any"
+              min="0"
               className="input"
               placeholder={
                 type === 'slurry'
@@ -125,6 +193,7 @@ export function LogApplicationForm({
                 = {fmt(totalQty.value)} {totalQty.unit} total over {field.acres} ac
               </div>
             )}
+            <InlineWarning warning={rateWarning} />
           </div>
         )}
 
@@ -182,11 +251,14 @@ export function LogApplicationForm({
         )}
       </div>
 
-      <div style={{ position: 'sticky', bottom: 0, padding: 16, background: 'linear-gradient(to top, var(--paper) 70%, transparent)', display: 'flex', gap: 10 }}>
-        <Link href={`/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
-        <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
-          <Save size={18} /> Save entry
-        </button>
+      <div style={{ position: 'sticky', bottom: 0, padding: '0 16px 16px', background: 'linear-gradient(to top, var(--paper) 70%, transparent)' }}>
+        <ErrorBanner error={submitError} />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Link href={`/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
+          <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
+            <Save size={18} /> {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save entry'}
+          </button>
+        </div>
       </div>
     </form>
   );

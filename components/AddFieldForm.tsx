@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Save } from 'lucide-react';
 import { CutType } from '@/lib/types';
 import { CUT_TYPE_LABELS } from '@/lib/rules';
 import { createField } from '@/lib/actions';
+import { validateAcres, validateHa } from '@/lib/validation';
+import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 // Conversion: 1 ha = 2.4711 acres
 const ACRES_PER_HA = 2.4711;
@@ -49,7 +51,13 @@ export function AddFieldForm() {
   const setCutAt = (index: number, type: CutType) =>
     setPlannedCuts((prev) => prev.map((t, i) => (i === index ? type : t)));
 
-  const canSubmit = name.trim().length > 0 && parseFloat(acres) > 0 && parseFloat(ha) > 0 && cutProfile >= 1 && cutProfile <= 4 && !submitting;
+  const acresNum = parseFloat(acres);
+  const haNum = parseFloat(ha);
+  const acresWarning = useMemo(() => isNaN(acresNum) ? null : validateAcres(acresNum), [acresNum]);
+  const haWarning = useMemo(() => isNaN(haNum) ? null : validateHa(haNum), [haNum]);
+  const hasHardError = acresWarning?.kind === 'error' || haWarning?.kind === 'error';
+
+  const canSubmit = name.trim().length > 0 && acresNum > 0 && haNum > 0 && !hasHardError && cutProfile >= 1 && cutProfile <= 4 && !submitting;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -78,11 +86,7 @@ export function AddFieldForm() {
       ))}
 
       <div style={{ padding: 16 }}>
-        {error && (
-          <div className="card" style={{ padding: 12, marginBottom: 14, background: 'var(--red-soft)', borderColor: 'var(--red)', color: 'var(--red)', fontSize: 13, fontWeight: 700 }}>
-            {error}
-          </div>
-        )}
+        <ErrorBanner error={error} />
 
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
           <div className="label" style={{ marginBottom: 10 }}>Field details</div>
@@ -130,6 +134,7 @@ export function AddFieldForm() {
               />
             </div>
           </div>
+          <InlineWarning warning={acresWarning ?? haWarning} />
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
             Acres and hectares stay in sync as you type.
           </div>

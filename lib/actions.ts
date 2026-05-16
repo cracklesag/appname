@@ -41,6 +41,62 @@ export async function saveApplication(formData: FormData) {
   redirect(`/fields/${fieldId}`);
 }
 
+export async function updateApplication(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id'));
+  const fieldId = String(formData.get('field_id'));
+  const productId = parseInt(String(formData.get('product_id')), 10);
+  const dateApplied = String(formData.get('date_applied'));
+  const rateValue = parseFloat(String(formData.get('rate_value')));
+  const rateUnit = String(formData.get('rate_unit')) as RateUnit;
+  const method = (formData.get('method') ? String(formData.get('method')) : null) as SlurryMethod | null;
+  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+
+  if (!id || !fieldId || !productId || !dateApplied || !rateValue || rateValue <= 0) {
+    throw new Error('Missing required fields');
+  }
+
+  const { error } = await supabase
+    .from('applications')
+    .update({
+      field_id: fieldId,
+      product_id: productId,
+      date_applied: dateApplied,
+      rate_value: rateValue,
+      rate_unit: rateUnit,
+      method,
+      notes,
+    })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  revalidatePath('/activity');
+  redirect(`/fields/${fieldId}`);
+}
+
+export async function deleteApplication(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id'));
+  const fieldId = String(formData.get('field_id'));
+  if (!id) throw new Error('Missing application id');
+
+  const { error } = await supabase.from('applications').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  revalidatePath('/activity');
+  redirect(`/fields/${fieldId}`);
+}
+
 export async function saveCut(formData: FormData) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -64,6 +120,55 @@ export async function saveCut(formData: FormData) {
     yield_class: yieldClass,
     notes,
   });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  redirect(`/fields/${fieldId}`);
+}
+
+export async function updateCut(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id'));
+  const fieldId = String(formData.get('field_id'));
+  const cutNumber = parseInt(String(formData.get('cut_number')), 10);
+  const cutDate = String(formData.get('cut_date'));
+  const cutType = String(formData.get('cut_type')) as CutType;
+  const yieldClass = String(formData.get('yield_class')) as YieldClass;
+  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+
+  if (!id || !fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
+
+  const { error } = await supabase
+    .from('cuts')
+    .update({
+      cut_number: cutNumber,
+      cut_date: cutDate,
+      cut_type: cutType,
+      yield_class: yieldClass,
+      notes,
+    })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  redirect(`/fields/${fieldId}`);
+}
+
+export async function deleteCut(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id'));
+  const fieldId = String(formData.get('field_id'));
+  if (!id) throw new Error('Missing cut id');
+
+  const { error } = await supabase.from('cuts').delete().eq('id', id);
   if (error) throw new Error(error.message);
 
   revalidatePath(`/fields/${fieldId}`);
@@ -209,6 +314,56 @@ export async function createField(formData: FormData) {
 
   revalidatePath('/');
   redirect(`/fields/${data.id}`);
+}
+
+export async function deleteField(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const fieldId = String(formData.get('field_id'));
+  const confirmName = String(formData.get('confirm_name') || '').trim();
+  if (!fieldId) throw new Error('Missing field id');
+  if (!confirmName) throw new Error('Type the field name to confirm');
+
+  // Verify the name matches before we cascade-delete
+  const { data: field, error: fetchErr } = await supabase
+    .from('fields')
+    .select('name')
+    .eq('id', fieldId)
+    .maybeSingle();
+  if (fetchErr || !field) throw new Error('Field not found');
+  if (field.name.trim() !== confirmName) {
+    throw new Error(`Name didn't match. Type "${field.name}" exactly to confirm.`);
+  }
+
+  // FK constraints on applications and cuts have ON DELETE CASCADE
+  const { error } = await supabase.from('fields').delete().eq('id', fieldId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/');
+  revalidatePath('/activity');
+  redirect('/');
+}
+
+export async function resetAllData(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const confirm = String(formData.get('confirm') || '').trim();
+  if (confirm !== 'DELETE') {
+    throw new Error('Type DELETE in capitals to confirm');
+  }
+
+  // Delete in FK-safe order. Settings and the user account are NOT touched.
+  await supabase.from('applications').delete().eq('user_id', user.id);
+  await supabase.from('cuts').delete().eq('user_id', user.id);
+  await supabase.from('fields').delete().eq('user_id', user.id);
+
+  revalidatePath('/');
+  revalidatePath('/activity');
+  redirect('/');
 }
 
 export async function signOut() {

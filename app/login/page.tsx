@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Header } from '@/components/Header';
@@ -77,9 +78,12 @@ export default function LoginPage() {
         >
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
-        <p style={{ marginTop: 18, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-          New users are added via the Supabase dashboard. Ask the farm admin for an invite.
-        </p>
+        <div style={{ marginTop: 18, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+          Don't have an account?{' '}
+          <Link href="/signup" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline' }}>
+            Create one
+          </Link>
+        </div>
       </form>
     </div>
   );

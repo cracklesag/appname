@@ -4,13 +4,23 @@ import {
   MONTH_NAMES, slurryNAvailability, METHOD_LABELS, CUT_TYPE_LABELS, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 import { ProductPill } from './ProductPill';
+import { EditDeleteControls } from './EditDeleteControls';
+import { deleteApplication, deleteCut } from '@/lib/actions';
 import { Scissors } from 'lucide-react';
 
-export function ApplicationCard({ app, products, settings }: { app: Application; products: Product[]; settings: Settings }) {
+export function ApplicationCard({
+  app, products, settings, fieldId,
+}: {
+  app: Application;
+  products: Product[];
+  settings: Settings;
+  fieldId: string;
+}) {
   const product = products.find((p) => p.id === app.product_id);
   const nut = calcNutrients(product, app.rate_value, app.rate_unit, app.date_applied, app.method);
   const isLime = product?.type === 'lime';
   const disp = product ? displayRate(app, settings, product.type) : { value: app.rate_value, unit: app.rate_unit };
+  const isPlanItem = app.applied_by === 'plan';
   return (
     <div className="card" style={{ padding: 12, marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -37,9 +47,17 @@ export function ApplicationCard({ app, products, settings }: { app: Application;
           pH amendment — resample 6–12 months later
         </div>
       )}
-      {app.notes && app.applied_by !== 'plan' && (
+      {app.notes && !isPlanItem && (
         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>{app.notes}</div>
       )}
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--line-soft)', display: 'flex', justifyContent: 'flex-end' }}>
+        <EditDeleteControls
+          editHref={`/fields/${fieldId}/applications/${app.id}/edit`}
+          deleteAction={deleteApplication}
+          hiddenInputs={{ id: app.id, field_id: fieldId }}
+          label="application"
+        />
+      </div>
     </div>
   );
 }
@@ -64,6 +82,14 @@ export function CutEntry({ cut, field, settings }: { cut: Cut; field: Field; set
         </div>
       </div>
       {cut.notes && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>{cut.notes}</div>}
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end' }}>
+        <EditDeleteControls
+          editHref={`/fields/${field.id}/cuts/${cut.id}/edit`}
+          deleteAction={deleteCut}
+          hiddenInputs={{ id: cut.id, field_id: field.id }}
+          label="cut"
+        />
+      </div>
     </div>
   );
 }

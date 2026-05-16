@@ -1,5 +1,6 @@
 import { Save, LogOut } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { ResetDataSection } from '@/components/ResetDataSection';
 import { loadSettings } from '@/lib/data';
 import { saveSettings, signOut } from '@/lib/actions';
 import { CUT_TYPE_LABELS } from '@/lib/rules';
@@ -175,6 +176,7 @@ export default async function SettingsPage() {
       </form>
 
       <div style={{ padding: 16 }}>
+        <ResetDataSection />
         <form action={signOut}>
           <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <LogOut size={16} /> Sign out
