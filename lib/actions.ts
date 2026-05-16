@@ -169,6 +169,48 @@ export async function saveSettings(formData: FormData) {
   redirect('/settings');
 }
 
+export async function createField(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const name = String(formData.get('name') || '').trim();
+  const acres = parseFloat(String(formData.get('acres')));
+  const ha = parseFloat(String(formData.get('ha')));
+  const cutProfile = parseInt(String(formData.get('cut_profile')), 10);
+  const plannedCuts: CutType[] = [];
+  for (let i = 0; i < cutProfile; i++) {
+    const v = formData.get(`cut_${i}`);
+    plannedCuts.push((v ? String(v) : 'silage') as CutType);
+  }
+  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+
+  // Validation: name required, acres > 0, ha > 0, cut profile 1-4
+  if (!name) throw new Error('Field name is required');
+  if (!acres || acres <= 0) throw new Error('Acres must be greater than 0');
+  if (!ha || ha <= 0) throw new Error('Hectares must be greater than 0');
+  if (!cutProfile || cutProfile < 1 || cutProfile > 4) throw new Error('Cut profile must be 1–4');
+
+  const { data, error } = await supabase.from('fields').insert({
+    user_id: user.id,
+    name,
+    acres,
+    ha,
+    cut_profile: cutProfile,
+    planned_cuts: plannedCuts,
+    sampled: false,
+    notes,
+  }).select('id').single();
+
+  if (error) {
+    if (error.code === '23505') throw new Error(`A field called "${name}" already exists`);
+    throw new Error(error.message);
+  }
+
+  revalidatePath('/');
+  redirect(`/fields/${data.id}`);
+}
+
 export async function signOut() {
   const supabase = createClient();
   await supabase.auth.signOut();

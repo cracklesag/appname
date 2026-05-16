@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { MiniBar } from '@/components/NutrientBar';
 import {
@@ -34,7 +34,31 @@ export default async function HomePage() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Fields" subtitle={`APP_NAME · ${seasonLabel}`} />
+      <Header
+        title="Fields"
+        subtitle={`APP_NAME · ${seasonLabel}`}
+        right={
+          <Link
+            href="/fields/new"
+            className="icon-btn"
+            aria-label="Add field"
+            style={{
+              border: '1px solid var(--line)',
+              borderRadius: 4,
+              padding: '6px 10px',
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--ink-soft)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              textDecoration: 'none',
+            }}
+          >
+            <Plus size={14} /> Add
+          </Link>
+        }
+      />
       <div style={{ padding: '12px 16px' }}>
         <div style={{ marginTop: 4 }}>
           {fields.map((f) => {
@@ -104,8 +128,17 @@ export default async function HomePage() {
           })}
 
           {fields.length === 0 && (
-            <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>
-              No fields yet. Run the seed script to load Mill Farm data, or add fields from Settings.
+            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 14 }}>
+                No fields yet. Add your first to get started.
+              </div>
+              <Link
+                href="/fields/new"
+                className="btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+              >
+                <Plus size={16} /> Add field
+              </Link>
             </div>
           )}
         </div>
