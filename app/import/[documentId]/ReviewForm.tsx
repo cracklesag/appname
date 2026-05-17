@@ -586,8 +586,37 @@ function SampleRowCard({
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
-            {sample.lab_sample_label ?? '(no label)'}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
+              {sample.lab_sample_label ?? '(no label)'}
+            </div>
+            {state.composite === null && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  background: 'var(--amber)',
+                  color: 'var(--paper)',
+                  padding: '2px 6px',
+                  borderRadius: 3,
+                }}
+                title="This sample's name suggests it may be more than one field. Confirm below."
+              >
+                <AlertCircle size={10} /> Check below
+              </span>
+            )}
           </div>
           {sample.lab_sample_ref && (
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -773,75 +802,90 @@ function CompositeQuestionBanner({
   label: string;
   onAnswer: (yes: boolean) => void;
 }) {
-  // Show the would-be split as a preview so the user knows what answering
-  // "yes" will do
+  // Direct question wording does the work — "Is this two fields?" tells the
+  // user what they're answering. Yes/No buttons keep the action minimal.
   const parts = splitComposite(label);
+  const n = parts.length;
+  const numberWord =
+    n === 2 ? 'two' : n === 3 ? 'three' : n === 4 ? 'four' : `${n}`;
+
   return (
     <div
       style={{
         background: 'var(--amber-soft)',
-        border: '1px solid var(--amber)',
+        border: `2px solid var(--amber)`,
         borderRadius: 4,
-        padding: 12,
+        padding: 14,
         marginBottom: 14,
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 12,
       }}
     >
-      <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
-        Does <strong>"{label}"</strong> describe one field or two?
-        {parts.length === 2 && (
-          <div
-            style={{
-              fontSize: 12,
-              color: 'var(--muted)',
-              marginTop: 4,
-              fontStyle: 'italic',
-            }}
-          >
-            If two: "{parts[0]}" and "{parts[1]}"
-          </div>
-        )}
-        {parts.length > 2 && (
-          <div
-            style={{
-              fontSize: 12,
-              color: 'var(--muted)',
-              marginTop: 4,
-              fontStyle: 'italic',
-            }}
-          >
-            If multiple: {parts.map((p) => `"${p}"`).join(', ')}
-          </div>
-        )}
+      <div
+        style={{
+          fontSize: 15,
+          fontWeight: 700,
+          color: 'var(--ink)',
+          lineHeight: 1.4,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+        }}
+      >
+        <AlertCircle
+          size={18}
+          style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 2 }}
+        />
+        <span>Is this {numberWord} fields?</span>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => onAnswer(false)}
-          className="btn-ghost"
+      {n >= 2 && (
+        <div
           style={{
-            flex: 1,
-            padding: '8px 12px',
-            fontSize: 13,
-            fontWeight: 700,
+            fontSize: 12,
+            color: 'var(--ink-soft)',
+            paddingLeft: 26,
+            lineHeight: 1.5,
           }}
         >
-          One field
-        </button>
+          The name <strong>"{label}"</strong> looks like it might cover{' '}
+          {n === 2 ? 'two fields' : `${n} fields`}: {parts.map((p) => `"${p}"`).join(', ')}.
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, paddingLeft: 26 }}>
         <button
           type="button"
           onClick={() => onAnswer(true)}
-          className="btn-ghost"
           style={{
             flex: 1,
-            padding: '8px 12px',
-            fontSize: 13,
+            padding: '10px 14px',
+            fontSize: 14,
             fontWeight: 700,
+            background: 'var(--forest)',
+            color: 'var(--paper)',
+            border: '1px solid var(--forest)',
+            borderRadius: 4,
+            cursor: 'pointer',
           }}
         >
-          {parts.length > 2 ? `${parts.length} fields` : 'Two fields'}
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => onAnswer(false)}
+          style={{
+            flex: 1,
+            padding: '10px 14px',
+            fontSize: 14,
+            fontWeight: 700,
+            background: 'var(--card)',
+            color: 'var(--ink)',
+            border: '1px solid var(--line)',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          No
         </button>
       </div>
     </div>
