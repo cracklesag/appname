@@ -43,13 +43,26 @@ type FieldLink =
   | { kind: 'new'; temp_id: string; name: string; size: string; skip_size: boolean; suggested_ref?: string };
 
 /**
+ * Composite resolution state for a sample's label.
+ *
+ *   null  — label looks composite ("DOCTORS AND BACK FIELD") but the user
+ *           has not yet answered whether it's actually one field or two.
+ *           UI shows a single field-link row plus a Yes/No prompt.
+ *   false — user said no, or the label was never composite. Treat as one field.
+ *           Prompt is hidden, single field-link row.
+ *   true  — user said yes (or there were 3+ parts after a manual "+ Add"). Treat
+ *           as multi-field with all the chip-mode affordances.
+ */
+type CompositeState = null | false | true;
+
+/**
  * Per-row state we accumulate during the review session.
  */
 interface RowState {
   decision: UserDecision;            // pending / accepted / edited / rejected
   overrides: Record<string, string>; // column → user-typed value (string, parsed on commit)
   links: FieldLink[];                // confirmed field matches for this sample
-  isComposite: boolean;              // whether we're rendering multi-select chip mode
+  composite: CompositeState;         // tri-state, see above
 }
 
 interface Props {
@@ -65,19 +78,35 @@ interface Props {
 
 const ACRES_PER_HA = 2.4711;
 
-/** Best initial guess for a row's field-link list based on the extracted ref. */
+/**
+ * Initial state for a sample: one field-link using the full label, and a
+ * composite state that tells the UI whether to show the "is this two fields?"
+ * prompt.
+ *
+ * We never auto-split composite refs — the user has to confirm. This is
+ * deliberate: a label containing "AND" or "&" may or may not actually mean two
+ * fields, and only the farmer knows which.
+ */
 function initialLinksFor(sample: ExtractedSample, fields: Field[]): FieldLink[] {
   const ref = sample.lab_sample_label ?? '';
   if (!ref) return [];
-
-  // Composite: split, match each part independently
-  if (isCompositeRef(ref)) {
-    return splitComposite(ref).map((part) =>
-      bestLinkFor(part, fields),
-    );
-  }
-
   return [bestLinkFor(ref, fields)];
+}
+
+/** Initial composite state: null if the label looks splittable, false otherwise. */
+function initialCompositeFor(sample: ExtractedSample): CompositeState {
+  return isCompositeRef(sample.lab_sample_label) ? null : false;
+}
+
+/**
+ * Build the field-link array for a sample whose composite question was just
+ * answered "yes". Splits the label, matches each part against existing fields.
+ */
+function linksAfterSplit(sample: ExtractedSample, fields: Field[]): FieldLink[] {
+  const ref = sample.lab_sample_label ?? '';
+  const parts = splitComposite(ref);
+  if (parts.length < 2) return [bestLinkFor(ref, fields)];
+  return parts.map((part) => bestLinkFor(part, fields));
 }
 
 function bestLinkFor(ref: string, fields: Field[]): FieldLink {
@@ -149,7 +178,7 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
         decision: 'pending',
         overrides: {},
         links: initialLinksFor(s, fields),
-        isComposite: isCompositeRef(s.lab_sample_label),
+        composite: initialCompositeFor(s),
       };
     }
     return init;
@@ -196,11 +225,47 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
   }
 
   function setLinks(id: string, links: FieldLink[]) {
-    setRow(id, (r) => ({ ...r, links }));
+    setRow(id, (r) => {
+      // If the user explicitly removed extra links so we're back to a single
+      // field, treat that as the user saying "actually it's one field" — flip
+      // composite back to false. This way the trash-can button can revert a
+      // mistaken "yes" answer.
+      let composite = r.composite;
+      if (links.length <= 1 && composite === true) {
+        composite = false;
+      }
+      return { ...r, links, composite };
+    });
   }
 
   function setDecision(id: string, decision: UserDecision) {
     setRow(id, (r) => ({ ...r, decision }));
+  }
+
+  /**
+   * Answer the "is this two separate fields?" prompt.
+   *
+   *   answer=true  → split the label and create a second field-link row
+   *                  (links recalculated by linksAfterSplit).
+   *   answer=false → keep one row; if we'd previously split, restore the
+   *                  original single full-label link.
+   */
+  function setComposite(id: string, answer: boolean) {
+    setRowStates((prev) => {
+      const r = prev[id];
+      const sample = samples.find((s) => s.id === id);
+      if (!sample) return prev;
+
+      let nextLinks = r.links;
+      if (answer && (r.composite === null || r.composite === false)) {
+        // Switching to "yes it's multiple fields" — split now
+        nextLinks = linksAfterSplit(sample, fields);
+      } else if (!answer && r.composite !== false) {
+        // Switching to "no, just one field" — restore single full-label link
+        nextLinks = initialLinksFor(sample, fields);
+      }
+      return { ...prev, [id]: { ...r, composite: answer, links: nextLinks } };
+    });
   }
 
   function acceptAll() {
@@ -374,6 +439,7 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
           onOverride={(col, v) => setOverride(s.id, col, v)}
           onLinks={(ls) => setLinks(s.id, ls)}
           onDecision={(d) => setDecision(s.id, d)}
+          onComposite={(a) => setComposite(s.id, a)}
         />
       ))}
 
@@ -466,6 +532,7 @@ function SampleRowCard({
   onOverride,
   onLinks,
   onDecision,
+  onComposite,
 }: {
   sample: ExtractedSample;
   fields: Field[];
@@ -474,9 +541,9 @@ function SampleRowCard({
   onOverride: (col: string, v: string) => void;
   onLinks: (ls: FieldLink[]) => void;
   onDecision: (d: UserDecision) => void;
+  onComposite: (answer: boolean) => void;
 }) {
   const isRejected = state.decision === 'rejected';
-  const isResolved = state.decision !== 'pending';
   const isAcceptedLike = state.decision === 'accepted' || state.decision === 'edited';
 
   // Validation hints per cell
@@ -549,6 +616,15 @@ function SampleRowCard({
       {/* Body — hidden when rejected to reduce noise */}
       {!isRejected && (
         <div style={{ padding: 14 }}>
+          {/* Composite-question banner — only when label looks composite AND
+              user hasn't answered yet */}
+          {state.composite === null && (
+            <CompositeQuestionBanner
+              label={sample.lab_sample_label ?? ''}
+              onAnswer={onComposite}
+            />
+          )}
+
           {/* Field-link section */}
           <div style={{ marginBottom: 14 }}>
             <div
@@ -561,12 +637,12 @@ function SampleRowCard({
                 marginBottom: 6,
               }}
             >
-              {state.isComposite ? 'Attach to fields' : 'Attach to field'}
+              {state.composite === true ? 'Attach to fields' : 'Attach to field'}
             </div>
             <FieldLinkEditor
               links={state.links}
               fields={fields}
-              isComposite={state.isComposite}
+              isComposite={state.composite === true}
               preferAcres={preferAcres}
               onChange={onLinks}
             />
@@ -689,6 +765,88 @@ function SampleRowCard({
 // =============================================================================
 // Decision button
 // =============================================================================
+
+function CompositeQuestionBanner({
+  label,
+  onAnswer,
+}: {
+  label: string;
+  onAnswer: (yes: boolean) => void;
+}) {
+  // Show the would-be split as a preview so the user knows what answering
+  // "yes" will do
+  const parts = splitComposite(label);
+  return (
+    <div
+      style={{
+        background: 'var(--amber-soft)',
+        border: '1px solid var(--amber)',
+        borderRadius: 4,
+        padding: 12,
+        marginBottom: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
+        Does <strong>"{label}"</strong> describe one field or two?
+        {parts.length === 2 && (
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--muted)',
+              marginTop: 4,
+              fontStyle: 'italic',
+            }}
+          >
+            If two: "{parts[0]}" and "{parts[1]}"
+          </div>
+        )}
+        {parts.length > 2 && (
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--muted)',
+              marginTop: 4,
+              fontStyle: 'italic',
+            }}
+          >
+            If multiple: {parts.map((p) => `"${p}"`).join(', ')}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => onAnswer(false)}
+          className="btn-ghost"
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          One field
+        </button>
+        <button
+          type="button"
+          onClick={() => onAnswer(true)}
+          className="btn-ghost"
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          {parts.length > 2 ? `${parts.length} fields` : 'Two fields'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function DecisionButton({
   label,
