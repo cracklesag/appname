@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ChevronRight, Plus, FileUp } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { MiniBar } from '@/components/NutrientBar';
@@ -21,12 +22,15 @@ import {
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const [fields, products, applications, cuts, settings] = await Promise.all([
+  // Onboarding gate: first-run users land on /welcome to pick their preferred unit
+  const settings = await loadSettings();
+  if (!settings.onboarded) redirect('/welcome');
+
+  const [fields, products, applications, cuts] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
-    loadSettings(),
   ]);
 
   const seasonStart = getSeasonStart();

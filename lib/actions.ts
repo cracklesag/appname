@@ -480,7 +480,7 @@ export async function commitDocumentDecisions(
       decision: 'accepted' | 'edited' | 'rejected';
       overrides: Record<string, unknown>;
       field_links: Array<
-        | { existing_field_id: string }
+        | { existing_field_id: string; replace_existing?: boolean }
         | { new_field: { name: string; acres?: number; ha?: number; skip_size: boolean } }
       >;
     }>;
@@ -582,4 +582,50 @@ export async function retryExtraction(documentId: string) {
 
   revalidatePath(`/import/${documentId}`);
   redirect(`/import/${documentId}`);
+}
+
+/**
+ * Complete first-run onboarding: save the user's preferred area unit and set
+ * onboarded=true so they're not shown the welcome screen again.
+ *
+ * The "unit" choice currently drives two settings together:
+ *   acres  → bagFertUnit='kg/ac', slurryUnit='gal/ac', limeUnit='t/ac'
+ *   ha     → bagFertUnit='kg/ha', slurryUnit='m3/ha', limeUnit='t/ha'
+ *
+ * The user can still tweak each individually under Settings later if their
+ * preference is mixed (e.g. acres for field size, gal/ac for slurry, kg/ha for
+ * fert). This is just the sensible default pair-up.
+ */
+export async function completeOnboarding(unit: 'acres' | 'ha') {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  // Load current settings (or seed defaults)
+  const { data: existing } = await supabase
+    .from('settings')
+    .select('data')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const current = (existing?.data as Record<string, unknown>) || {};
+
+  const unitDefaults =
+    unit === 'acres'
+      ? { bagFertUnit: 'kg/ac', slurryUnit: 'gal/ac', limeUnit: 't/ac' }
+      : { bagFertUnit: 'kg/ha', slurryUnit: 'm3/ha', limeUnit: 't/ha' };
+
+  const next = {
+    ...current,
+    ...unitDefaults,
+    onboarded: true,
+  };
+
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ user_id: user.id, data: next, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Could not save preference: ${error.message}`);
+
+  revalidatePath('/');
+  redirect('/');
 }

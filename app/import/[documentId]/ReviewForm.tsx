@@ -39,7 +39,7 @@ import { commitDocumentDecisions } from '@/lib/actions';
  * field by id, or describes a new field to create at commit time.
  */
 type FieldLink =
-  | { kind: 'existing'; field_id: string; field_name: string; suggested_ref?: string }
+  | { kind: 'existing'; field_id: string; field_name: string; suggested_ref?: string; replace_existing?: boolean }
   | { kind: 'new'; temp_id: string; name: string; size: string; skip_size: boolean; suggested_ref?: string };
 
 /**
@@ -295,7 +295,7 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
         decision: 'accepted' | 'edited' | 'rejected';
         overrides: Record<string, unknown>;
         field_links: Array<
-          | { existing_field_id: string }
+          | { existing_field_id: string; replace_existing?: boolean }
           | { new_field: { name: string; acres?: number; ha?: number; skip_size: boolean } }
         >;
       };
@@ -324,7 +324,10 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
           })
           .map<DecisionEntry['field_links'][number]>((l) => {
             if (l.kind === 'existing') {
-              return { existing_field_id: l.field_id };
+              return {
+                existing_field_id: l.field_id,
+                replace_existing: l.replace_existing === true,
+              };
             }
             const sizeNum = parseFloat(l.size);
             const sizeOk = !isNaN(sizeNum) && sizeNum > 0;
@@ -361,28 +364,40 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
   }
 
   // Pre-commit validation: every non-rejected row must have at least one
-  // valid field link, and every new-field link must have a non-empty name
+  // valid field link, every new-field link must have a non-empty name, and
+  // every new-field link must either have a valid positive size or have
+  // "I'll add later" ticked.
   const commitBlockers = useMemo(() => {
     const blockers: string[] = [];
     for (const s of samples) {
       const r = rowStates[s.id];
       if (r.decision === 'rejected' || r.decision === 'pending') continue;
+      const sampleLabel = s.lab_sample_label ?? 'a sample';
       const validLinks = r.links.filter((l) => {
         if (l.kind === 'existing') return Boolean(l.field_id);
         return l.name.trim().length > 0;
       });
       if (validLinks.length === 0) {
-        blockers.push(`${s.lab_sample_label ?? 'a sample'} has no field selected`);
+        blockers.push(`${sampleLabel}: no field selected`);
       }
       for (const l of r.links) {
-        if (l.kind === 'new' && l.name.trim().length === 0) {
-          blockers.push(`new field name missing for ${s.lab_sample_label ?? 'a sample'}`);
+        if (l.kind !== 'new') continue;
+        const name = l.name.trim();
+        if (name.length === 0) {
+          blockers.push(`${sampleLabel}: new field name missing`);
+          continue;
         }
-        if (l.kind === 'new' && !l.skip_size && l.size !== '') {
-          const n = parseFloat(l.size);
-          if (isNaN(n) || n <= 0) {
-            blockers.push(`invalid size for new field "${l.name}"`);
-          }
+        if (l.skip_size) continue;
+        // Size must be present and valid
+        if (l.size === '' || l.size === undefined || l.size === null) {
+          blockers.push(
+            `${sampleLabel}: enter a size for "${name}", or tick "I'll add the size later"`,
+          );
+          continue;
+        }
+        const n = parseFloat(l.size);
+        if (isNaN(n) || n <= 0) {
+          blockers.push(`${sampleLabel}: invalid size for "${name}"`);
         }
       }
     }
@@ -464,7 +479,7 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
         </div>
       )}
 
-      {commitBlockers.length > 0 && allResolved && (
+      {commitBlockers.length > 0 && (
         <div
           className="card"
           style={{
@@ -472,12 +487,26 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
             marginBottom: 14,
             background: 'var(--amber-soft)',
             borderColor: 'var(--amber)',
-            color: 'var(--amber)',
             fontSize: 12,
+            color: 'var(--ink)',
           }}
         >
-          Resolve these before finalising:
-          <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+          <div
+            style={{
+              fontWeight: 700,
+              color: 'var(--amber)',
+              marginBottom: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <AlertCircle size={14} />
+            {commitBlockers.length === 1
+              ? '1 issue to resolve before finalising'
+              : `${commitBlockers.length} issues to resolve before finalising`}
+          </div>
+          <ul style={{ margin: '6px 0 0 16px', padding: 0, lineHeight: 1.6 }}>
             {commitBlockers.map((b, i) => (
               <li key={i}>{b}</li>
             ))}
@@ -1141,6 +1170,20 @@ function LinkEditorRow({
         <SuggestionConfirmer suggested={link.suggested_ref} fieldName={link.field_name} />
       )}
 
+      {/* When linking to a field that already has soil data, ask: replace or add as new */}
+      {link.kind === 'existing' && (() => {
+        const f = fields.find((x) => x.id === link.field_id);
+        if (!f || !f.sampled) return null;
+        return (
+          <ReplaceExistingPrompt
+            fieldName={f.name}
+            existingDate={f.sample_date}
+            replace={link.replace_existing === true}
+            onChange={(next) => onChange({ ...link, replace_existing: next })}
+          />
+        );
+      })()}
+
       {/* Inline new-field mini-form */}
       {link.kind === 'new' && (
         <NewFieldMiniForm
@@ -1148,6 +1191,94 @@ function LinkEditorRow({
           preferAcres={preferAcres}
           onChange={onChange}
         />
+      )}
+    </div>
+  );
+}
+
+function ReplaceExistingPrompt({
+  fieldName,
+  existingDate,
+  replace,
+  onChange,
+}: {
+  fieldName: string;
+  existingDate: string | null;
+  replace: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 10,
+        background: 'var(--paper)',
+        borderRadius: 4,
+        border: '1px dashed var(--line)',
+        fontSize: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div style={{ color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+        <strong>{fieldName}</strong> already has a soil sample
+        {existingDate ? ` from ${existingDate}` : ''}. What would you like to do?
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          style={{
+            flex: 1,
+            minWidth: 120,
+            padding: '6px 10px',
+            fontSize: 12,
+            fontWeight: 700,
+            background: !replace ? 'var(--forest)' : 'var(--card)',
+            color: !replace ? 'var(--paper)' : 'var(--ink)',
+            border: `1px solid ${!replace ? 'var(--forest)' : 'var(--line)'}`,
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Add as new sample
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          style={{
+            flex: 1,
+            minWidth: 120,
+            padding: '6px 10px',
+            fontSize: 12,
+            fontWeight: 700,
+            background: replace ? 'var(--amber)' : 'var(--card)',
+            color: replace ? 'var(--paper)' : 'var(--ink)',
+            border: `1px solid ${replace ? 'var(--amber)' : 'var(--line)'}`,
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Replace existing
+        </button>
+      </div>
+      {replace && (
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--amber)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 6,
+            lineHeight: 1.5,
+          }}
+        >
+          <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            The existing sample for {fieldName} will be permanently deleted on commit.
+            Choose "Add as new sample" to keep history instead.
+          </span>
+        </div>
       )}
     </div>
   );
@@ -1307,6 +1438,13 @@ function ConfirmCommitModal({
   const newFieldsToCreate = accepted.flatMap((s) =>
     rowStates[s.id].links.filter((l) => l.kind === 'new' && l.name.trim().length > 0),
   );
+  const replacements = accepted.flatMap((s) =>
+    rowStates[s.id].links.filter((l) => {
+      if (l.kind !== 'existing' || l.replace_existing !== true) return false;
+      const f = fields.find((x) => x.id === l.field_id);
+      return Boolean(f?.sampled);
+    }),
+  );
 
   return (
     <div
@@ -1372,6 +1510,32 @@ function ConfirmCommitModal({
             </div>
           )}
 
+          {replacements.length > 0 && (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 10,
+                background: 'var(--amber-soft)',
+                border: '1px solid var(--amber)',
+                borderRadius: 4,
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <AlertCircle
+                size={14}
+                style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 2 }}
+              />
+              <span>
+                <strong>{replacements.length}</strong> existing soil sample
+                {replacements.length === 1 ? '' : 's'} will be permanently replaced.
+                Older sample data for these fields will be lost.
+              </span>
+            </div>
+          )}
+
           <details open style={{ marginTop: 8 }}>
             <summary
               style={{
@@ -1391,7 +1555,12 @@ function ConfirmCommitModal({
                 const r = rowStates[s.id];
                 const targets = r.links.map((l) => {
                   if (l.kind === 'existing') {
-                    return fields.find((f) => f.id === l.field_id)?.name ?? '(field)';
+                    const f = fields.find((x) => x.id === l.field_id);
+                    const name = f?.name ?? '(field)';
+                    if (l.replace_existing && f?.sampled) {
+                      return `${name} (replacing prior sample)`;
+                    }
+                    return name;
                   }
                   const skipNote = l.skip_size ? ' — no size set' : '';
                   return `${l.name.trim() || '(unnamed)'} (new${skipNote})`;

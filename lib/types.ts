@@ -73,6 +73,7 @@ export interface Settings {
   bagFertUnit: 'kg/ha' | 'kg/ac' | 'lb/ac';
   slurryUnit: 'gal/ac' | 'm3/ha';
   limeUnit: 't/ac' | 't/ha';
+  onboarded: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -84,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bagFertUnit: 'kg/ha',
   slurryUnit: 'gal/ac',
   limeUnit: 't/ac',
+  onboarded: false,
 };
 
 // ---------------------------------------------------------------
