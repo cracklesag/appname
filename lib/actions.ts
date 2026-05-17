@@ -531,3 +531,55 @@ export async function commitDocumentDecisions(
   // Redirect to the home so the user sees the updated field cards
   redirect('/');
 }
+
+/**
+ * Retry extraction for a failed document. Resets status to 'queued' and
+ * re-invokes the Edge Function. The PDF must still exist in Storage; if it's
+ * been deleted (shouldn't happen on a failed doc but defensive) the function
+ * will fail again with a clearer message.
+ */
+export async function retryExtraction(documentId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  // Load and verify ownership and current state
+  const { data: doc, error: loadErr } = await supabase
+    .from('documents')
+    .select('id, user_id, status')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (loadErr || !doc) throw new Error('Document not found');
+  if (doc.user_id !== user.id) throw new Error('Not authorised');
+  if (doc.status !== 'failed') {
+    throw new Error(`Cannot retry — document status is "${doc.status}", not "failed"`);
+  }
+
+  // Reset back to queued and clear the error
+  const { error: updateErr } = await supabase
+    .from('documents')
+    .update({
+      status: 'queued',
+      error_message: null,
+      processed_at: null,
+    })
+    .eq('id', documentId);
+  if (updateErr) throw new Error(`Could not reset document: ${updateErr.message}`);
+
+  // Re-invoke the Edge Function (fire-and-forget; the page will poll)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (supabaseUrl && serviceKey) {
+    fetch(`${supabaseUrl}/functions/v1/extract-document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ document_id: documentId }),
+    }).catch(() => undefined);
+  }
+
+  revalidatePath(`/import/${documentId}`);
+  redirect(`/import/${documentId}`);
+}

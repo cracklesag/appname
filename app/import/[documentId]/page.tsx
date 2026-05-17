@@ -5,6 +5,7 @@ import { loadFields, loadSettings } from '@/lib/data';
 import { ImportDocument, ExtractedSample } from '@/lib/types';
 import { StatusView } from './StatusView';
 import { ReviewForm } from './ReviewForm';
+import { FailedView } from './FailedView';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,27 +60,6 @@ export default async function ImportDocumentPage({
           settings={settings}
         />
       )}
-    </div>
-  );
-}
-
-function FailedView({ document }: { document: ImportDocument }) {
-  return (
-    <div style={{ padding: 16 }}>
-      <div
-        className="card"
-        style={{
-          padding: 14,
-          background: 'var(--red-soft)',
-          borderColor: 'var(--red)',
-          color: 'var(--red)',
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Extraction failed</div>
-        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-          {document.error_message || 'Something went wrong while extracting samples from this PDF.'}
-        </div>
-      </div>
     </div>
   );
 }
