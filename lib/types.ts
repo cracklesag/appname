@@ -20,6 +20,7 @@ export interface Field {
   last_ploughed: string | null;
   last_reseeded: string | null;
   notes: string | null;
+  needs_setup: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -84,3 +85,67 @@ export const DEFAULT_SETTINGS: Settings = {
   slurryUnit: 'gal/ac',
   limeUnit: 't/ac',
 };
+
+// ---------------------------------------------------------------
+// Document ingestion
+// ---------------------------------------------------------------
+
+export type DocumentType = 'soil_report';
+
+export type DocumentStatus =
+  | 'queued'
+  | 'processing'
+  | 'ready_for_review'
+  | 'committed'
+  | 'failed'
+  | 'discarded';
+
+export interface ImportDocument {
+  id: string;
+  user_id: string;
+  storage_path: string;
+  original_filename: string | null;
+  mime_type: string | null;
+  byte_size: number | null;
+  doc_type: DocumentType;
+  status: DocumentStatus;
+  extractor_name: string | null;
+  extractor_version: string | null;
+  error_message: string | null;
+  created_at: string;
+  processed_at: string | null;
+  committed_at: string | null;
+}
+
+export type UserDecision = 'pending' | 'accepted' | 'edited' | 'rejected';
+
+export interface SuggestedFieldMatch {
+  field_id: string;
+  field_name: string;
+  score: number;
+}
+
+export interface ExtractedSample {
+  id: string;
+  document_id: string;
+  user_id: string;
+  raw_payload: Record<string, unknown>;
+  lab_sample_label: string | null;
+  lab_sample_ref: string | null;
+  sample_date: string | null;
+  ph: number | null;
+  p_ppm: number | null;
+  p_index: number | null;
+  k_ppm: number | null;
+  k_index: number | null;
+  mg_ppm: number | null;
+  mg_index: number | null;
+  extras: Record<string, unknown>;
+  confidence: Record<string, number> | { all?: number };
+  suggested_field_matches: SuggestedFieldMatch[];
+  user_decision: UserDecision;
+  user_overrides: Record<string, unknown>;
+  committed_sample_id: string | null;
+  created_at: string;
+  updated_at: string;
+}

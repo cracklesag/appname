@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronRight, Plus, FileUp } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { MiniBar } from '@/components/NutrientBar';
 import {
@@ -38,25 +38,45 @@ export default async function HomePage() {
         title="Fields"
         subtitle={`APP_NAME · ${seasonLabel}`}
         right={
-          <Link
-            href="/fields/new"
-            className="icon-btn"
-            aria-label="Add field"
-            style={{
-              border: '1px solid var(--line)',
-              borderRadius: 4,
-              padding: '6px 10px',
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--ink-soft)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              textDecoration: 'none',
-            }}
-          >
-            <Plus size={14} /> Add
-          </Link>
+          <div style={{ display: 'inline-flex', gap: 6 }}>
+            <Link
+              href="/import"
+              aria-label="Import a document"
+              style={{
+                border: '1px solid var(--line)',
+                borderRadius: 4,
+                padding: '6px 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--ink-soft)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                textDecoration: 'none',
+              }}
+            >
+              <FileUp size={14} /> Import
+            </Link>
+            <Link
+              href="/fields/new"
+              className="icon-btn"
+              aria-label="Add field"
+              style={{
+                border: '1px solid var(--line)',
+                borderRadius: 4,
+                padding: '6px 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--ink-soft)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                textDecoration: 'none',
+              }}
+            >
+              <Plus size={14} /> Add
+            </Link>
+          </div>
         }
       />
       <div style={{ padding: '12px 16px' }}>

@@ -371,3 +371,91 @@ export async function signOut() {
   await supabase.auth.signOut();
   redirect('/login');
 }
+
+// =============================================================================
+// Document ingestion
+// =============================================================================
+
+/**
+ * Upload a soil report PDF and queue it for extraction.
+ *
+ * Flow:
+ *   1. Validate the file (PDF, sensible size)
+ *   2. Upload to Supabase Storage in a per-user path
+ *   3. Insert a documents row with status='queued'
+ *   4. Invoke the extract-document Edge Function (fire-and-forget)
+ *   5. Redirect to /import/[documentId] where the page polls for status
+ */
+export async function uploadDocument(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const file = formData.get('file');
+  const docType = String(formData.get('doc_type') || 'soil_report');
+
+  if (!(file instanceof File)) throw new Error('No file uploaded');
+  if (file.size === 0) throw new Error('Uploaded file is empty');
+  if (file.size > 20 * 1024 * 1024) throw new Error('File is larger than 20 MB');
+  if (file.type && file.type !== 'application/pdf') {
+    throw new Error('Only PDF files are supported');
+  }
+  if (docType !== 'soil_report') {
+    throw new Error('Unsupported document type');
+  }
+
+  // Per-user path scopes Storage RLS naturally
+  const ts = Date.now();
+  const safeName = (file.name || 'upload.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `${user.id}/${ts}_${safeName}`;
+
+  // Upload PDF to Storage
+  const buffer = await file.arrayBuffer();
+  const { error: uploadErr } = await supabase.storage
+    .from('documents-scratch')
+    .upload(storagePath, buffer, {
+      contentType: 'application/pdf',
+      upsert: false,
+    });
+  if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+
+  // Insert documents row
+  const { data: doc, error: insertErr } = await supabase
+    .from('documents')
+    .insert({
+      user_id: user.id,
+      storage_path: storagePath,
+      original_filename: file.name || null,
+      mime_type: file.type || 'application/pdf',
+      byte_size: file.size,
+      doc_type: docType,
+      status: 'queued',
+    })
+    .select('id')
+    .single();
+  if (insertErr || !doc) {
+    // Try to clean up the orphaned storage object
+    await supabase.storage.from('documents-scratch').remove([storagePath]);
+    throw new Error(`Failed to create document record: ${insertErr?.message}`);
+  }
+
+  // Fire-and-forget Edge Function invocation. We do not await — the page will
+  // poll for status. If the function call fails to dispatch, the document just
+  // sits in 'queued' forever, which is visible to the user as an error state.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (supabaseUrl && serviceKey) {
+    fetch(`${supabaseUrl}/functions/v1/extract-document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ document_id: doc.id }),
+    }).catch(() => {
+      // Best-effort. Status stays 'queued' if dispatch fails.
+    });
+  }
+
+  redirect(`/import/${doc.id}`);
+}
