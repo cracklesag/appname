@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { createClient } from '@/lib/supabase/server';
+import { loadFields, loadSettings } from '@/lib/data';
 import { ImportDocument, ExtractedSample } from '@/lib/types';
 import { StatusView } from './StatusView';
-import { ReviewShell } from './ReviewShell';
+import { ReviewForm } from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,8 @@ export default async function ImportDocumentPage({
 
   const document = doc as ImportDocument;
 
-  // If extraction is done, load the candidate samples for the review shell
+  // If extraction is done, load the candidate samples + the user's fields + settings
+  // so the review UI has everything it needs to match and create.
   let samples: ExtractedSample[] = [];
   if (document.status === 'ready_for_review' || document.status === 'committed') {
     const { data: rows } = await supabase
@@ -37,6 +39,7 @@ export default async function ImportDocumentPage({
     samples = (rows as ExtractedSample[] | null) ?? [];
   }
 
+  const [fields, settings] = await Promise.all([loadFields(), loadSettings()]);
   const subtitle = document.original_filename ?? 'Document';
 
   return (
@@ -49,7 +52,12 @@ export default async function ImportDocumentPage({
       ) : document.status === 'discarded' ? (
         <DiscardedView />
       ) : (
-        <ReviewShell document={document} samples={samples} />
+        <ReviewForm
+          document={document}
+          samples={samples}
+          fields={fields}
+          settings={settings}
+        />
       )}
     </div>
   );

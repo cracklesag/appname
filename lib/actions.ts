@@ -459,3 +459,75 @@ export async function uploadDocument(formData: FormData) {
 
   redirect(`/import/${doc.id}`);
 }
+
+/**
+ * Commit reviewed samples for a document.
+ *
+ * Calls the commit_document Postgres RPC which atomically:
+ *   - Inserts soil_samples rows for accepted/edited extracted_samples
+ *   - Inserts soil_sample_fields junction rows
+ *   - Creates new fields where the user opted to create-new
+ *   - Updates documents.status='committed'
+ *
+ * After a successful commit, deletes the source PDF from Storage and revalidates
+ * the relevant cache paths so the field cards on the home screen update.
+ */
+export async function commitDocumentDecisions(
+  documentId: string,
+  payload: {
+    decisions: Array<{
+      extracted_sample_id: string;
+      decision: 'accepted' | 'edited' | 'rejected';
+      overrides: Record<string, unknown>;
+      field_links: Array<
+        | { existing_field_id: string }
+        | { new_field: { name: string; acres?: number; ha?: number; skip_size: boolean } }
+      >;
+    }>;
+  },
+): Promise<{ error?: string } | void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: 'Not signed in' };
+  }
+
+  // Load the document to find the storage path for cleanup
+  const { data: doc, error: docErr } = await supabase
+    .from('documents')
+    .select('id, user_id, storage_path, status')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (docErr || !doc) {
+    return { error: 'Document not found' };
+  }
+  if (doc.user_id !== user.id) {
+    return { error: 'Not authorised' };
+  }
+
+  // Call the RPC
+  const { data: result, error: rpcErr } = await supabase.rpc('commit_document', {
+    p_document_id: documentId,
+    p_payload: payload,
+  });
+  if (rpcErr) {
+    return { error: rpcErr.message };
+  }
+
+  // Best-effort: delete the PDF from Storage now that it's committed.
+  // If this fails, we still consider the commit successful — the TTL sweep
+  // (Session 4) will catch orphans.
+  if (doc.storage_path) {
+    await supabase.storage
+      .from('documents-scratch')
+      .remove([doc.storage_path])
+      .catch(() => undefined);
+  }
+
+  // Invalidate caches: every field card on home and any field-detail page
+  revalidatePath('/');
+  revalidatePath(`/import/${documentId}`);
+
+  // Redirect to the home so the user sees the updated field cards
+  redirect('/');
+}
