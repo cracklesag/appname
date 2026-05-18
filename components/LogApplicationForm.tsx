@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Droplets, Sprout, Mountain, Save } from 'lucide-react';
 import { Application, Field, Product, Settings, SlurryMethod } from '@/lib/types';
 import {
-  calcNutrients, fmt, METHOD_LABELS,
+  calcNutrients, displayBagAmount, displayFieldArea, fmt, METHOD_LABELS,
 } from '@/lib/rules';
 import { saveApplication, updateApplication } from '@/lib/actions';
 import { validateApplicationRate, validateDate } from '@/lib/validation';
@@ -65,9 +65,11 @@ export function LogApplicationForm({
       if (existing.rate_unit === 'kg/ha' || existing.rate_unit === 'kg/ac' || existing.rate_unit === 'lb/ac') return existing.rate_unit;
       if (existing.rate_unit === 'gal/ac' || existing.rate_unit === 'm3/ha') return existing.rate_unit;
     }
-    return type === 'slurry' ? settings.slurryUnit
-         : type === 'lime' ? settings.limeUnit
-         : settings.bagFertUnit;
+    if (type === 'slurry') return settings.slurryUnit;
+    if (type === 'lime')   return settings.limeUnit;
+    // For bag-fert input, units/ac is not a valid product-rate (it's a nutrient
+    // display preference). Fall back to kg/ha for the input dropdown default.
+    return settings.bagFertUnit === 'units/ac' ? 'kg/ha' : settings.bagFertUnit;
   }, [isEdit, existing, type, settings]);
 
   // When type changes, swap to first product of that type and clear rate
@@ -168,7 +170,10 @@ export function LogApplicationForm({
               {LIME_RATES.map((r) => <option key={r} value={r}>{r} t/ac</option>)}
             </select>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-              = {fmt(totalQty.value, 1)} t total over {field.acres} ac
+              {(() => {
+                const a = displayFieldArea(field, settings.unitSystem);
+                return `= ${fmt(totalQty.value, 1)} t total over ${fmt(a.value, 1)} ${a.unit}`;
+              })()}
             </div>
           </div>
         ) : (
@@ -190,7 +195,10 @@ export function LogApplicationForm({
             />
             {numericRate > 0 && (
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                = {fmt(totalQty.value)} {totalQty.unit} total over {field.acres} ac
+                {(() => {
+                  const a = displayFieldArea(field, settings.unitSystem);
+                  return `= ${fmt(totalQty.value)} ${totalQty.unit} total over ${fmt(a.value, 1)} ${a.unit}`;
+                })()}
               </div>
             )}
             <InlineWarning warning={rateWarning} />
@@ -217,21 +225,30 @@ export function LogApplicationForm({
           <div className="card" style={{ padding: 14, background: 'var(--forest-soft)', borderColor: 'var(--forest)' }}>
             <div className="label" style={{ color: 'var(--forest-dark)' }}>This application delivers</div>
             <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>N</div>
-                <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(nut.nPerHa)}</div>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>kg/ha {type === 'slurry' ? 'avail' : ''}</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>P₂O₅</div>
-                <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(nut.p2o5PerHa)}</div>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>kg/ha</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>K₂O</div>
-                <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(nut.k2oPerHa)}</div>
-                <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>kg/ha</div>
-              </div>
+              {(() => {
+                const nView = displayBagAmount(nut.nPerHa,    settings.bagFertUnit);
+                const pView = displayBagAmount(nut.p2o5PerHa, settings.bagFertUnit);
+                const kView = displayBagAmount(nut.k2oPerHa,  settings.bagFertUnit);
+                return (
+                  <>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>N</div>
+                      <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(nView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>{nView.unit} {type === 'slurry' ? 'avail' : ''}</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>P₂O₅</div>
+                      <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(pView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>{pView.unit}</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>K₂O</div>
+                      <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(kView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>{kView.unit}</div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
             {nut.nNote && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--forest-dark)', fontStyle: 'italic' }}>N basis: {nut.nNote}</div>}
             {type === 'slurry' && nut.availFactor === 0 && (

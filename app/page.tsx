@@ -17,6 +17,9 @@ import {
   getSeasonStart,
   soilMetricColor,
   sumNutrients,
+  displayBagAmount,
+  displayFieldArea,
+  fmt,
 } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
@@ -115,7 +118,10 @@ export default async function HomePage() {
                       {f.name}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                      {f.acres} ac · {f.cut_profile} cut
+                      {(() => {
+                        const a = displayFieldArea(f, settings.unitSystem);
+                        return `${fmt(a.value, 1)} ${a.unit} · ${f.cut_profile} cut`;
+                      })()}
                     </div>
                     {f.sampled && (
                       <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12 }}>
@@ -140,13 +146,21 @@ export default async function HomePage() {
                   )}
                 </div>
 
-                {targets && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
-                    <MiniBar label="N" applied={sinceTotals.n} target={targets.n} />
-                    <MiniBar label="P" applied={sinceTotals.p} target={targets.p2o5} />
-                    <MiniBar label="K" applied={sinceTotals.k} target={targets.k2o} />
-                  </div>
-                )}
+                {targets && (() => {
+                  const nView = displayBagAmount(sinceTotals.n,  settings.bagFertUnit);
+                  const pView = displayBagAmount(sinceTotals.p,  settings.bagFertUnit);
+                  const kView = displayBagAmount(sinceTotals.k,  settings.bagFertUnit);
+                  const nTgt  = displayBagAmount(targets.n,      settings.bagFertUnit).value;
+                  const pTgt  = displayBagAmount(targets.p2o5,   settings.bagFertUnit).value;
+                  const kTgt  = displayBagAmount(targets.k2o,    settings.bagFertUnit).value;
+                  return (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
+                      <MiniBar label="N" applied={nView.value} target={nTgt} unit={nView.unit} />
+                      <MiniBar label="P" applied={pView.value} target={pTgt} unit={pView.unit} />
+                      <MiniBar label="K" applied={kView.value} target={kTgt} unit={kView.unit} />
+                    </div>
+                  );
+                })()}
               </Link>
             );
           })}

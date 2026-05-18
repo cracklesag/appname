@@ -187,7 +187,7 @@ export function ReviewForm({ document, samples, fields, settings }: Props) {
   // User's preferred size unit, inferred from settings.slurryUnit
   // (gal/ac → acres, m3/ha → hectares). Acceptable heuristic until proper
   // onboarding unit-picker lands.
-  const preferAcres = settings.slurryUnit === 'gal/ac';
+  const preferAcres = settings.unitSystem === 'acres';
 
   // Composite list of "what will happen on commit" for the preview
   const [showConfirm, setShowConfirm] = useState(false);

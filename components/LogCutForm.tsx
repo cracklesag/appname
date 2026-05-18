@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Save, Scissors } from 'lucide-react';
 import { Cut, CutType, Field, Settings, YieldClass } from '@/lib/types';
 import {
-  CUT_TYPE_LABELS, fmt, getOfftakeForCut, YIELD_CLASS_LABELS,
+  CUT_TYPE_LABELS, displayBagAmount, fmt, getOfftakeForCut, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 import { saveCut, updateCut } from '@/lib/actions';
 import { validateDate } from '@/lib/validation';
@@ -169,21 +169,30 @@ export function LogCutForm({
             {cutType === 'grazing' && ` · ${Math.round((settings.grazingReturnPct ?? 0.70) * 100)}% returned via dung/urine`}
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>N</div>
-              <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(offtake.n)}</div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>P₂O₅</div>
-              <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(offtake.p2o5)}</div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>K₂O</div>
-              <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(offtake.k2o)}</div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
-            </div>
+            {(() => {
+              const nView = displayBagAmount(offtake.n,    settings.bagFertUnit);
+              const pView = displayBagAmount(offtake.p2o5, settings.bagFertUnit);
+              const kView = displayBagAmount(offtake.k2o,  settings.bagFertUnit);
+              return (
+                <>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>N</div>
+                    <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(nView.value)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nView.unit}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>P₂O₅</div>
+                    <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(pView.value)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{pView.unit}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>K₂O</div>
+                    <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(kView.value)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{kView.unit}</div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

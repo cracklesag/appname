@@ -10,7 +10,7 @@ import {
   loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings,
 } from '@/lib/data';
 import {
-  CUT_TYPE_LABELS, displayRate, fmt, fmtDate, fmtDateShort,
+  CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, METHOD_LABELS,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
@@ -92,7 +92,10 @@ export default async function FieldDetailPage({
     <div style={{ paddingBottom: 100 }}>
       <Header
         title={field.name}
-        subtitle={`${field.acres} ac · ${field.ha} ha · ${field.cut_profile}-cut`}
+        subtitle={(() => {
+          const a = displayFieldArea(field, settings.unitSystem);
+          return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut`;
+        })()}
         backHref="/"
       />
 
@@ -167,16 +170,26 @@ export default async function FieldDetailPage({
                 <Edit3 size={12} /> Plan
               </Link>
             </div>
-            {targets && (
-              <>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-                  Applied {windowLabel} · target {fmt(targets.yieldDM, 1)} t DM/ha
-                </div>
-                <NutrientBar label="N"    applied={availableForNextCut.n} target={targets.n} />
-                <NutrientBar label="P₂O₅" applied={availableForNextCut.p} target={targets.p2o5} carryover={carryover.p} />
-                <NutrientBar label="K₂O"  applied={availableForNextCut.k} target={targets.k2o} carryover={carryover.k} />
-              </>
-            )}
+            {targets && (() => {
+              const nView   = displayBagAmount(availableForNextCut.n, settings.bagFertUnit);
+              const pView   = displayBagAmount(availableForNextCut.p, settings.bagFertUnit);
+              const kView   = displayBagAmount(availableForNextCut.k, settings.bagFertUnit);
+              const nTgt    = displayBagAmount(targets.n,    settings.bagFertUnit).value;
+              const pTgt    = displayBagAmount(targets.p2o5, settings.bagFertUnit).value;
+              const kTgt    = displayBagAmount(targets.k2o,  settings.bagFertUnit).value;
+              const pCarry  = displayBagAmount(carryover.p,  settings.bagFertUnit).value;
+              const kCarry  = displayBagAmount(carryover.k,  settings.bagFertUnit).value;
+              return (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                    Applied {windowLabel} · target {fmt(targets.yieldDM, 1)} t DM/ha
+                  </div>
+                  <NutrientBar label="N"    applied={nView.value} target={nTgt} unit={nView.unit} />
+                  <NutrientBar label="P₂O₅" applied={pView.value} target={pTgt} unit={pView.unit} carryover={pCarry} />
+                  <NutrientBar label="K₂O"  applied={kView.value} target={kTgt} unit={kView.unit} carryover={kCarry} />
+                </>
+              );
+            })()}
             {!targets && (
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>Season complete. See <strong>This season</strong> tab for full totals.</div>
             )}
@@ -288,21 +301,30 @@ export default async function FieldDetailPage({
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>· since {fmtDate(seasonStart)}</span>
             </div>
             <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>N</div>
-                <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(seasonTotals.n)}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha avail</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>P₂O₅</div>
-                <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(seasonTotals.p)}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>K₂O</div>
-                <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(seasonTotals.k)}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
-              </div>
+              {(() => {
+                const nView = displayBagAmount(seasonTotals.n, settings.bagFertUnit);
+                const pView = displayBagAmount(seasonTotals.p, settings.bagFertUnit);
+                const kView = displayBagAmount(seasonTotals.k, settings.bagFertUnit);
+                return (
+                  <>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>N</div>
+                      <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(nView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nView.unit} avail</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>P₂O₅</div>
+                      <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(pView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{pView.unit}</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>K₂O</div>
+                      <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(kView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{kView.unit}</div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

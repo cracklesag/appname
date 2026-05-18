@@ -34,18 +34,57 @@ export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep
 
 const KG_HA_PER_KG_AC = 2.4711;
 const KG_HA_PER_LB_AC = 1.1209;
+
+// UK fertiliser unit: 1 unit = 1% of 1 cwt (112 lb) = 1.12 lb per acre
+// → 1 unit/ac = 1.12 lb/ac = 1.12 × 1.1209 kg/ha = ~1.255 kg/ha
+// FAS Scotland publishes 1.25 as the rounded conversion; we use the
+// mathematically precise figure so all unit conversions stay consistent.
+const KG_HA_PER_UNIT_AC = 1.12 * KG_HA_PER_LB_AC;  // 1.2554...
+
 const GAL_AC_PER_M3_HA = 89.0;
 const T_AC_PER_T_HA = 0.4047;
+
+/**
+ * Display a field's area in the user's preferred system. Returns the numeric
+ * value and the unit label. Field rows always carry both `acres` and `ha`
+ * (kept in sync by the AddFieldForm and the importer), so this is just a
+ * choice of which column to display, not a conversion.
+ */
+export function displayFieldArea(field: { acres: number; ha: number }, system: Settings['unitSystem']): { value: number; unit: 'ac' | 'ha' } {
+  return system === 'acres'
+    ? { value: field.acres, unit: 'ac' }
+    : { value: field.ha,    unit: 'ha' };
+}
+
+/**
+ * Convert a value in kg/ha (our storage unit for fertiliser nutrient
+ * concentration) to the user's preferred display unit, with the appropriate
+ * unit label. Used by NutrientBar and any other display that shows a
+ * fert-style rate.
+ */
+export function displayBagAmount(kgPerHa: number, unit: Settings['bagFertUnit']): { value: number; unit: string } {
+  switch (unit) {
+    case 'kg/ac':    return { value: kgPerHa / KG_HA_PER_KG_AC,   unit: 'kg/ac' };
+    case 'lb/ac':    return { value: kgPerHa / KG_HA_PER_LB_AC,   unit: 'lb/ac' };
+    case 'units/ac': return { value: kgPerHa / KG_HA_PER_UNIT_AC, unit: 'units/ac' };
+    case 'kg/ha':
+    default:         return { value: kgPerHa,                     unit: 'kg/ha' };
+  }
+}
 
 export function displayRate(app: Application, settings: Settings, productType: 'bag_fert' | 'slurry' | 'lime'): { value: number; unit: string } {
   if (productType === 'bag_fert') {
     let kgPerHa = app.rate_value;
-    if (app.rate_unit === 'kg/ac') kgPerHa = app.rate_value * KG_HA_PER_KG_AC;
+    if (app.rate_unit === 'kg/ac')      kgPerHa = app.rate_value * KG_HA_PER_KG_AC;
     else if (app.rate_unit === 'lb/ac') kgPerHa = app.rate_value * KG_HA_PER_LB_AC;
-    const out = settings.bagFertUnit === 'kg/ac' ? kgPerHa / KG_HA_PER_KG_AC
-              : settings.bagFertUnit === 'lb/ac' ? kgPerHa / KG_HA_PER_LB_AC
-              : kgPerHa;
-    return { value: out, unit: settings.bagFertUnit };
+    // For display: units/ac is allowed as a NUTRIENT display unit only, not a
+    // product-rate. For showing the application rate itself, we still want to
+    // show product weight — so if the user has units/ac set as their preferred
+    // nutrient display unit, we still display the product rate in kg/ha here.
+    // The bars (NutrientBar) handle the units/ac case for nutrient values.
+    const fallback: 'kg/ha' | 'kg/ac' | 'lb/ac' =
+      settings.bagFertUnit === 'units/ac' ? 'kg/ha' : settings.bagFertUnit;
+    return displayBagAmount(kgPerHa, fallback);
   }
   if (productType === 'slurry') {
     let galPerAc = app.rate_value;
@@ -106,7 +145,7 @@ export function calcNutrients(
   if (product.type === 'bag_fert') {
     // Normalise to kg/ha
     let kgPerHa = rateValue;
-    if (rateUnit === 'kg/ac') kgPerHa = rateValue * KG_HA_PER_KG_AC;
+    if (rateUnit === 'kg/ac')      kgPerHa = rateValue * KG_HA_PER_KG_AC;
     else if (rateUnit === 'lb/ac') kgPerHa = rateValue * KG_HA_PER_LB_AC;
     return {
       nPerHa: kgPerHa * (product.n_pct ?? 0) / 100,

@@ -12,32 +12,26 @@ import { InlineWarning, ErrorBanner } from './InlineWarning';
 // Conversion: 1 ha = 2.4711 acres
 const ACRES_PER_HA = 2.4711;
 
-export function AddFieldForm() {
+export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' }) {
   const [name, setName] = useState('');
-  const [acres, setAcres] = useState('');
-  const [ha, setHa] = useState('');
+  // Size input is in the user's preferred system; the other side is derived
+  const [size, setSize] = useState('');
   const [cutProfile, setCutProfile] = useState<number>(2);
   const [plannedCuts, setPlannedCuts] = useState<CutType[]>(['silage', 'silage']);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Keep acres and ha in sync — flag tracks which field the user is typing in
-  const [lastEdited, setLastEdited] = useState<'acres' | 'ha' | null>(null);
-
-  useEffect(() => {
-    if (lastEdited === 'acres' && acres !== '') {
-      const n = parseFloat(acres);
-      if (!isNaN(n)) setHa((n / ACRES_PER_HA).toFixed(2));
-    }
-  }, [acres, lastEdited]);
-
-  useEffect(() => {
-    if (lastEdited === 'ha' && ha !== '') {
-      const n = parseFloat(ha);
-      if (!isNaN(n)) setAcres((n * ACRES_PER_HA).toFixed(2));
-    }
-  }, [ha, lastEdited]);
+  // Compute the missing side so the database always has both
+  const sizeNum = parseFloat(size);
+  const acres = useMemo(() => {
+    if (isNaN(sizeNum)) return '';
+    return unitSystem === 'acres' ? sizeNum.toFixed(2) : (sizeNum * ACRES_PER_HA).toFixed(2);
+  }, [sizeNum, unitSystem]);
+  const ha = useMemo(() => {
+    if (isNaN(sizeNum)) return '';
+    return unitSystem === 'hectares' ? sizeNum.toFixed(2) : (sizeNum / ACRES_PER_HA).toFixed(2);
+  }, [sizeNum, unitSystem]);
 
   // Resize plannedCuts when cut profile changes, preserving existing entries
   useEffect(() => {
@@ -55,7 +49,8 @@ export function AddFieldForm() {
   const haNum = parseFloat(ha);
   const acresWarning = useMemo(() => isNaN(acresNum) ? null : validateAcres(acresNum), [acresNum]);
   const haWarning = useMemo(() => isNaN(haNum) ? null : validateHa(haNum), [haNum]);
-  const hasHardError = acresWarning?.kind === 'error' || haWarning?.kind === 'error';
+  const activeWarning = unitSystem === 'acres' ? acresWarning : haWarning;
+  const hasHardError = activeWarning?.kind === 'error';
 
   const canSubmit = name.trim().length > 0 && acresNum > 0 && haNum > 0 && !hasHardError && cutProfile >= 1 && cutProfile <= 4 && !submitting;
 
@@ -106,37 +101,28 @@ export function AddFieldForm() {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div className="label" style={{ fontSize: 11 }}>Acres</div>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min="0"
-                className="input"
-                placeholder="e.g. 12.5"
-                value={acres}
-                onChange={(e) => { setAcres(e.target.value); setLastEdited('acres'); }}
-              />
+          <div>
+            <div className="label" style={{ fontSize: 11 }}>
+              {unitSystem === 'acres' ? 'Acres' : 'Hectares'}
             </div>
-            <div style={{ flex: 1 }}>
-              <div className="label" style={{ fontSize: 11 }}>Hectares</div>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min="0"
-                className="input"
-                placeholder="e.g. 5.06"
-                value={ha}
-                onChange={(e) => { setHa(e.target.value); setLastEdited('ha'); }}
-              />
-            </div>
-          </div>
-          <InlineWarning warning={acresWarning ?? haWarning} />
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
-            Acres and hectares stay in sync as you type.
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min="0"
+              className="input"
+              placeholder={unitSystem === 'acres' ? 'e.g. 12.5' : 'e.g. 5.06'}
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+            />
+            <InlineWarning warning={activeWarning} />
+            {sizeNum > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+                {unitSystem === 'acres'
+                  ? `≈ ${ha} ha`
+                  : `≈ ${acres} ac`}
+              </div>
+            )}
           </div>
         </div>
 

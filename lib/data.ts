@@ -64,5 +64,12 @@ export async function loadSettings(): Promise<Settings> {
   if (!user) return DEFAULT_SETTINGS;
   const { data, error } = await supabase.from('settings').select('data').eq('user_id', user.id).maybeSingle();
   if (error || !data) return DEFAULT_SETTINGS;
-  return { ...DEFAULT_SETTINGS, ...(data.data || {}) };
+  const merged: Settings = { ...DEFAULT_SETTINGS, ...(data.data || {}) };
+  // For users whose settings predate the unitSystem field: infer from slurryUnit
+  // (gal/ac is acres-style, m3/ha is hectares-style). Saved on first explicit
+  // Settings save thereafter.
+  if (!(data.data && 'unitSystem' in data.data)) {
+    merged.unitSystem = merged.slurryUnit === 'gal/ac' ? 'acres' : 'hectares';
+  }
+  return merged;
 }

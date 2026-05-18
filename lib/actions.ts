@@ -258,9 +258,10 @@ export async function saveSettings(formData: FormData) {
       pIdx: parseFloat(String(formData.get('target_pidx'))),
       kIdx: parseFloat(String(formData.get('target_kidx'))),
     },
-    bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac',
+    bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
     slurryUnit: String(formData.get('slurry_unit')) as 'gal/ac' | 'm3/ha',
     limeUnit: String(formData.get('lime_unit')) as 't/ac' | 't/ha',
+    unitSystem: String(formData.get('unit_system')) as 'acres' | 'hectares',
   };
 
   const { error } = await supabase.from('settings').upsert({
@@ -612,8 +613,8 @@ export async function completeOnboarding(unit: 'acres' | 'ha') {
 
   const unitDefaults =
     unit === 'acres'
-      ? { bagFertUnit: 'kg/ac', slurryUnit: 'gal/ac', limeUnit: 't/ac' }
-      : { bagFertUnit: 'kg/ha', slurryUnit: 'm3/ha', limeUnit: 't/ha' };
+      ? { unitSystem: 'acres',    bagFertUnit: 'kg/ac', slurryUnit: 'gal/ac', limeUnit: 't/ac' }
+      : { unitSystem: 'hectares', bagFertUnit: 'kg/ha', slurryUnit: 'm3/ha',  limeUnit: 't/ha' };
 
   const next = {
     ...current,

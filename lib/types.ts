@@ -70,7 +70,8 @@ export interface Settings {
   grazingReturnPct: number;
   nTargets: { 1: number; 2: number; 3: number; 4: number };
   soilTargets: { pH: number; pIdx: number; kIdx: number };
-  bagFertUnit: 'kg/ha' | 'kg/ac' | 'lb/ac';
+  unitSystem: 'acres' | 'hectares';
+  bagFertUnit: 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac';
   slurryUnit: 'gal/ac' | 'm3/ha';
   limeUnit: 't/ac' | 't/ha';
   onboarded: boolean;
@@ -82,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   grazingReturnPct: 0.70,
   nTargets: { 1: 110, 2: 80, 3: 65, 4: 50 },
   soilTargets: { pH: 6.0, pIdx: 2.0, kIdx: 2.0 },
+  unitSystem: 'hectares',
   bagFertUnit: 'kg/ha',
   slurryUnit: 'gal/ac',
   limeUnit: 't/ac',

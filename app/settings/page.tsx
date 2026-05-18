@@ -38,7 +38,24 @@ export default async function SettingsPage() {
         <div style={{ padding: 16 }}>
           {/* Units */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-            <div className="label" style={{ marginBottom: 10 }}>Display units</div>
+            <div className="label" style={{ marginBottom: 10 }}>Units</div>
+
+            <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--line-soft)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>System</div>
+              <Segment
+                name="unit_system"
+                value={s.unitSystem}
+                options={[
+                  { value: 'acres', label: 'Acres' },
+                  { value: 'hectares', label: 'Hectares' },
+                ]}
+              />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+                Changes the default for field sizes, fertiliser, slurry and lime
+                everywhere in the app. You can still pick different units per
+                category below if you prefer to mix.
+              </div>
+            </div>
 
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Bag fertiliser</div>
@@ -49,8 +66,15 @@ export default async function SettingsPage() {
                   { value: 'kg/ha', label: 'kg/ha' },
                   { value: 'kg/ac', label: 'kg/ac' },
                   { value: 'lb/ac', label: 'lb/ac' },
+                  { value: 'units/ac', label: 'units/ac' },
                 ]}
               />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+                "units/ac" is the traditional UK measure of nutrient applied
+                (1 unit ≈ 1.12 lb/ac of N, P₂O₅ or K₂O). This setting only changes
+                how nutrient totals are displayed — products are still logged in
+                whatever unit you pick on the log screen.
+              </div>
             </div>
 
             <div style={{ marginBottom: 12 }}>

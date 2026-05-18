@@ -46,7 +46,17 @@ export function NutrientBar({
   );
 }
 
-export function MiniBar({ label, applied, target }: { label: string; applied: number; target: number }) {
+export function MiniBar({
+  label,
+  applied,
+  target,
+  unit,
+}: {
+  label: string;
+  applied: number;
+  target: number;
+  unit?: string;
+}) {
   const tgt = Math.max(target || 0, 1);
   const pct = Math.max(0, Math.min(110, (applied / tgt) * 100));
   const short = target - applied;
@@ -60,7 +70,7 @@ export function MiniBar({ label, applied, target }: { label: string; applied: nu
         <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="nutrient-num" style={{ fontSize: 10, color: 'var(--muted)', minWidth: 70, textAlign: 'right' }}>
-        {fmt(applied)} / {fmt(target)}
+        {fmt(applied)} / {fmt(target)}{unit ? ` ${unit}` : ''}
       </span>
     </div>
   );
