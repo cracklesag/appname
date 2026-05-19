@@ -2,16 +2,51 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Droplets, Sprout, Mountain, Save } from 'lucide-react';
-import { Application, Field, Product, Settings, SlurryMethod } from '@/lib/types';
+import { usePathname } from 'next/navigation';
+import { Droplets, Sprout, Mountain, Save, Tractor } from 'lucide-react';
 import {
-  calcNutrients, displayBagAmount, displayFieldArea, fmt, METHOD_LABELS,
+  Application, Field, Product, ProductType, Settings, SlurryMethod, SolidMethod,
+  ApplicationMethod,
+} from '@/lib/types';
+import {
+  calcNutrients, displayBagAmount, displayFieldArea, fmt,
+  METHOD_LABELS, SOLID_METHOD_LABELS, CATEGORY_LABELS,
 } from '@/lib/rules';
 import { saveApplication, updateApplication } from '@/lib/actions';
 import { validateApplicationRate, validateDate } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 const LIME_RATES = [1, 1.5, 2, 2.5, 3] as const;
+
+/** Type → "first product of that type" for default initial selection. */
+function defaultProductIdFor(products: Product[], type: ProductType): number | null {
+  const matching = products
+    .filter((p) => p.type === type)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  return matching[0]?.id ?? null;
+}
+
+/** Group products of a given type by category, preserving sort order. */
+function groupByCategory(products: Product[], type: ProductType): { category: string | null; items: Product[] }[] {
+  const filtered = products
+    .filter((p) => p.type === type)
+    .sort((a, b) => {
+      const ca = a.category ?? '';
+      const cb = b.category ?? '';
+      if (ca !== cb) return ca.localeCompare(cb);
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    });
+  const groups: { category: string | null; items: Product[] }[] = [];
+  for (const p of filtered) {
+    const last = groups[groups.length - 1];
+    if (last && last.category === p.category) {
+      last.items.push(p);
+    } else {
+      groups.push({ category: p.category ?? null, items: [p] });
+    }
+  }
+  return groups;
+}
 
 export function LogApplicationForm({
   field, products, settings, existing,
@@ -23,18 +58,19 @@ export function LogApplicationForm({
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const isEdit = !!existing;
+  const pathname = usePathname() || `/fields/${field.id}/log`;
 
   // Determine initial type from existing application's product
-  const initialType = useMemo<'slurry' | 'bag_fert' | 'lime'>(() => {
+  const initialType = useMemo<ProductType>(() => {
     if (!existing) return 'slurry';
     const p = products.find((p) => p.id === existing.product_id);
-    return (p?.type as 'slurry' | 'bag_fert' | 'lime') ?? 'slurry';
+    return (p?.type as ProductType) ?? 'slurry';
   }, [existing, products]);
 
-  const [type, setType] = useState<'slurry' | 'bag_fert' | 'lime'>(initialType);
+  const [type, setType] = useState<ProductType>(initialType);
   const [productId, setProductId] = useState<number>(() => {
     if (existing) return existing.product_id;
-    return products.find((p) => p.type === 'slurry')?.id ?? 4;
+    return defaultProductIdFor(products, 'slurry') ?? 4;
   });
   const [date, setDate] = useState(existing?.date_applied ?? today);
   const [rateValue, setRateValue] = useState(() => {
@@ -42,9 +78,20 @@ export function LogApplicationForm({
     if (initialType === 'lime') return '';
     return String(existing.rate_value);
   });
-  const [method, setMethod] = useState<SlurryMethod>(
-    (existing?.method as SlurryMethod) ?? 'splash_plate'
-  );
+
+  // Method handling diverges by product type:
+  //   slurry        — splash/dribble/trail
+  //   solid_manure  — surface/soil-incorporated
+  //   bag_fert/lime — none
+  const initialSlurryMethod: SlurryMethod =
+    existing?.method && (['splash_plate', 'dribble_bar', 'trail_shoe'] as const).includes(existing.method as SlurryMethod)
+      ? (existing.method as SlurryMethod) : 'splash_plate';
+  const initialSolidMethod: SolidMethod =
+    existing?.method && (['surface', 'soil_incorporated'] as const).includes(existing.method as SolidMethod)
+      ? (existing.method as SolidMethod) : 'surface';
+  const [slurryMethod, setSlurryMethod] = useState<SlurryMethod>(initialSlurryMethod);
+  const [solidMethod,  setSolidMethod]  = useState<SolidMethod>(initialSolidMethod);
+
   const [limeRate, setLimeRate] = useState<number>(
     existing && initialType === 'lime' ? existing.rate_value : 2
   );
@@ -53,40 +100,67 @@ export function LogApplicationForm({
   const [submitting, setSubmitting] = useState(false);
 
   const product = products.find((p) => p.id === productId);
-  const availableProducts = products.filter((p) => p.type === type);
+
+  // For DM-band-aware categories, pre-compute the band siblings so the
+  // picker can switch between them.
+  const dmSiblings = useMemo(() => {
+    if (!product?.category) return [] as Product[];
+    if (product.category !== 'dairy_slurry' && product.category !== 'pig_slurry') return [];
+    return products
+      .filter((p) => p.category === product.category)
+      .sort((a, b) => (a.dm_pct ?? 0) - (b.dm_pct ?? 0));
+  }, [product, products]);
+
+  // The product dropdown options, grouped by category for legibility.
+  const productGroups = useMemo(() => groupByCategory(products, type), [products, type]);
 
   // Unit-aware edit: when editing, respect the stored unit rather than the user's
   // current display setting. New applications use the user's preferred unit.
   const displayUnit = useMemo(() => {
     if (isEdit && existing) {
-      // For lime, always t/ac. Otherwise honour stored rate_unit so the displayed
-      // number matches what was entered originally.
+      // For lime / solid manure, honour stored unit (t/ac or t/ha).
       if (existing.rate_unit === 't/ha' || existing.rate_unit === 't/ac') return existing.rate_unit;
       if (existing.rate_unit === 'kg/ha' || existing.rate_unit === 'kg/ac' || existing.rate_unit === 'lb/ac') return existing.rate_unit;
       if (existing.rate_unit === 'gal/ac' || existing.rate_unit === 'm3/ha') return existing.rate_unit;
     }
     if (type === 'slurry') return settings.slurryUnit;
     if (type === 'lime')   return settings.limeUnit;
+    if (type === 'solid_manure') {
+      // No dedicated setting for solid manure — follow the user's area system.
+      return settings.unitSystem === 'acres' ? 't/ac' : 't/ha';
+    }
     // For bag-fert input, units/ac is not a valid product-rate (it's a nutrient
     // display preference). Fall back to kg/ha for the input dropdown default.
     return settings.bagFertUnit === 'units/ac' ? 'kg/ha' : settings.bagFertUnit;
   }, [isEdit, existing, type, settings]);
 
   // When type changes, swap to first product of that type and clear rate
-  function changeType(newType: typeof type) {
+  function changeType(newType: ProductType) {
     if (isEdit) return; // Type is locked when editing — products differ per type
     setType(newType);
-    const first = products.find((p) => p.type === newType);
-    if (first) setProductId(first.id);
+    const firstId = defaultProductIdFor(products, newType);
+    if (firstId != null) setProductId(firstId);
     if (newType !== 'lime') setRateValue('');
   }
 
+  /** Pick a DM band within the current dairy/pig slurry category. */
+  function switchDmBand(targetProduct: Product) {
+    setProductId(targetProduct.id);
+  }
+
+  // Convert lime rate (t/ac) to the right field for the calc engine.
   const numericRate = type === 'lime' ? limeRate : parseFloat(rateValue) || 0;
   const storedUnit = type === 'lime' ? 't/ac' : displayUnit;
 
+  // Pick the right method for the calc (null for bag_fert and lime).
+  const methodForCalc: ApplicationMethod | null =
+    type === 'slurry'       ? slurryMethod :
+    type === 'solid_manure' ? solidMethod  :
+    null;
+
   const nut = useMemo(
-    () => calcNutrients(product, numericRate, storedUnit as any, date, type === 'slurry' ? method : null),
-    [product, numericRate, storedUnit, date, type, method]
+    () => calcNutrients(product, numericRate, storedUnit as any, date, methodForCalc),
+    [product, numericRate, storedUnit, date, methodForCalc]
   );
 
   const totalQty = useMemo(() => {
@@ -94,6 +168,11 @@ export function LogApplicationForm({
     if (type === 'slurry') {
       const galPerAc = displayUnit === 'm3/ha' ? numericRate * 89.0 : numericRate;
       return { value: galPerAc * field.acres, unit: 'gal' };
+    }
+    if (type === 'solid_manure') {
+      let tPerHa = numericRate;
+      if (displayUnit === 't/ac') tPerHa = numericRate / 0.4047;
+      return { value: tPerHa * field.ha, unit: 't' };
     }
     let kgPerHa = numericRate;
     if (displayUnit === 'kg/ac') kgPerHa = numericRate * 2.4711;
@@ -109,6 +188,12 @@ export function LogApplicationForm({
 
   const hasBlockingError = !!(rateWarning?.kind === 'error' || dateWarning?.kind === 'error');
   const canSave = product && date && numericRate > 0 && !hasBlockingError && !submitting;
+
+  // Method to write into FormData (empty string omitted server-side).
+  const methodForForm: string =
+    type === 'slurry'       ? slurryMethod :
+    type === 'solid_manure' ? solidMethod  :
+    '';
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -137,12 +222,15 @@ export function LogApplicationForm({
       <input type="hidden" name="product_id" value={productId} />
       <input type="hidden" name="rate_value" value={numericRate} />
       <input type="hidden" name="rate_unit" value={storedUnit} />
-      {type === 'slurry' && <input type="hidden" name="method" value={method} />}
+      {(type === 'slurry' || type === 'solid_manure') && (
+        <input type="hidden" name="method" value={methodForForm} />
+      )}
 
       <div style={{ padding: 16 }}>
         {!isEdit && (
-          <div className="toggle-group" style={{ marginBottom: 16 }}>
+          <div className="toggle-group" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
             <button type="button" className={`toggle-btn ${type === 'slurry' ? 'active' : ''}`} onClick={() => changeType('slurry')}><Droplets size={16} /> Slurry</button>
+            <button type="button" className={`toggle-btn ${type === 'solid_manure' ? 'active' : ''}`} onClick={() => changeType('solid_manure')}><Tractor size={16} /> Solid manure</button>
             <button type="button" className={`toggle-btn ${type === 'bag_fert' ? 'active' : ''}`} onClick={() => changeType('bag_fert')}><Sprout size={16} /> Bag fert</button>
             <button type="button" className={`toggle-btn ${type === 'lime' ? 'active' : ''}`} onClick={() => changeType('lime')}><Mountain size={16} /> Lime</button>
           </div>
@@ -150,10 +238,66 @@ export function LogApplicationForm({
 
         {type !== 'lime' && (
           <div style={{ marginBottom: 14 }}>
-            <div className="label">Product</div>
-            <select className="select" value={productId} onChange={(e) => setProductId(parseInt(e.target.value))}>
-              {availableProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <div className="label">Product</div>
+              <Link
+                href={`/products/new?return=${encodeURIComponent(pathname)}`}
+                style={{ fontSize: 12, color: 'var(--forest-dark)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                title="Add a custom product"
+              >
+                + New
+              </Link>
+            </div>
+            <select
+              className="select"
+              value={productId}
+              onChange={(e) => setProductId(parseInt(e.target.value))}
+            >
+              {productGroups.map((g) => {
+                const label = g.category && (CATEGORY_LABELS as any)[g.category]
+                  ? (CATEGORY_LABELS as any)[g.category]
+                  : null;
+                // For single-category types (bag_fert, lime) skip the optgroup
+                // wrapper so the picker reads naturally.
+                if (label && productGroups.length > 1) {
+                  return (
+                    <optgroup key={g.category ?? 'none'} label={label}>
+                      {g.items.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                  );
+                }
+                return g.items.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ));
+              })}
             </select>
+          </div>
+        )}
+
+        {/* DM-band quick-pick for dairy and pig slurry — RB209 bands stored
+            as separate product rows; this picker switches between them. */}
+        {dmSiblings.length > 1 && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label">Dry matter</div>
+            <div className="toggle-group" role="group" aria-label="Dry matter band">
+              {dmSiblings.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`toggle-btn ${p.id === productId ? 'active' : ''}`}
+                  onClick={() => switchDmBand(p)}
+                  disabled={isEdit}
+                  title={isEdit ? 'DM band locked when editing — delete and re-log to change' : undefined}
+                >
+                  {p.dm_pct}% DM
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              NPK shifts with DM — RB209 values for {product?.dm_pct}% DM shown below.
+            </div>
           </div>
         )}
 
@@ -188,6 +332,8 @@ export function LogApplicationForm({
               placeholder={
                 type === 'slurry'
                   ? (displayUnit === 'gal/ac' ? 'e.g. 2000' : 'e.g. 22')
+                  : type === 'solid_manure'
+                  ? (displayUnit === 't/ha' ? 'e.g. 25' : 'e.g. 10')
                   : (displayUnit === 'kg/ha' ? 'e.g. 440' : displayUnit === 'kg/ac' ? 'e.g. 178' : 'e.g. 392')
               }
               value={rateValue}
@@ -208,11 +354,25 @@ export function LogApplicationForm({
         {type === 'slurry' && (
           <div style={{ marginBottom: 14 }}>
             <div className="label">Application method</div>
-            <select className="select" value={method} onChange={(e) => setMethod(e.target.value as any)}>
+            <select className="select" value={slurryMethod} onChange={(e) => setSlurryMethod(e.target.value as SlurryMethod)}>
               {(['splash_plate', 'dribble_bar', 'trail_shoe'] as const).map((m) => (
                 <option key={m} value={m}>{METHOD_LABELS[m]}</option>
               ))}
             </select>
+          </div>
+        )}
+
+        {type === 'solid_manure' && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label">Application method</div>
+            <select className="select" value={solidMethod} onChange={(e) => setSolidMethod(e.target.value as SolidMethod)}>
+              {(['surface', 'soil_incorporated'] as const).map((m) => (
+                <option key={m} value={m}>{SOLID_METHOD_LABELS[m]}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              Soil-incorporated within 24h gets a higher N availability credit (typically ×1.5 of surface).
+            </div>
           </div>
         )}
 
@@ -229,12 +389,13 @@ export function LogApplicationForm({
                 const nView = displayBagAmount(nut.nPerHa,    settings.bagFertUnit);
                 const pView = displayBagAmount(nut.p2o5PerHa, settings.bagFertUnit);
                 const kView = displayBagAmount(nut.k2oPerHa,  settings.bagFertUnit);
+                const showsAvail = type === 'slurry' || type === 'solid_manure';
                 return (
                   <>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>N</div>
                       <div className="nutrient-num" style={{ fontSize: 22, color: 'var(--forest-dark)' }}>{fmt(nView.value)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>{nView.unit} {type === 'slurry' ? 'avail' : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--forest-dark)' }}>{nView.unit} {showsAvail ? 'avail' : ''}</div>
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 11, color: 'var(--forest-dark)', textTransform: 'uppercase', fontWeight: 700 }}>P₂O₅</div>
@@ -250,8 +411,33 @@ export function LogApplicationForm({
                 );
               })()}
             </div>
+            {(nut.so3PerHa > 0 || nut.mgoPerHa > 0) && (() => {
+              const sView = displayBagAmount(nut.so3PerHa, settings.bagFertUnit);
+              const mView = displayBagAmount(nut.mgoPerHa, settings.bagFertUnit);
+              return (
+                <div style={{
+                  display: 'flex', gap: 18, marginTop: 8, paddingTop: 8,
+                  borderTop: '1px solid var(--forest)', fontSize: 12, color: 'var(--forest-dark)',
+                }}>
+                  {nut.so3PerHa > 0 && (
+                    <div>
+                      <span style={{ fontWeight: 700 }}>SO₃</span>{' '}
+                      <span className="nutrient-num">{fmt(sView.value)}</span>{' '}
+                      <span style={{ opacity: 0.75 }}>{sView.unit}</span>
+                    </div>
+                  )}
+                  {nut.mgoPerHa > 0 && (
+                    <div>
+                      <span style={{ fontWeight: 700 }}>MgO</span>{' '}
+                      <span className="nutrient-num">{fmt(mView.value)}</span>{' '}
+                      <span style={{ opacity: 0.75 }}>{mView.unit}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {nut.nNote && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--forest-dark)', fontStyle: 'italic' }}>N basis: {nut.nNote}</div>}
-            {type === 'slurry' && nut.availFactor === 0 && (
+            {(type === 'slurry' || type === 'solid_manure') && nut.availFactor === 0 && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--forest)', fontSize: 12, color: 'var(--forest-dark)' }}>
                 <strong>Autumn application:</strong> N assumed leached before spring growth. P and K still bank in the soil and count in full.
               </div>

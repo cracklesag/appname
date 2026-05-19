@@ -11,7 +11,7 @@ import {
 } from '@/lib/data';
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
-  getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, METHOD_LABELS,
+  getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, methodLabel,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 
@@ -73,6 +73,8 @@ export default async function FieldDetailPage({
     n: sinceCutTotals.n,
     p: sinceCutTotals.p + carryover.p,
     k: sinceCutTotals.k + carryover.k,
+    so3: sinceCutTotals.so3,
+    mgo: sinceCutTotals.mgo,
   };
 
   const seasonTotals = sumNutrients(seasonApps, products);
@@ -179,6 +181,9 @@ export default async function FieldDetailPage({
               const kTgt    = displayBagAmount(targets.k2o,  settings.bagFertUnit).value;
               const pCarry  = displayBagAmount(carryover.p,  settings.bagFertUnit).value;
               const kCarry  = displayBagAmount(carryover.k,  settings.bagFertUnit).value;
+              const sView   = displayBagAmount(availableForNextCut.so3, settings.bagFertUnit);
+              const mView   = displayBagAmount(availableForNextCut.mgo, settings.bagFertUnit);
+              const showSulphurMagnesium = availableForNextCut.so3 > 0 || availableForNextCut.mgo > 0;
               return (
                 <>
                   <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
@@ -187,6 +192,21 @@ export default async function FieldDetailPage({
                   <NutrientBar label="N"    applied={nView.value} target={nTgt} unit={nView.unit} />
                   <NutrientBar label="P₂O₅" applied={pView.value} target={pTgt} unit={pView.unit} carryover={pCarry} />
                   <NutrientBar label="K₂O"  applied={kView.value} target={kTgt} unit={kView.unit} carryover={kCarry} />
+                  {showSulphurMagnesium && (
+                    <div style={{
+                      display: 'flex', gap: 18, marginTop: 4, paddingTop: 8,
+                      borderTop: '1px dashed var(--line-soft)',
+                      fontSize: 12, color: 'var(--muted)',
+                    }}>
+                      <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 11 }}>Also delivered</span>
+                      {availableForNextCut.so3 > 0 && (
+                        <span>SO₃ <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(sView.value)}</span> {sView.unit}</span>
+                      )}
+                      {availableForNextCut.mgo > 0 && (
+                        <span>MgO <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(mView.value)}</span> {mView.unit}</span>
+                      )}
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -206,7 +226,7 @@ export default async function FieldDetailPage({
                   <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto' }}>{fmtDate(lastSlurry.date_applied)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>
-                  {lastSlurry.rate_value} {lastSlurry.rate_unit}{lastSlurry.method && ` · ${METHOD_LABELS[lastSlurry.method]}`}
+                  {lastSlurry.rate_value} {lastSlurry.rate_unit}{lastSlurry.method && ` · ${methodLabel(lastSlurry.method)}`}
                 </div>
               </div>
             ) : (
@@ -300,27 +320,39 @@ export default async function FieldDetailPage({
               {seasonLabel} applied{' '}
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>· since {fmtDate(seasonStart)}</span>
             </div>
-            <div style={{ display: 'flex', gap: 14, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
               {(() => {
                 const nView = displayBagAmount(seasonTotals.n, settings.bagFertUnit);
                 const pView = displayBagAmount(seasonTotals.p, settings.bagFertUnit);
                 const kView = displayBagAmount(seasonTotals.k, settings.bagFertUnit);
+                const sView = displayBagAmount(seasonTotals.so3, settings.bagFertUnit);
+                const mView = displayBagAmount(seasonTotals.mgo, settings.bagFertUnit);
                 return (
                   <>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: '1 1 60px' }}>
                       <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>N</div>
                       <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(nView.value)}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nView.unit} avail</div>
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: '1 1 60px' }}>
                       <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>P₂O₅</div>
                       <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(pView.value)}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{pView.unit}</div>
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: '1 1 60px' }}>
                       <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>K₂O</div>
                       <div className="nutrient-num" style={{ fontSize: 24, color: 'var(--forest-dark)' }}>{fmt(kView.value)}</div>
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{kView.unit}</div>
+                    </div>
+                    <div style={{ flex: '1 1 60px', opacity: seasonTotals.so3 > 0 ? 1 : 0.45 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>SO₃</div>
+                      <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(sView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{sView.unit}</div>
+                    </div>
+                    <div style={{ flex: '1 1 60px', opacity: seasonTotals.mgo > 0 ? 1 : 0.45 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase' }}>MgO</div>
+                      <div className="nutrient-num" style={{ fontSize: 20, color: 'var(--ink)' }}>{fmt(mView.value)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{mView.unit}</div>
                     </div>
                   </>
                 );

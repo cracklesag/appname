@@ -36,12 +36,24 @@ export function ApplicationCard({
         </div>
       </div>
       {!isLime ? (
-        <div style={{ display: 'flex', gap: 12, fontSize: 13, paddingTop: 8, borderTop: '1px solid var(--line-soft)' }}>
-          <div><span style={{ color: 'var(--muted)' }}>N</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.nPerHa)}</span></div>
-          <div><span style={{ color: 'var(--muted)' }}>P</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.p2o5PerHa)}</span></div>
-          <div><span style={{ color: 'var(--muted)' }}>K</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.k2oPerHa)}</span></div>
-          {nut.nNote && <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>{nut.nNote}</div>}
-        </div>
+        <>
+          <div style={{ display: 'flex', gap: 12, fontSize: 13, paddingTop: 8, borderTop: '1px solid var(--line-soft)' }}>
+            <div><span style={{ color: 'var(--muted)' }}>N</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.nPerHa)}</span></div>
+            <div><span style={{ color: 'var(--muted)' }}>P</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.p2o5PerHa)}</span></div>
+            <div><span style={{ color: 'var(--muted)' }}>K</span> <span className="nutrient-num" style={{ color: 'var(--ink)' }}>{fmt(nut.k2oPerHa)}</span></div>
+            {nut.nNote && <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>{nut.nNote}</div>}
+          </div>
+          {(nut.so3PerHa > 0 || nut.mgoPerHa > 0) && (
+            <div style={{ display: 'flex', gap: 12, fontSize: 12, marginTop: 4, color: 'var(--muted)' }}>
+              {nut.so3PerHa > 0 && (
+                <div>SO₃ <span className="nutrient-num" style={{ color: 'var(--ink-soft)' }}>{fmt(nut.so3PerHa)}</span></div>
+              )}
+              {nut.mgoPerHa > 0 && (
+                <div>MgO <span className="nutrient-num" style={{ color: 'var(--ink-soft)' }}>{fmt(nut.mgoPerHa)}</span></div>
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <div style={{ fontSize: 12, color: 'var(--muted)', paddingTop: 8, borderTop: '1px solid var(--line-soft)', fontStyle: 'italic' }}>
           pH amendment — resample 6–12 months later

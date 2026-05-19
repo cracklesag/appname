@@ -1,8 +1,28 @@
-export type ProductType = 'bag_fert' | 'slurry' | 'lime';
+export type ProductType = 'bag_fert' | 'slurry' | 'solid_manure' | 'lime';
 export type CutType = 'silage' | 'bales' | 'grazing';
 export type YieldClass = 'light' | 'average' | 'heavy';
 export type SlurryMethod = 'splash_plate' | 'dribble_bar' | 'trail_shoe';
+export type SolidMethod  = 'surface' | 'soil_incorporated';
+export type ApplicationMethod = SlurryMethod | SolidMethod;
 export type RateUnit = 'kg/ha' | 'kg/ac' | 'lb/ac' | 'gal/ac' | 'm3/ha' | 't/ac' | 't/ha';
+
+/**
+ * Product categories used to group the picker menu. Aligned with
+ * AMENDMENTS_REFERENCE.md. Each category gathers one or more products,
+ * with DM-banded categories (dairy_slurry, pig_slurry) showing a band
+ * picker built from the rows that share the category.
+ */
+export type ProductCategory =
+  | 'bag_fert'
+  | 'lime'
+  | 'dairy_slurry'
+  | 'pig_slurry'
+  | 'separated_slurry'
+  | 'fym'
+  | 'poultry'
+  | 'digestate'
+  | 'biosolids'
+  | 'custom';
 
 export interface Field {
   id: string;
@@ -27,15 +47,29 @@ export interface Field {
 
 export interface Product {
   id: number;
+  user_id: string | null;
   name: string;
   type: ProductType;
+  category: ProductCategory | null;
+  sort_order: number;
+  dm_pct: number | null;
+  // bag fert (% w/w)
   n_pct: number | null;
   p2o5_pct: number | null;
   k2o_pct: number | null;
   s_pct: number | null;
+  // slurry / liquid manure (kg per m³)
   n_kg_per_m3: number | null;
   p2o5_kg_per_m3: number | null;
   k2o_kg_per_m3: number | null;
+  so3_kg_per_m3: number | null;
+  mgo_kg_per_m3: number | null;
+  // solid manure (kg per tonne fresh weight)
+  n_kg_per_t: number | null;
+  p2o5_kg_per_t: number | null;
+  k2o_kg_per_t: number | null;
+  so3_kg_per_t: number | null;
+  mgo_kg_per_t: number | null;
 }
 
 export interface Application {
@@ -46,7 +80,7 @@ export interface Application {
   date_applied: string;
   rate_value: number;
   rate_unit: RateUnit;
-  method: SlurryMethod | null;
+  method: ApplicationMethod | null;
   notes: string | null;
   applied_by: string;
   created_at: string;

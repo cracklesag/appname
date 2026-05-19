@@ -1,6 +1,6 @@
 import {
-  Application, Cut, CutType, Field, Product, Settings,
-  SlurryMethod, YieldClass, RateUnit, DEFAULT_SETTINGS,
+  Application, Cut, CutType, Field, Product, ProductCategory, ProductType, Settings,
+  SlurryMethod, SolidMethod, ApplicationMethod, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 
 // ---- Constants ----------------------------------------------------
@@ -26,6 +26,31 @@ export const METHOD_LABELS: Record<SlurryMethod, string> = {
   splash_plate: 'Splash plate',
   dribble_bar: 'Dribble bar',
   trail_shoe: 'Trail shoe',
+};
+
+export const SOLID_METHOD_LABELS: Record<SolidMethod, string> = {
+  surface: 'Surface',
+  soil_incorporated: 'Soil-incorporated (24h)',
+};
+
+/** Unified label lookup for any ApplicationMethod, returning '' for null. */
+export function methodLabel(m: ApplicationMethod | null): string {
+  if (!m) return '';
+  if (m === 'splash_plate' || m === 'dribble_bar' || m === 'trail_shoe') return METHOD_LABELS[m];
+  return SOLID_METHOD_LABELS[m];
+}
+
+export const CATEGORY_LABELS: Record<ProductCategory, string> = {
+  bag_fert: 'Bag fertiliser',
+  lime: 'Lime',
+  dairy_slurry: 'Dairy slurry',
+  pig_slurry: 'Pig slurry',
+  separated_slurry: 'Separated cattle slurry',
+  fym: 'Farmyard manure (FYM)',
+  poultry: 'Poultry manure',
+  digestate: 'Digestate',
+  biosolids: 'Biosolids',
+  custom: 'Custom',
 };
 
 export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -72,7 +97,7 @@ export function displayBagAmount(kgPerHa: number, unit: Settings['bagFertUnit'])
   }
 }
 
-export function displayRate(app: Application, settings: Settings, productType: 'bag_fert' | 'slurry' | 'lime'): { value: number; unit: string } {
+export function displayRate(app: Application, settings: Settings, productType: ProductType): { value: number; unit: string } {
   if (productType === 'bag_fert') {
     let kgPerHa = app.rate_value;
     if (app.rate_unit === 'kg/ac')      kgPerHa = app.rate_value * KG_HA_PER_KG_AC;
@@ -92,6 +117,17 @@ export function displayRate(app: Application, settings: Settings, productType: '
     const out = settings.slurryUnit === 'm3/ha' ? galPerAc / GAL_AC_PER_M3_HA : galPerAc;
     return { value: out, unit: settings.slurryUnit };
   }
+  if (productType === 'solid_manure') {
+    // Solid manure is entered in t/ac or t/ha. Follow the user's area
+    // preference for display; no separate setting (solid manure is rare
+    // enough that adding another unit knob isn't worth it).
+    let tPerHa = app.rate_value;
+    if (app.rate_unit === 't/ac') tPerHa = app.rate_value / T_AC_PER_T_HA;
+    if (settings.unitSystem === 'acres') {
+      return { value: tPerHa * T_AC_PER_T_HA, unit: 't/ac' };
+    }
+    return { value: tPerHa, unit: 't/ha' };
+  }
   // lime
   let tPerAc = app.rate_value;
   if (app.rate_unit === 't/ha') tPerAc = app.rate_value * T_AC_PER_T_HA;
@@ -106,10 +142,57 @@ export function toStoredBagRate(value: number, unit: 'kg/ha' | 'kg/ac' | 'lb/ac'
 export function toStoredSlurryRate(value: number, unit: 'gal/ac' | 'm3/ha'): { rate: number; unit: RateUnit } {
   return { rate: value, unit };
 }
+export function toStoredSolidRate(value: number, unit: 't/ha' | 't/ac'): { rate: number; unit: RateUnit } {
+  return { rate: value, unit };
+}
 
-// ---- Slurry N availability ---------------------------------------
+// ---- N availability ---------------------------------------------------
+//
+// Per-category month tables, all expressed as "fraction of total N released
+// to the next crop". Sourced from RB209 (2023) Tables 2.1, 2.3, 2.5, 2.9,
+// 2.13, 2.15, 2.19, 2.21 — see AMENDMENTS_REFERENCE.md for the per-product
+// breakdown. The existing app's slurry table preserves the splash/dribble/
+// trail-shoe sub-resolution for dairy slurry only; for other categories we
+// use a single "typical" value per season since RB209's data on machinery
+// for those products is sparser.
+//
+// Soil-type variation (autumn-sandy vs autumn-heavy) is collapsed to a
+// single "autumn" value pending a soil-type input on the field record —
+// most UK pasture is on medium-to-heavy soil so we use the heavy figures.
+// Spring is the most-applied window and gets the most resolution.
 
-export function slurryNAvailability(dateApplied: string, method: SlurryMethod | null): number {
+type SeasonAvail = {
+  winter: number;   // Jan-Feb
+  spring: number;   // Mar-May
+  summer: number;   // Jun-Aug (typically grass)
+  autumn: number;   // Sep-Dec — N banked unless on heavy soil
+};
+
+/**
+ * Per-category default availability, surface application, total-N basis.
+ * Values match the doc's recommended availability tables; spring is the
+ * value most users care about. Dairy slurry's full method-resolution table
+ * lives in dairySlurryNAvailability() below.
+ */
+const CATEGORY_AVAILABILITY: Record<string, SeasonAvail> = {
+  dairy_slurry:     { winter: 0.20, spring: 0.50, summer: 0.50, autumn: 0 },
+  pig_slurry:       { winter: 0.35, spring: 0.50, summer: 0.50, autumn: 0 },
+  separated_slurry: { winter: 0.30, spring: 0.45, summer: 0.45, autumn: 0 },
+  digestate:        { winter: 0.40, spring: 0.55, summer: 0.55, autumn: 0 },
+  fym:              { winter: 0.10, spring: 0.10, summer: 0.10, autumn: 0 },
+  poultry:          { winter: 0.20, spring: 0.30, summer: 0.30, autumn: 0 },
+  biosolids:        { winter: 0.15, spring: 0.15, summer: 0.15, autumn: 0 },
+};
+
+/** Bump factor for soil-incorporated solid manure application (RB209 spring values). */
+const SOLID_INCORPORATION_BUMP = 1.5;
+
+/**
+ * Dairy slurry retains the existing method-resolution table since this is
+ * the app's most-used product and Richard has been working with these
+ * exact splash/dribble/trail figures. Identical to the pre-expansion app.
+ */
+export function dairySlurryNAvailability(dateApplied: string, method: SlurryMethod | null): number {
   const m = new Date(dateApplied).getMonth();
   if (m >= 8) return 0; // Sep-Dec banked
   const mthd: SlurryMethod = method || 'splash_plate';
@@ -127,6 +210,40 @@ export function slurryNAvailability(dateApplied: string, method: SlurryMethod | 
   return summer[mthd];
 }
 
+/** Backward-compat alias; older code paths call this. */
+export const slurryNAvailability = dairySlurryNAvailability;
+
+/**
+ * Resolve availability for any product. Dairy slurry uses the full
+ * splash/dribble/trail table; everything else uses the per-category
+ * seasonal table with a method-based bump for solid-incorporated solids.
+ */
+export function nAvailability(
+  product: Product,
+  dateApplied: string,
+  method: ApplicationMethod | null,
+): number {
+  // Dairy slurry: preserve the existing fine-grained method table.
+  if (product.category === 'dairy_slurry') {
+    return dairySlurryNAvailability(dateApplied, method as SlurryMethod | null);
+  }
+  const cat = product.category ?? '';
+  const table = CATEGORY_AVAILABILITY[cat];
+  if (!table) return 0;
+  const m = new Date(dateApplied).getMonth();
+  let base: number;
+  if (m >= 8) base = table.autumn;            // Sep-Dec
+  else if (m <= 1) base = table.winter;        // Jan-Feb
+  else if (m <= 4) base = table.spring;        // Mar-May
+  else base = table.summer;                    // Jun-Aug
+  // Solid-incorporated bump for solid manures (excludes autumn — N losses
+  // dominate before next-crop uptake anyway).
+  if (product.type === 'solid_manure' && method === 'soil_incorporated' && base > 0) {
+    return Math.min(base * SOLID_INCORPORATION_BUMP, 1);
+  }
+  return base;
+}
+
 // ---- Per-application NPK delivered -------------------------------
 
 export function calcNutrients(
@@ -134,12 +251,12 @@ export function calcNutrients(
   rateValue: number,
   rateUnit: RateUnit,
   dateApplied: string,
-  method: SlurryMethod | null
-): { nPerHa: number; p2o5PerHa: number; k2oPerHa: number; nNote: string; availFactor?: number } {
-  if (!product || !rateValue) return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, nNote: '' };
+  method: ApplicationMethod | null
+): { nPerHa: number; p2o5PerHa: number; k2oPerHa: number; so3PerHa: number; mgoPerHa: number; nNote: string; availFactor?: number } {
+  if (!product || !rateValue) return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, so3PerHa: 0, mgoPerHa: 0, nNote: '' };
 
   if (product.type === 'lime') {
-    return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, nNote: 'pH amendment' };
+    return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, so3PerHa: 0, mgoPerHa: 0, nNote: 'pH amendment' };
   }
 
   if (product.type === 'bag_fert') {
@@ -147,25 +264,63 @@ export function calcNutrients(
     let kgPerHa = rateValue;
     if (rateUnit === 'kg/ac')      kgPerHa = rateValue * KG_HA_PER_KG_AC;
     else if (rateUnit === 'lb/ac') kgPerHa = rateValue * KG_HA_PER_LB_AC;
+    // s_pct on the schema is treated as declared SO₃% (UK bag labelling
+    // convention — "+S(8)" on the bag means 8% SO₃). Column name predates
+    // the SO₃/S distinction; safe to rename in a later cleanup.
+    // No mgo_pct column on bag fert yet — none of the seeded blends carry it.
     return {
       nPerHa: kgPerHa * (product.n_pct ?? 0) / 100,
       p2o5PerHa: kgPerHa * (product.p2o5_pct ?? 0) / 100,
       k2oPerHa: kgPerHa * (product.k2o_pct ?? 0) / 100,
+      so3PerHa: kgPerHa * (product.s_pct ?? 0) / 100,
+      mgoPerHa: 0,
       nNote: 'fertiliser N',
     };
   }
 
-  // slurry: normalise to gal/ac
+  if (product.type === 'solid_manure') {
+    // Normalise to t/ha
+    let tPerHa = rateValue;
+    if (rateUnit === 't/ac') tPerHa = rateValue / T_AC_PER_T_HA;
+    const totalN = tPerHa * (product.n_kg_per_t ?? 0);
+    const p2o5   = tPerHa * (product.p2o5_kg_per_t ?? 0);
+    const k2o    = tPerHa * (product.k2o_kg_per_t ?? 0);
+    const so3    = tPerHa * (product.so3_kg_per_t ?? 0);
+    const mgo    = tPerHa * (product.mgo_kg_per_t ?? 0);
+
+    const availFactor = nAvailability(product, dateApplied, method);
+    const monthIdx = new Date(dateApplied).getMonth();
+    const mLabel = method === 'soil_incorporated' ? 'soil-incorp' : 'surface';
+    const nNote = availFactor === 0
+      ? `${MONTH_NAMES[monthIdx]} ${mLabel} · N banked (0%)`
+      : `${MONTH_NAMES[monthIdx]} ${mLabel} · ${Math.round(availFactor * 100)}% N avail`;
+
+    return {
+      nPerHa: totalN * availFactor,
+      p2o5PerHa: p2o5,
+      k2oPerHa: k2o,
+      so3PerHa: so3,
+      mgoPerHa: mgo,
+      nNote,
+      availFactor,
+    };
+  }
+
+  // slurry / liquid manure: normalise to gal/ac
   let galPerAc = rateValue;
   if (rateUnit === 'm3/ha') galPerAc = rateValue * GAL_AC_PER_M3_HA;
   const m3PerHa = galPerAc * 0.01124;
   const totalN = m3PerHa * (product.n_kg_per_m3 ?? 0);
   const p2o5 = m3PerHa * (product.p2o5_kg_per_m3 ?? 0);
-  const k2o = m3PerHa * (product.k2o_kg_per_m3 ?? 0);
+  const k2o  = m3PerHa * (product.k2o_kg_per_m3 ?? 0);
+  const so3  = m3PerHa * (product.so3_kg_per_m3 ?? 0);
+  const mgo  = m3PerHa * (product.mgo_kg_per_m3 ?? 0);
 
-  const availFactor = slurryNAvailability(dateApplied, method);
+  const availFactor = nAvailability(product, dateApplied, method);
   const monthIdx = new Date(dateApplied).getMonth();
-  const mLabel = method ? METHOD_LABELS[method].toLowerCase() : 'splash plate';
+  const mLabel = method && (method === 'splash_plate' || method === 'dribble_bar' || method === 'trail_shoe')
+    ? METHOD_LABELS[method].toLowerCase()
+    : 'splash plate';
   const nNote = availFactor === 0
     ? `${MONTH_NAMES[monthIdx]} ${mLabel} · N banked (0%)`
     : `${MONTH_NAMES[monthIdx]} ${mLabel} · ${Math.round(availFactor * 100)}% N avail`;
@@ -174,6 +329,8 @@ export function calcNutrients(
     nPerHa: totalN * availFactor,
     p2o5PerHa: p2o5,
     k2oPerHa: k2o,
+    so3PerHa: so3,
+    mgoPerHa: mgo,
     nNote,
     availFactor,
   };
@@ -236,16 +393,18 @@ export function getCutTargets(
 
 // ---- Sum nutrients across applications ---------------------------
 
-export function sumNutrients(apps: Application[], products: Product[]): { n: number; p: number; k: number } {
-  let n = 0, p = 0, k = 0;
+export function sumNutrients(apps: Application[], products: Product[]): { n: number; p: number; k: number; so3: number; mgo: number } {
+  let n = 0, p = 0, k = 0, so3 = 0, mgo = 0;
   for (const a of apps) {
     const product = products.find(pr => pr.id === a.product_id);
     const nut = calcNutrients(product, a.rate_value, a.rate_unit, a.date_applied, a.method);
-    n += nut.nPerHa || 0;
-    p += nut.p2o5PerHa || 0;
-    k += nut.k2oPerHa || 0;
+    n   += nut.nPerHa    || 0;
+    p   += nut.p2o5PerHa || 0;
+    k   += nut.k2oPerHa  || 0;
+    so3 += nut.so3PerHa  || 0;
+    mgo += nut.mgoPerHa  || 0;
   }
-  return { n, p, k };
+  return { n, p, k, so3, mgo };
 }
 
 // ---- Season helpers ------------------------------------------------

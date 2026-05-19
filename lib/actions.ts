@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { CutType, YieldClass, SlurryMethod, RateUnit } from '@/lib/types';
+import { CutType, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
 
 export async function saveApplication(formData: FormData) {
   const supabase = createClient();
@@ -15,7 +15,7 @@ export async function saveApplication(formData: FormData) {
   const dateApplied = String(formData.get('date_applied'));
   const rateValue = parseFloat(String(formData.get('rate_value')));
   const rateUnit = String(formData.get('rate_unit')) as RateUnit;
-  const method = (formData.get('method') ? String(formData.get('method')) : null) as SlurryMethod | null;
+  const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
 
   if (!fieldId || !productId || !dateApplied || !rateValue || rateValue <= 0) {
@@ -52,7 +52,7 @@ export async function updateApplication(formData: FormData) {
   const dateApplied = String(formData.get('date_applied'));
   const rateValue = parseFloat(String(formData.get('rate_value')));
   const rateUnit = String(formData.get('rate_unit')) as RateUnit;
-  const method = (formData.get('method') ? String(formData.get('method')) : null) as SlurryMethod | null;
+  const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
 
   if (!id || !fieldId || !productId || !dateApplied || !rateValue || rateValue <= 0) {
@@ -630,3 +630,104 @@ export async function completeOnboarding(unit: 'acres' | 'ha') {
   revalidatePath('/');
   redirect('/');
 }
+
+// =====================================================================
+// CUSTOM PRODUCTS
+// =====================================================================
+
+/**
+ * Parse a form-data field that should be a non-negative number, but is
+ * allowed to be blank (treated as null). Throws on negative or non-numeric.
+ */
+function optionalNonNegative(formData: FormData, key: string): number | null {
+  const raw = formData.get(key);
+  if (raw == null || String(raw).trim() === '') return null;
+  const n = parseFloat(String(raw));
+  if (!Number.isFinite(n)) throw new Error(`Invalid number for ${key}`);
+  if (n < 0) throw new Error(`${key} cannot be negative`);
+  return n;
+}
+
+export async function createCustomProduct(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const name = String(formData.get('name') ?? '').trim();
+  const type = String(formData.get('type') ?? '') as 'bag_fert' | 'slurry' | 'solid_manure' | 'lime';
+  const returnTo = String(formData.get('return_to') ?? '/products');
+
+  if (!name) throw new Error('Name is required');
+  if (!['bag_fert', 'slurry', 'solid_manure', 'lime'].includes(type)) {
+    throw new Error('Invalid product type');
+  }
+
+  // Build the row from the relevant nutrient columns only. Other branches'
+  // columns stay null so the storage convention is preserved.
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    name,
+    type,
+    category: 'custom',
+    sort_order: 999,  // sort after RB209 rows in the picker
+    dm_pct: optionalNonNegative(formData, 'dm_pct'),
+  };
+
+  if (type === 'bag_fert') {
+    row.n_pct    = optionalNonNegative(formData, 'n_pct');
+    row.p2o5_pct = optionalNonNegative(formData, 'p2o5_pct');
+    row.k2o_pct  = optionalNonNegative(formData, 'k2o_pct');
+    row.s_pct    = optionalNonNegative(formData, 's_pct');
+  } else if (type === 'slurry') {
+    row.n_kg_per_m3    = optionalNonNegative(formData, 'n_kg_per_m3');
+    row.p2o5_kg_per_m3 = optionalNonNegative(formData, 'p2o5_kg_per_m3');
+    row.k2o_kg_per_m3  = optionalNonNegative(formData, 'k2o_kg_per_m3');
+    row.so3_kg_per_m3  = optionalNonNegative(formData, 'so3_kg_per_m3');
+    row.mgo_kg_per_m3  = optionalNonNegative(formData, 'mgo_kg_per_m3');
+  } else if (type === 'solid_manure') {
+    row.n_kg_per_t    = optionalNonNegative(formData, 'n_kg_per_t');
+    row.p2o5_kg_per_t = optionalNonNegative(formData, 'p2o5_kg_per_t');
+    row.k2o_kg_per_t  = optionalNonNegative(formData, 'k2o_kg_per_t');
+    row.so3_kg_per_t  = optionalNonNegative(formData, 'so3_kg_per_t');
+    row.mgo_kg_per_t  = optionalNonNegative(formData, 'mgo_kg_per_t');
+  }
+  // lime: name+type only
+
+  // Note: id is intentionally omitted — the products_id_seq sequence supplies
+  // it. RLS enforces user_id = auth.uid() on insert.
+  const { error } = await supabase.from('products').insert(row);
+  if (error) throw new Error(`Could not save product: ${error.message}`);
+
+  // Bust caches so the new product appears immediately.
+  revalidatePath('/products');
+  revalidatePath('/');
+  // The caller may be the application form on a /fields/[id]/log page;
+  // revalidate broadly so the picker repopulates wherever it's used.
+  revalidatePath('/', 'layout');
+
+  redirect(returnTo);
+}
+
+export async function deleteCustomProduct(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = parseInt(String(formData.get('id')), 10);
+  if (!Number.isFinite(id)) throw new Error('Invalid product id');
+
+  // RLS already prevents deleting shared rows (user_id IS NULL) or other
+  // users' rows, but we double-belt by filtering user_id explicitly so a
+  // missing RLS policy doesn't silently allow it.
+  const { error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not delete product: ${error.message}`);
+
+  revalidatePath('/products');
+  revalidatePath('/', 'layout');
+  redirect('/products');
+}
+

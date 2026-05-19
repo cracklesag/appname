@@ -6,9 +6,12 @@
 
 // All ranges are expressed in the canonical / typical UK unit per type.
 export const APPLICATION_RANGES = {
-  slurry:   { min: 100,  max: 5000, unit: 'gal/ac' as const, label: 'gallons/acre' },
-  bag_fert: { min: 50,   max: 1000, unit: 'kg/ha'  as const, label: 'kg/ha' },
-  lime:     { min: 0.5,  max: 4,    unit: 't/ac'  as const, label: 't/ac' },
+  slurry:       { min: 100,  max: 5000, unit: 'gal/ac' as const, label: 'gallons/acre' },
+  bag_fert:     { min: 50,   max: 1000, unit: 'kg/ha'  as const, label: 'kg/ha' },
+  lime:         { min: 0.5,  max: 4,    unit: 't/ac'   as const, label: 't/ac' },
+  // Solid manure: typical UK rates are 10-50 t/ha for FYM, 5-15 t/ha for
+  // poultry. Wide band to capture both; warn outside, block on zero/negative.
+  solid_manure: { min: 1,    max: 80,   unit: 't/ha'   as const, label: 't/ha' },
 };
 
 // ---- Field properties ---------------------------------------------
@@ -42,7 +45,7 @@ export type FieldWarning = { kind: 'warning' | 'error'; message: string } | null
 /** Validate an application rate; returns null if fine, or a warning to display. */
 export function validateApplicationRate(
   rate: number,
-  productType: 'slurry' | 'bag_fert' | 'lime',
+  productType: 'slurry' | 'bag_fert' | 'lime' | 'solid_manure',
   displayedUnit: string
 ): FieldWarning {
   if (!rate || rate <= 0) return { kind: 'error', message: 'Rate must be greater than 0' };

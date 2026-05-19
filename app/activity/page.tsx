@@ -11,7 +11,7 @@ import {
   displayRate,
   fmt,
   fmtDate,
-  METHOD_LABELS,
+  methodLabel,
 } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
@@ -256,9 +256,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
                   </div>
                 </div>
               </div>
-              {a.method && product.type === 'slurry' && (
+              {a.method && (product.type === 'slurry' || product.type === 'solid_manure') && (
                 <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
-                  {METHOD_LABELS[a.method]}
+                  {methodLabel(a.method)}
                 </div>
               )}
               {a.notes && a.applied_by !== 'plan' && (

@@ -1,4 +1,5 @@
-import { Save, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { Save, LogOut, ChevronRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { loadSettings } from '@/lib/data';
@@ -200,6 +201,22 @@ export default async function SettingsPage() {
       </form>
 
       <div style={{ padding: 16 }}>
+        <Link
+          href="/products"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Custom products</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              Add or remove your own products on top of the RB209 catalogue
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
         <ResetDataSection />
         <form action={signOut}>
           <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
