@@ -18,6 +18,33 @@ import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 const LIME_RATES = [1, 1.5, 2, 2.5, 3] as const;
 
+/** Distinct categories under a given product type, in sort-order order. */
+function categoriesForType(products: Product[], type: ProductType): string[] {
+  const seen = new Map<string, number>();  // category -> min sort_order across rows
+  for (const p of products) {
+    if (p.type !== type) continue;
+    const cat = p.category ?? 'custom';
+    const cur = seen.get(cat);
+    if (cur == null || (p.sort_order ?? 0) < cur) {
+      seen.set(cat, p.sort_order ?? 0);
+    }
+  }
+  return Array.from(seen.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([cat]) => cat);
+}
+
+/** All products in a (type, category) bucket, sorted by sort_order then dm_pct. */
+function productsInCategory(products: Product[], type: ProductType, category: string): Product[] {
+  return products
+    .filter((p) => p.type === type && (p.category ?? 'custom') === category)
+    .sort((a, b) => {
+      const so = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (so !== 0) return so;
+      return (a.dm_pct ?? 0) - (b.dm_pct ?? 0);
+    });
+}
+
 /** Type → "first product of that type" for default initial selection. */
 function defaultProductIdFor(products: Product[], type: ProductType): number | null {
   const matching = products
@@ -26,26 +53,56 @@ function defaultProductIdFor(products: Product[], type: ProductType): number | n
   return matching[0]?.id ?? null;
 }
 
-/** Group products of a given type by category, preserving sort order. */
-function groupByCategory(products: Product[], type: ProductType): { category: string | null; items: Product[] }[] {
-  const filtered = products
-    .filter((p) => p.type === type)
-    .sort((a, b) => {
-      const ca = a.category ?? '';
-      const cb = b.category ?? '';
-      if (ca !== cb) return ca.localeCompare(cb);
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    });
-  const groups: { category: string | null; items: Product[] }[] = [];
-  for (const p of filtered) {
-    const last = groups[groups.length - 1];
-    if (last && last.category === p.category) {
-      last.items.push(p);
-    } else {
-      groups.push({ category: p.category ?? null, items: [p] });
-    }
-  }
-  return groups;
+// ---- Sub-picker derivation helpers --------------------------------
+//
+// Some product categories have sub-variants encoded in the product name
+// (rather than as schema columns). The helpers below derive sub-picker
+// state from a product, and resolve sub-picker state back to a product.
+// This is name-pattern based — fragile if names change, but adding schema
+// columns for one UI concern was deemed not worth the migration cost.
+
+export type Feedstock = 'farm' | 'food';
+export type DigestateForm = 'whole' | 'liquor' | 'fibre';
+export type PoultrySource = 'layer_loose' | 'layer_housed' | 'broiler' | 'deep_pit';
+
+function digestateFeedstockOf(p: Product): Feedstock {
+  return p.name.toLowerCase().includes('food') ? 'food' : 'farm';
+}
+function digestateFormOf(p: Product): DigestateForm {
+  const n = p.name.toLowerCase();
+  if (n.includes('liquor')) return 'liquor';
+  if (n.includes('fibre'))  return 'fibre';
+  return 'whole';
+}
+function poultrySourceOf(p: Product): PoultrySource {
+  const n = p.name.toLowerCase();
+  if (n.includes('housed')) return 'layer_housed';
+  if (n.includes('loose'))  return 'layer_loose';
+  if (n.includes('broiler') || n.includes('turkey')) return 'broiler';
+  return 'deep_pit';
+}
+
+/** Find a digestate product matching (feedstock, form). Returns null if not found. */
+function findDigestate(
+  products: Product[],
+  type: ProductType,           // 'slurry' for whole/liquor, 'solid_manure' for fibre
+  feedstock: Feedstock,
+  form: DigestateForm,
+): Product | null {
+  return products.find((p) =>
+    p.type === type &&
+    p.category === 'digestate' &&
+    digestateFeedstockOf(p) === feedstock &&
+    digestateFormOf(p) === form
+  ) ?? null;
+}
+
+function findPoultry(products: Product[], source: PoultrySource): Product | null {
+  return products.find((p) =>
+    p.type === 'solid_manure' &&
+    p.category === 'poultry' &&
+    poultrySourceOf(p) === source
+  ) ?? null;
 }
 
 export function LogApplicationForm({
@@ -70,6 +127,9 @@ export function LogApplicationForm({
   const [type, setType] = useState<ProductType>(initialType);
   const [productId, setProductId] = useState<number>(() => {
     if (existing) return existing.product_id;
+    // Prefer dairy slurry 6% DM (id 4) as the historical Mill Farm default.
+    const dairy6 = products.find((p) => p.category === 'dairy_slurry' && p.dm_pct === 6);
+    if (dairy6) return dairy6.id;
     return defaultProductIdFor(products, 'slurry') ?? 4;
   });
   const [date, setDate] = useState(existing?.date_applied ?? today);
@@ -100,19 +160,62 @@ export function LogApplicationForm({
   const [submitting, setSubmitting] = useState(false);
 
   const product = products.find((p) => p.id === productId);
+  const currentCategory = product?.category ?? null;
 
-  // For DM-band-aware categories, pre-compute the band siblings so the
-  // picker can switch between them.
+  // Category list for the dropdown — one entry per category in current type.
+  const categoryList = useMemo(() => categoriesForType(products, type), [products, type]);
+
+  // Products that share the current category (used by sub-pickers).
+  const siblings = useMemo(() => {
+    if (!currentCategory) return [] as Product[];
+    return productsInCategory(products, type, currentCategory);
+  }, [products, type, currentCategory]);
+
+  /** Select a category and default to the first product in it. */
+  function selectCategory(category: string) {
+    const candidates = productsInCategory(products, type, category);
+    if (candidates.length === 0) return;
+    // For dairy/pig slurry default to the middle DM band if available
+    // (6% DM for dairy, 4% DM for pig), otherwise first by sort_order.
+    let chosen = candidates[0];
+    if (category === 'dairy_slurry') {
+      chosen = candidates.find((p) => p.dm_pct === 6) ?? chosen;
+    } else if (category === 'pig_slurry') {
+      chosen = candidates.find((p) => p.dm_pct === 4) ?? chosen;
+    }
+    setProductId(chosen.id);
+  }
+
+  // Sub-picker derived state (read from currentCategory + current product).
   const dmSiblings = useMemo(() => {
-    if (!product?.category) return [] as Product[];
-    if (product.category !== 'dairy_slurry' && product.category !== 'pig_slurry') return [];
-    return products
-      .filter((p) => p.category === product.category)
-      .sort((a, b) => (a.dm_pct ?? 0) - (b.dm_pct ?? 0));
-  }, [product, products]);
+    if (currentCategory !== 'dairy_slurry' && currentCategory !== 'pig_slurry') return [];
+    return [...siblings].sort((a, b) => (a.dm_pct ?? 0) - (b.dm_pct ?? 0));
+  }, [currentCategory, siblings]);
 
-  // The product dropdown options, grouped by category for legibility.
-  const productGroups = useMemo(() => groupByCategory(products, type), [products, type]);
+  const showDigestateSubPickers = currentCategory === 'digestate';
+  const showPoultrySubPicker    = currentCategory === 'poultry' && type === 'solid_manure';
+  const digestateFeedstock = (product && showDigestateSubPickers) ? digestateFeedstockOf(product) : 'farm';
+  const digestateForm      = (product && showDigestateSubPickers) ? digestateFormOf(product)      : 'whole';
+  const poultrySource      = (product && showPoultrySubPicker)    ? poultrySourceOf(product)      : 'layer_loose';
+
+  /** Switch digestate feedstock, preserving form if a matching product exists. */
+  function switchDigestateFeedstock(feedstock: Feedstock) {
+    const match = findDigestate(products, type, feedstock, digestateForm)
+               ?? findDigestate(products, type, feedstock, 'whole')
+               ?? findDigestate(products, type, feedstock, 'liquor');
+    if (match) setProductId(match.id);
+  }
+
+  /** Switch digestate form, preserving feedstock if a matching product exists. */
+  function switchDigestateForm(form: DigestateForm) {
+    const match = findDigestate(products, type, digestateFeedstock, form);
+    if (match) setProductId(match.id);
+  }
+
+  function switchPoultrySource(source: PoultrySource) {
+    const match = findPoultry(products, source);
+    if (match) setProductId(match.id);
+  }
 
   // Unit-aware edit: when editing, respect the stored unit rather than the user's
   // current display setting. New applications use the user's preferred unit.
@@ -134,18 +237,28 @@ export function LogApplicationForm({
     return settings.bagFertUnit === 'units/ac' ? 'kg/ha' : settings.bagFertUnit;
   }, [isEdit, existing, type, settings]);
 
-  // When type changes, swap to first product of that type and clear rate
+  // When type changes, swap to the first category in that type and
+  // select the sensible default product within it.
   function changeType(newType: ProductType) {
     if (isEdit) return; // Type is locked when editing — products differ per type
     setType(newType);
-    const firstId = defaultProductIdFor(products, newType);
-    if (firstId != null) setProductId(firstId);
+    const cats = categoriesForType(products, newType);
+    const firstCat = cats[0];
+    if (firstCat) {
+      const candidates = productsInCategory(products, newType, firstCat);
+      // Mirror the category-default logic in selectCategory.
+      let chosen = candidates[0];
+      if (firstCat === 'dairy_slurry') {
+        chosen = candidates.find((p) => p.dm_pct === 6) ?? chosen;
+      } else if (firstCat === 'pig_slurry') {
+        chosen = candidates.find((p) => p.dm_pct === 4) ?? chosen;
+      }
+      if (chosen) setProductId(chosen.id);
+    } else {
+      const fallback = defaultProductIdFor(products, newType);
+      if (fallback != null) setProductId(fallback);
+    }
     if (newType !== 'lime') setRateValue('');
-  }
-
-  /** Pick a DM band within the current dairy/pig slurry category. */
-  function switchDmBand(targetProduct: Product) {
-    setProductId(targetProduct.id);
   }
 
   // Convert lime rate (t/ac) to the right field for the calc engine.
@@ -250,34 +363,20 @@ export function LogApplicationForm({
             </div>
             <select
               className="select"
-              value={productId}
-              onChange={(e) => setProductId(parseInt(e.target.value))}
+              value={currentCategory ?? ''}
+              onChange={(e) => selectCategory(e.target.value)}
+              disabled={isEdit}
+              title={isEdit ? 'Product locked when editing — delete and re-log to change' : undefined}
             >
-              {productGroups.map((g) => {
-                const label = g.category && (CATEGORY_LABELS as any)[g.category]
-                  ? (CATEGORY_LABELS as any)[g.category]
-                  : null;
-                // For single-category types (bag_fert, lime) skip the optgroup
-                // wrapper so the picker reads naturally.
-                if (label && productGroups.length > 1) {
-                  return (
-                    <optgroup key={g.category ?? 'none'} label={label}>
-                      {g.items.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                  );
-                }
-                return g.items.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ));
+              {categoryList.map((cat) => {
+                const label = (CATEGORY_LABELS as any)[cat] ?? cat;
+                return <option key={cat} value={cat}>{label}</option>;
               })}
             </select>
           </div>
         )}
 
-        {/* DM-band quick-pick for dairy and pig slurry — RB209 bands stored
-            as separate product rows; this picker switches between them. */}
+        {/* Sub-picker: Dairy/Pig slurry — DM band quick-pick. */}
         {dmSiblings.length > 1 && (
           <div style={{ marginBottom: 14 }}>
             <div className="label">Dry matter</div>
@@ -287,7 +386,7 @@ export function LogApplicationForm({
                   key={p.id}
                   type="button"
                   className={`toggle-btn ${p.id === productId ? 'active' : ''}`}
-                  onClick={() => switchDmBand(p)}
+                  onClick={() => setProductId(p.id)}
                   disabled={isEdit}
                   title={isEdit ? 'DM band locked when editing — delete and re-log to change' : undefined}
                 >
@@ -297,6 +396,84 @@ export function LogApplicationForm({
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
               NPK shifts with DM — RB209 values for {product?.dm_pct}% DM shown below.
+            </div>
+          </div>
+        )}
+
+        {/* Sub-pickers: Digestate — feedstock (farm/food) and (for liquids) form (whole/liquor). */}
+        {showDigestateSubPickers && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div className="label">Feedstock</div>
+              <div className="toggle-group" role="group" aria-label="Digestate feedstock">
+                <button
+                  type="button"
+                  className={`toggle-btn ${digestateFeedstock === 'farm' ? 'active' : ''}`}
+                  onClick={() => switchDigestateFeedstock('farm')}
+                  disabled={isEdit}
+                >
+                  Farm-sourced
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${digestateFeedstock === 'food' ? 'active' : ''}`}
+                  onClick={() => switchDigestateFeedstock('food')}
+                  disabled={isEdit}
+                >
+                  Food-based
+                </button>
+              </div>
+            </div>
+            {type === 'slurry' && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="label">Form</div>
+                <div className="toggle-group" role="group" aria-label="Digestate form">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${digestateForm === 'whole' ? 'active' : ''}`}
+                    onClick={() => switchDigestateForm('whole')}
+                    disabled={isEdit}
+                  >
+                    Whole
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${digestateForm === 'liquor' ? 'active' : ''}`}
+                    onClick={() => switchDigestateForm('liquor')}
+                    disabled={isEdit}
+                  >
+                    Liquor
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                  Fibre fraction lives under Solid manure → Digestate.
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Sub-picker: Poultry — by source. */}
+        {showPoultrySubPicker && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label">Source</div>
+            <div className="toggle-group" role="group" aria-label="Poultry manure source" style={{ flexWrap: 'wrap' }}>
+              {([
+                ['layer_loose',  'Layer (loose)'],
+                ['layer_housed', 'Layer (housed)'],
+                ['broiler',      'Broiler / turkey'],
+                ['deep_pit',     'Deep-pit / dried'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`toggle-btn ${poultrySource === key ? 'active' : ''}`}
+                  onClick={() => switchPoultrySource(key)}
+                  disabled={isEdit}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         )}
