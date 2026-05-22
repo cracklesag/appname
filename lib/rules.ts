@@ -18,6 +18,32 @@ export const CUT_TYPE_LABELS: Record<CutType, string> = {
   silage: 'Silage', bales: 'Bales', grazing: 'Grazing',
 };
 
+/**
+ * The "next cut type" for a field is what the field is heading toward right
+ * now: derived from how many cuts have already been logged this season and
+ * what was planned for that slot. Fields with all cuts taken are 'complete';
+ * fields with no plan in that slot default to 'silage' to match how new
+ * fields are seeded.
+ *
+ * Used by the home dashboard and activity filters so users can group fields
+ * by "what's next" without storing a separate allocation column.
+ */
+export type NextCutType = CutType | 'complete';
+
+export function getNextCutType(field: Field, cutsDoneThisSeason: number): NextCutType {
+  if (cutsDoneThisSeason >= field.cut_profile) return 'complete';
+  // planned_cuts is parallel to cut numbers; cutsDoneThisSeason is the index
+  // into planned_cuts that the NEXT cut occupies (0-indexed: 0 cuts done → cut 1 → planned_cuts[0]).
+  return field.planned_cuts[cutsDoneThisSeason] ?? 'silage';
+}
+
+export const NEXT_CUT_LABELS: Record<NextCutType, string> = {
+  silage: 'Silage',
+  bales: 'Bales',
+  grazing: 'Grazing',
+  complete: 'Complete',
+};
+
 export const YIELD_CLASS_LABELS: Record<YieldClass, string> = {
   light: 'Light', average: 'Average', heavy: 'Heavy',
 };

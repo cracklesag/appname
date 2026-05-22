@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { Droplets, Sprout, Mountain } from 'lucide-react';
+import { Droplets, Sprout, Mountain, Tractor } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { FilterChips } from '@/components/FilterChips';
 import {
   loadAllApplications,
+  loadAllCuts,
   loadAllProducts,
   loadFields,
   loadSettings,
@@ -11,31 +13,54 @@ import {
   displayRate,
   fmt,
   fmtDate,
+  getNextCutType,
+  getSeasonStart,
   methodLabel,
+  NextCutType,
 } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
 
+type SortKey = 'date_desc' | 'date_asc' | 'field' | 'qty_desc';
+
 type Search = {
-  type?: 'all' | 'slurry' | 'bag_fert' | 'lime';
+  type?: 'all' | 'slurry' | 'bag_fert' | 'lime' | 'solid_manure';
   product?: string;
   period?: 'this_year' | 'last_12m' | 'all' | string;
+  /** Filter by the field's next-planned cut type. Default 'active' excludes complete fields. */
+  next?: 'active' | NextCutType;
+  /** Sort key for the application list. Default date_desc (newest first). */
+  sort?: SortKey;
 };
 
 export default async function ActivityPage({ searchParams }: { searchParams: Search }) {
   const type = searchParams.type || 'all';
   const productId = searchParams.product || 'all';
   const period = searchParams.period || 'this_year';
+  const nextFilter = searchParams.next || 'active';
+  const sortKey: SortKey = searchParams.sort || 'date_desc';
 
-  const [applications, products, fields, settings] = await Promise.all([
+  const [applications, products, fields, cuts, settings] = await Promise.all([
     loadAllApplications(),
     loadAllProducts(),
     loadFields(),
+    loadAllCuts(),
     loadSettings(),
   ]);
 
   const fieldById = Object.fromEntries(fields.map((f) => [f.id, f]));
   const productById = Object.fromEntries(products.map((p) => [p.id, p]));
+
+  // Per-field next-cut-type, computed against the CURRENT season's logged cuts.
+  // The activity page can show applications from prior years too, but the
+  // "next cut" filter is always relative to today's state — i.e. the same
+  // chip on activity matches the same chip on the home dashboard.
+  const seasonStart = getSeasonStart();
+  const nextCutTypeByField: Record<string, NextCutType> = {};
+  fields.forEach((f) => {
+    const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
+    nextCutTypeByField[f.id] = getNextCutType(f, fCuts.length);
+  });
 
   // Period window
   const today = new Date();
@@ -69,11 +94,73 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
     if (!product) return false;
     if (type !== 'all' && product.type !== type) return false;
     if (type === 'bag_fert' && productId !== 'all' && String(a.product_id) !== productId) return false;
+    // Next-cut-type filter: drop applications whose field's next-cut-type
+    // doesn't match the chip. 'active' = anything not complete.
+    const ncType = nextCutTypeByField[a.field_id];
+    if (!ncType) return false;
+    if (nextFilter === 'active') {
+      if (ncType === 'complete') return false;
+    } else if (ncType !== nextFilter) {
+      return false;
+    }
     return true;
   });
 
+  /**
+   * Total product applied, expressed in kg as a comparable cross-type number.
+   * Slurry: 1 gallon ≈ 4.546 kg (water density × imperial gallon).
+   * Lime + solid manure: tonnes → kg.
+   * Bag fert: native kg.
+   * Used for sorting and ranking only — never displayed.
+   */
+  function totalKgEquivalent(a: typeof applications[number]): number {
+    const product = productById[a.product_id];
+    const f = fieldById[a.field_id];
+    if (!product || !f) return 0;
+    if (product.type === 'slurry') {
+      let galPerAc = a.rate_value;
+      if (a.rate_unit === 'm3/ha') galPerAc = a.rate_value * 89.0;
+      return galPerAc * f.acres * 4.546;
+    }
+    if (product.type === 'solid_manure') {
+      let tPerHa = a.rate_value;
+      if (a.rate_unit === 't/ac') tPerHa = a.rate_value / 0.4047;
+      return tPerHa * f.ha * 1000;
+    }
+    if (product.type === 'lime') {
+      let tPerAc = a.rate_value;
+      if (a.rate_unit === 't/ha') tPerAc = a.rate_value * 0.4047;
+      return tPerAc * f.acres * 1000;
+    }
+    // bag_fert
+    let kgPerHa = a.rate_value;
+    if (a.rate_unit === 'kg/ac')      kgPerHa = a.rate_value * 2.4711;
+    else if (a.rate_unit === 'lb/ac') kgPerHa = a.rate_value * 1.1209;
+    return kgPerHa * f.ha;
+  }
+
+  // Sort — applied AFTER filtering so totals/summary stay consistent
+  // with the filter set, only the row order changes.
+  if (sortKey === 'date_asc') {
+    filtered.sort((a, b) => a.date_applied.localeCompare(b.date_applied));
+  } else if (sortKey === 'field') {
+    filtered.sort((a, b) => {
+      const fa = fieldById[a.field_id]?.name ?? '';
+      const fb = fieldById[b.field_id]?.name ?? '';
+      const byField = fa.localeCompare(fb);
+      // Same field → newest first to keep grouping readable
+      return byField !== 0 ? byField : b.date_applied.localeCompare(a.date_applied);
+    });
+  } else if (sortKey === 'qty_desc') {
+    filtered.sort((a, b) => totalKgEquivalent(b) - totalKgEquivalent(a));
+  } else {
+    // date_desc — explicit so the order matches the sort dropdown even if
+    // the source data ordering ever changes.
+    filtered.sort((a, b) => b.date_applied.localeCompare(a.date_applied));
+  }
+
   // Totals
-  let totalGal = 0, totalKg = 0, totalLimeT = 0;
+  let totalGal = 0, totalKg = 0, totalLimeT = 0, totalSolidT = 0;
   filtered.forEach((a) => {
     const product = productById[a.product_id];
     const f = fieldById[a.field_id];
@@ -82,6 +169,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
       let galPerAc = a.rate_value;
       if (a.rate_unit === 'm3/ha') galPerAc = a.rate_value * 89.0;
       totalGal += galPerAc * f.acres;
+    } else if (product.type === 'solid_manure') {
+      let tPerHa = a.rate_value;
+      if (a.rate_unit === 't/ac') tPerHa = a.rate_value / 0.4047;
+      totalSolidT += tPerHa * f.ha;
     } else if (product.type === 'bag_fert') {
       let kgPerHa = a.rate_value;
       if (a.rate_unit === 'kg/ac') kgPerHa = a.rate_value * 2.4711;
@@ -103,11 +194,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const bagProducts = products.filter((p) => p.type === 'bag_fert');
 
   const baseHref = (overrides: Partial<Search>) => {
-    const merged = { type, product: productId, period, ...overrides };
+    const merged = { type, product: productId, period, next: nextFilter, sort: sortKey, ...overrides };
     const sp = new URLSearchParams();
     if (merged.type && merged.type !== 'all') sp.set('type', merged.type);
     if (merged.type === 'bag_fert' && merged.product && merged.product !== 'all') sp.set('product', String(merged.product));
     if (merged.period && merged.period !== 'this_year') sp.set('period', String(merged.period));
+    if (merged.next && merged.next !== 'active') sp.set('next', String(merged.next));
+    if (merged.sort && merged.sort !== 'date_desc') sp.set('sort', String(merged.sort));
     const q = sp.toString();
     return `/activity${q ? `?${q}` : ''}`;
   };
@@ -116,15 +209,33 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
     <div style={{ paddingBottom: 80 }}>
       <Header title="Activity" subtitle="Cross-farm history" />
 
+      <div style={{ padding: '12px 16px 0' }}>
+        <FilterChips
+          paramName="next"
+          ariaLabel="Filter by next cut type"
+          options={[
+            { value: 'active',   label: 'Active' },
+            { value: 'silage',   label: 'Silage' },
+            { value: 'bales',    label: 'Bales' },
+            { value: 'grazing',  label: 'Grazing' },
+            { value: 'complete', label: 'Complete' },
+          ]}
+        />
+      </div>
+
       <div className="tabs">
-        {(['all', 'slurry', 'bag_fert', 'lime'] as const).map((t) => (
+        {(['all', 'slurry', 'solid_manure', 'bag_fert', 'lime'] as const).map((t) => (
           <Link
             key={t}
             href={baseHref({ type: t, product: 'all' })}
             className={`tab ${type === t ? 'active' : ''}`}
             scroll={false}
           >
-            {t === 'all' ? 'All' : t === 'bag_fert' ? 'Fert' : t === 'slurry' ? 'Slurry' : 'Lime'}
+            {t === 'all' ? 'All'
+              : t === 'bag_fert' ? 'Fert'
+              : t === 'slurry' ? 'Slurry'
+              : t === 'solid_manure' ? 'Solid'
+              : 'Lime'}
           </Link>
         ))}
       </div>
@@ -139,14 +250,26 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
         >
           {/* hidden field to preserve the type tab on form submit */}
           {type !== 'all' && <input type="hidden" name="type" value={type} />}
+          {/* hidden field to preserve the next-cut filter across form submit */}
+          {nextFilter !== 'active' && <input type="hidden" name="next" value={nextFilter} />}
 
-          <div style={{ marginBottom: type === 'bag_fert' ? 10 : 0 }}>
+          <div style={{ marginBottom: 10 }}>
             <div className="label" style={{ marginBottom: 6 }}>Period</div>
             <select className="select" name="period" defaultValue={period}>
               <option value="this_year">This year</option>
               <option value="last_12m">Last 12 months</option>
               {availableYears.map((y) => <option key={y} value={String(y)}>{y}</option>)}
               <option value="all">All time</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: type === 'bag_fert' ? 10 : 0 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Sort</div>
+            <select className="select" name="sort" defaultValue={sortKey}>
+              <option value="date_desc">Date — newest first</option>
+              <option value="date_asc">Date — oldest first</option>
+              <option value="field">Field A–Z</option>
+              <option value="qty_desc">Largest total first</option>
             </select>
           </div>
 
@@ -172,6 +295,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
                 <div style={{ fontSize: 10, color: 'var(--slurry)', fontWeight: 700, textTransform: 'uppercase' }}>Slurry</div>
                 <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{fmt(totalGal)}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>gallons</div>
+              </div>
+            )}
+            {(type === 'all' || type === 'solid_manure') && totalSolidT > 0 && (
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--forest)', fontWeight: 700, textTransform: 'uppercase' }}>Solid</div>
+                <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{fmt(totalSolidT, 1)}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>tonnes</div>
               </div>
             )}
             {(type === 'all' || type === 'bag_fert') && totalKg > 0 && (
@@ -207,6 +337,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             if (a.rate_unit === 'm3/ha') galPerAc = a.rate_value * 89.0;
             totalQty = galPerAc * f.acres;
             totalUnit = 'gal';
+          } else if (product.type === 'solid_manure') {
+            let tPerHa = a.rate_value;
+            if (a.rate_unit === 't/ac') tPerHa = a.rate_value / 0.4047;
+            totalQty = tPerHa * f.ha;
+            totalUnit = 't';
           } else if (product.type === 'lime') {
             let tPerAc = a.rate_value;
             if (a.rate_unit === 't/ha') tPerAc = a.rate_value * 0.4047;
@@ -220,10 +355,15 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             totalUnit = 'kg';
           }
 
-          const Icon = product.type === 'slurry' ? Droplets : product.type === 'lime' ? Mountain : Sprout;
+          const Icon =
+            product.type === 'slurry'       ? Droplets :
+            product.type === 'solid_manure' ? Tractor  :
+            product.type === 'lime'         ? Mountain :
+            Sprout;
           const iconColor =
-            product.type === 'slurry' ? 'var(--slurry)' :
-            product.type === 'lime' ? 'var(--stone)' :
+            product.type === 'slurry'       ? 'var(--slurry)' :
+            product.type === 'solid_manure' ? 'var(--forest-dark)' :
+            product.type === 'lime'         ? 'var(--stone)' :
             'var(--forest)';
 
           return (
