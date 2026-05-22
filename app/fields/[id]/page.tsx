@@ -11,6 +11,7 @@ import {
 } from '@/lib/data';
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
+  isSampleStale, sampleAgeYears, sampleYear,
   getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, methodLabel,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
@@ -112,8 +113,37 @@ export default async function FieldDetailPage({
           {field.sampled ? (
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div className="label" style={{ margin: 0 }}>
-                  Last soil sample{field.sample_date ? ` · ${fmtDate(field.sample_date)}` : ''}
+                <div>
+                  <div className="label" style={{ margin: 0 }}>
+                    {(() => {
+                      const yr = sampleYear(field);
+                      const age = sampleAgeYears(field);
+                      const stale = isSampleStale(field);
+                      if (yr == null || !field.sample_date) return 'Last soil sample';
+                      // "Apr 2022" — months mean the same thing year over year,
+                      // dates within a month don't change agronomic state.
+                      const monthIdx = parseInt(field.sample_date.slice(5, 7), 10) - 1;
+                      const monthName = isNaN(monthIdx)
+                        ? ''
+                        : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][monthIdx] + ' ';
+                      const ageBit = age != null && age > 0
+                        ? ` · ${age} year${age === 1 ? '' : 's'} old`
+                        : '';
+                      return (
+                        <>
+                          Sampled {monthName}{yr}
+                          <span style={{ color: stale ? 'var(--red, #b85b3a)' : 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                            {ageBit}
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {isSampleStale(field) && (
+                    <div style={{ fontSize: 11, color: 'var(--red, #b85b3a)', marginTop: 2 }}>
+                      Consider resampling — indices drift over 3+ years.
+                    </div>
+                  )}
                 </div>
                 <Link
                   href={`/fields/${field.id}/soil`}

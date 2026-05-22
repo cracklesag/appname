@@ -18,6 +18,8 @@ import {
   getNextCutType,
   getSeasonLabel,
   getSeasonStart,
+  isSampleStale,
+  sampleYear,
   soilMetricColor,
   sumNutrients,
   displayBagAmount,
@@ -265,10 +267,16 @@ export default async function HomePage({
                       })()}
                     </div>
                     {f.sampled && (
-                      <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12 }}>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, flexWrap: 'wrap' }}>
                         <span><span style={{ color: 'var(--muted)' }}>pH </span><span style={{ color: phColor, fontWeight: 700 }}>{f.ph ?? '—'}</span></span>
                         <span><span style={{ color: 'var(--muted)' }}>P </span><span style={{ color: pColor, fontWeight: 700 }}>{f.p_idx ?? '—'}</span></span>
                         <span><span style={{ color: 'var(--muted)' }}>K </span><span style={{ color: kColor, fontWeight: 700 }}>{f.k_idx ?? '—'}</span></span>
+                        {isSampleStale(f) && (() => {
+                          const yr = sampleYear(f);
+                          return yr != null ? (
+                            <span style={{ color: 'var(--red, #b85b3a)' }}>· {yr} (stale)</span>
+                          ) : null;
+                        })()}
                       </div>
                     )}
                   </div>

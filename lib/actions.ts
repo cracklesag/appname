@@ -258,6 +258,22 @@ export async function saveSettings(formData: FormData) {
       pIdx: parseFloat(String(formData.get('target_pidx'))),
       kIdx: parseFloat(String(formData.get('target_kidx'))),
     },
+    reportDefaults: {
+      // Clamp to bounds matching the UI input min/max so a manual URL
+      // tweak can't push values out of the agronomic range.
+      splitFrontLoadPct: Math.max(40, Math.min(80,
+        parseFloat(String(formData.get('report_split_pct') || '60')) || 60
+      )),
+      annualNCapKgPerHa: Math.max(100, Math.min(400,
+        parseFloat(String(formData.get('report_n_cap') || '320')) || 320
+      )),
+      grazingCadenceKgN: Math.max(10, Math.min(80,
+        parseFloat(String(formData.get('report_grazing_n') || '40')) || 40
+      )),
+      grazingCadenceWeeks: Math.max(1, Math.min(12,
+        parseInt(String(formData.get('report_grazing_weeks') || '4'), 10) || 4
+      )),
+    },
     bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
     slurryUnit: String(formData.get('slurry_unit')) as 'gal/ac' | 'm3/ha',
     limeUnit: String(formData.get('lime_unit')) as 't/ac' | 't/ha',

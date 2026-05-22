@@ -108,6 +108,27 @@ export interface Settings {
   bagFertUnit: 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac';
   slurryUnit: 'gal/ac' | 'm3/ha';
   limeUnit: 't/ac' | 't/ha';
+  /** Report defaults — used by the spreading recommendation report. */
+  reportDefaults: {
+    /**
+     * Front-loaded percentage for a split dressing's first application.
+     * 60% means dressing 1 of 2 gets 60% of the target, dressing 2 gets 40%.
+     * Bounded 40-80 in the UI.
+     */
+    splitFrontLoadPct: number;
+    /**
+     * Maximum N allowed across the season for an intensive grass system,
+     * kg N/ha. RB209 default 320 for cut+grazed; lower for clover-rich.
+     * One global default; per-field override deferred to a later chunk.
+     */
+    annualNCapKgPerHa: number;
+    /**
+     * Grazing top-up cadence — used by the grazing report (chunk 2).
+     * Carrying the slot now so the schema doesn't need migrating later.
+     */
+    grazingCadenceKgN: number;
+    grazingCadenceWeeks: number;
+  };
   onboarded: boolean;
 }
 
@@ -121,6 +142,12 @@ export const DEFAULT_SETTINGS: Settings = {
   bagFertUnit: 'kg/ha',
   slurryUnit: 'gal/ac',
   limeUnit: 't/ac',
+  reportDefaults: {
+    splitFrontLoadPct: 60,
+    annualNCapKgPerHa: 320,
+    grazingCadenceKgN: 40,
+    grazingCadenceWeeks: 4,
+  },
   onboarded: false,
 };
 

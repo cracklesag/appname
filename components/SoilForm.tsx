@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { Save } from 'lucide-react';
 import { Field } from '@/lib/types';
 import { saveSoil } from '@/lib/actions';
-import { validatePH, validateSoilIndex, validateDate } from '@/lib/validation';
+import { validatePH, validateSoilIndex } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 export function SoilForm({ field }: { field: Field }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 7);  // YYYY-MM
 
-  const [sampleDate, setSampleDate] = useState(field.sample_date ?? today);
+  // Existing sample_date may be a full date (legacy) or already YYYY-MM-01
+  // from a month-picker save. Strip down to YYYY-MM for the input.
+  const initialMonth = field.sample_date ? field.sample_date.slice(0, 7) : today;
+  const [sampleMonth, setSampleMonth] = useState(initialMonth);
   const [ph, setPh] = useState(field.ph != null ? String(field.ph) : '');
   const [pIdx, setPIdx] = useState(field.p_idx != null ? String(field.p_idx) : '');
   const [kIdx, setKIdx] = useState(field.k_idx != null ? String(field.k_idx) : '');
@@ -28,13 +31,23 @@ export function SoilForm({ field }: { field: Field }) {
   const phWarning   = useMemo(() => validatePH(phNum), [phNum]);
   const pIdxWarning = useMemo(() => validateSoilIndex(pIdxNum, 'P'), [pIdxNum]);
   const kIdxWarning = useMemo(() => validateSoilIndex(kIdxNum, 'K'), [kIdxNum]);
-  const sampleDateWarning = useMemo(() => sampleDate ? validateDate(sampleDate) : null, [sampleDate]);
+  // Sample month validation: empty is fine; future months are an error.
+  const sampleMonthWarning = useMemo(() => {
+    if (!sampleMonth) return null;
+    return sampleMonth > today
+      ? { kind: 'error' as const, message: 'Sample month cannot be in the future.' }
+      : null;
+  }, [sampleMonth, today]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitError(null);
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
+    // Convert YYYY-MM → YYYY-MM-01 so the DB date column accepts it.
+    const month = String(fd.get('sample_month') || '');
+    fd.delete('sample_month');
+    if (month) fd.set('sample_date', `${month}-01`);
     try {
       await saveSoil(fd);
     } catch (err) {
@@ -52,12 +65,13 @@ export function SoilForm({ field }: { field: Field }) {
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
           <div className="label" style={{ marginBottom: 10 }}>Latest soil analysis</div>
           <div style={{ marginBottom: 12 }}>
-            <div className="label" style={{ fontSize: 11 }}>Sample date</div>
+            <div className="label" style={{ fontSize: 11 }}>Sample month</div>
             <input
-              type="date" name="sample_date" className="input"
-              value={sampleDate} onChange={(e) => setSampleDate(e.target.value)}
+              type="month" name="sample_month" className="input"
+              value={sampleMonth} onChange={(e) => setSampleMonth(e.target.value)}
+              max={today}
             />
-            <InlineWarning warning={sampleDateWarning} />
+            <InlineWarning warning={sampleMonthWarning} />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>

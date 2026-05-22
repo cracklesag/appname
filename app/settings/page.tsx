@@ -191,6 +191,62 @@ export default async function SettingsPage() {
               </div>
             ))}
           </div>
+
+          {/* Report defaults */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Report defaults</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+              Defaults applied when generating spreading recommendation reports. You can adjust them per report when needed.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Split dressing — first N %</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>How much of the N target goes on the first dressing (40-80). 60 = front-loaded. P and K stay full on every dressing.</div>
+              </div>
+              <input
+                type="number" min="40" max="80" step="5"
+                name="report_split_pct"
+                className="input"
+                style={{ width: 90, textAlign: 'right' }}
+                defaultValue={s.reportDefaults.splitFrontLoadPct}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Annual N cap (kg N/ha)</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>RB209 default 320 for intensive cut+grazed grass. Lower for clover-rich swards.</div>
+              </div>
+              <input
+                type="number" min="100" max="400" step="10"
+                name="report_n_cap"
+                className="input"
+                style={{ width: 90, textAlign: 'right' }}
+                defaultValue={s.reportDefaults.annualNCapKgPerHa}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Grazing N cadence</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Top-up rate while continually grazing. Used by the grazing report.</div>
+              </div>
+              <input
+                type="number" min="10" max="80" step="5"
+                name="report_grazing_n"
+                className="input"
+                style={{ width: 60, textAlign: 'right' }}
+                defaultValue={s.reportDefaults.grazingCadenceKgN}
+              />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg/ha every</span>
+              <input
+                type="number" min="1" max="12" step="1"
+                name="report_grazing_weeks"
+                className="input"
+                style={{ width: 50, textAlign: 'right' }}
+                defaultValue={s.reportDefaults.grazingCadenceWeeks}
+              />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>weeks</span>
+            </div>
+          </div>
         </div>
 
         <div className="sticky-footer">

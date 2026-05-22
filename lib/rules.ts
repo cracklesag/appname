@@ -44,6 +44,36 @@ export const NEXT_CUT_LABELS: Record<NextCutType, string> = {
   complete: 'Complete',
 };
 
+// ---- Soil sample age ----------------------------------------------
+//
+// The `sample_date` column is a full date, but for reporting we only
+// care about the year — RB209 indices don't shift meaningfully within
+// a year, and "Sampled 2022" reads better than "18 Apr 2022".
+
+/** Year of the field's most recent soil sample, or null if never sampled. */
+export function sampleYear(field: Field): number | null {
+  if (!field.sample_date) return null;
+  const y = parseInt(field.sample_date.slice(0, 4), 10);
+  return Number.isFinite(y) ? y : null;
+}
+
+/** Whole years elapsed since the sample. null if never sampled. */
+export function sampleAgeYears(field: Field, today: Date = new Date()): number | null {
+  const yr = sampleYear(field);
+  if (yr == null) return null;
+  return today.getFullYear() - yr;
+}
+
+/**
+ * A sample is "stale" once 3+ years old. RB209 recommends 3-5 year sampling
+ * cycles, and soil P/K indices shift slowly enough that within 3 years the
+ * old number is usually still defensible. Past that, recommend resampling.
+ */
+export function isSampleStale(field: Field, today: Date = new Date()): boolean {
+  const age = sampleAgeYears(field, today);
+  return age != null && age >= 3;
+}
+
 export const YIELD_CLASS_LABELS: Record<YieldClass, string> = {
   light: 'Light', average: 'Average', heavy: 'Heavy',
 };
@@ -415,6 +445,54 @@ export function getCutTargets(
     yieldDM: offtake.yieldDM,
     cutType,
   };
+}
+
+/**
+ * Split a full-cut target across multiple dressings.
+ *
+ * **Only N is split.** P and K stay at full target on every dressing because
+ * the agronomic pattern is to bank P and K at season start (banking in soil)
+ * and top-up N through the season. Splitting P/K would imply a contractor
+ * spreading P and K in small doses through the year, which nobody does.
+ *
+ * Front-load percentage applies to dressing 1's share of N; subsequent
+ * dressings share the remaining N evenly.
+ *
+ * Example: N=100, 2 dressings, frontLoadPct=60 →
+ *   dressing 1 = 60 N, dressing 2 = 40 N. P/K full on both.
+ *
+ * Example: N=100, 3 dressings, frontLoadPct=60 →
+ *   dressing 1 = 60 N, dressings 2+3 = 20 N each. P/K full on all.
+ *
+ * dressingNumber and totalDressings are 1-indexed.
+ */
+export function getSplitTarget(
+  fullTarget: { n: number; p2o5: number; k2o: number },
+  dressingNumber: number,
+  totalDressings: number,
+  frontLoadPct: number,
+): { n: number; p2o5: number; k2o: number } {
+  if (totalDressings <= 1) return fullTarget;
+  if (dressingNumber < 1 || dressingNumber > totalDressings) return fullTarget;
+  const front = Math.max(0, Math.min(1, frontLoadPct / 100));
+  const nShare = dressingNumber === 1
+    ? front
+    : (1 - front) / (totalDressings - 1);
+  return {
+    n:    fullTarget.n * nShare,
+    p2o5: fullTarget.p2o5,     // P stays full — banked at season start
+    k2o:  fullTarget.k2o,      // K stays full — stripped by the cut, not split
+  };
+}
+
+/**
+ * Annual N cap for the field, kg N/ha. Currently a single global setting;
+ * per-field override deferred to a later chunk when grass-system-type
+ * lands. Returns the cap regardless of field type — caller decides when
+ * the cap applies (e.g. grass-only).
+ */
+export function getNCap(field: Field, settings: Settings): number {
+  return settings.reportDefaults?.annualNCapKgPerHa ?? 320;
 }
 
 // ---- Sum nutrients across applications ---------------------------
