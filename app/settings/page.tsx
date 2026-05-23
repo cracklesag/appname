@@ -274,6 +274,22 @@ export default async function SettingsPage() {
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
         <Link
+          href="/reports/grazing"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Grazing top-up</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              N cadence schedule for grazing fields — when each field is due
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+        <Link
           href="/products"
           className="card"
           style={{
@@ -285,6 +301,22 @@ export default async function SettingsPage() {
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Custom products</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
               Add or remove your own products on top of the RB209 catalogue
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+        <Link
+          href="/settings/groups"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Groups</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              Organise fields into blocks of land for filtering and reports
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
