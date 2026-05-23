@@ -13,6 +13,7 @@ import {
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
+  getSoilType, SOIL_TYPE_SHORT_LABELS,
   getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, methodLabel,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
@@ -204,6 +205,22 @@ export default async function FieldDetailPage({
               {field.notes && <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-soft)' }}>{field.notes}</div>}
             </div>
           )}
+
+          {/* Soil type chip — small line below the sample card. Always shown
+              because every field has a soil type (medium_loam default). */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: 14,
+            paddingLeft: 14, fontSize: 11, color: 'var(--muted)',
+          }}>
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Soil:</span>
+            <span style={{ color: 'var(--ink)' }}>{SOIL_TYPE_SHORT_LABELS[getSoilType(field)]}</span>
+            <Link
+              href={`/fields/${field.id}/soil`}
+              style={{ color: 'var(--forest-dark, #3d5b29)', textDecoration: 'underline', fontSize: 11 }}
+            >
+              edit
+            </Link>
+          </div>
 
           {/* Status of next cut */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>

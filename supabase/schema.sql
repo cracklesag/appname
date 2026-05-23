@@ -36,6 +36,8 @@ create table public.fields (
   k_idx        numeric,
   sampled      boolean not null default false,
   sample_date  date,
+  soil_type    text not null default 'medium_loam'
+    check (soil_type in ('light_sand', 'medium_loam', 'heavy_clay', 'deep_silt')),
   last_ploughed   date,
   last_reseeded   date,
   notes        text,

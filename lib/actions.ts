@@ -189,15 +189,25 @@ export async function saveSoil(formData: FormData) {
   const lastPloughed = formData.get('last_ploughed') ? String(formData.get('last_ploughed')) : null;
   const lastReseeded = formData.get('last_reseeded') ? String(formData.get('last_reseeded')) : null;
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  // Soil type is optional on the form — if not present, leave the existing
+  // value untouched (don't overwrite a saved value with the default).
+  const rawSoilType = String(formData.get('soil_type') ?? '');
+  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
+  const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : null;
 
   const sampled = ph != null || pIdx != null || kIdx != null;
 
-  const { error } = await supabase.from('fields').update({
+  // Build the update object so we only set soil_type if it was actually
+  // submitted; same approach lets older forms keep working.
+  const update: Record<string, unknown> = {
     ph, p_idx: pIdx, k_idx: kIdx,
     sample_date: sampleDate, last_ploughed: lastPloughed, last_reseeded: lastReseeded,
     notes, sampled,
     updated_at: new Date().toISOString(),
-  }).eq('id', fieldId);
+  };
+  if (soilType) update.soil_type = soilType;
+
+  const { error } = await supabase.from('fields').update(update).eq('id', fieldId);
   if (error) throw new Error(error.message);
 
   revalidatePath(`/fields/${fieldId}`);
@@ -309,6 +319,10 @@ export async function createField(formData: FormData) {
   // Optional group assignment — empty string or absence means "ungrouped".
   const rawGroupId = String(formData.get('group_id') ?? '').trim();
   const groupId: string | null = rawGroupId === '' ? null : rawGroupId;
+  // Soil type — defaults to medium_loam if not provided.
+  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
+  const rawSoilType = String(formData.get('soil_type') ?? '');
+  const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : 'medium_loam';
 
   // Validation: name required, acres > 0, ha > 0, cut profile 1-4
   if (!name) throw new Error('Field name is required');
@@ -324,6 +338,7 @@ export async function createField(formData: FormData) {
     ha,
     cut_profile: cutProfile,
     planned_cuts: plannedCuts,
+    soil_type: soilType,
     sampled: false,
     notes,
   }).select('id').single();

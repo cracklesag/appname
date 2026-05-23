@@ -1,6 +1,6 @@
 import {
   Application, Cut, CutType, Field, Product, ProductCategory, ProductType, Settings,
-  SlurryMethod, SolidMethod, ApplicationMethod, YieldClass, RateUnit, DEFAULT_SETTINGS,
+  SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 
 // ---- Constants ----------------------------------------------------
@@ -429,6 +429,77 @@ export function getPlannedCuts(field: Field): CutType[] {
   return Array(field.cut_profile || 1).fill('silage');
 }
 
+// ---- Soil type helpers --------------------------------------------
+//
+// Soil type drives three things in the app:
+//
+//   1. K target adjustment (automatic):
+//      light_sand soils leach K, so RB209 maintenance is ~40 kg K₂O/ha
+//      higher across a 3-cut season. Modelled here as +13 kg K₂O/ha per
+//      cut applied to every cut on a light_sand field. Other types: no
+//      change.
+//
+//   2. Sulphur risk flag (advisory):
+//      S deficiency is most common on light sands in early-mid season.
+//      Reports show a flag, calculations untouched.
+//
+//   3. Cold-clay N timing flag (advisory):
+//      Heavy clay warms slowly; early-spring N response is reduced.
+//      Reports show a flag, calculations untouched.
+
+/** Get the soil type for a field, defaulting to medium_loam. */
+export function getSoilType(field: Field): SoilType {
+  return field.soil_type || 'medium_loam';
+}
+
+/** Display label for a soil type, used in UI lists and headers. */
+export const SOIL_TYPE_LABELS: Record<SoilType, string> = {
+  light_sand: 'Light sand / shallow',
+  medium_loam: 'Medium loam',
+  heavy_clay: 'Heavy clay',
+  deep_silt: 'Deep silt',
+};
+
+/** Short label (for tight UI spots like card subtitles). */
+export const SOIL_TYPE_SHORT_LABELS: Record<SoilType, string> = {
+  light_sand: 'Light sand',
+  medium_loam: 'Medium loam',
+  heavy_clay: 'Heavy clay',
+  deep_silt: 'Deep silt',
+};
+
+/** Extra K₂O kg/ha per cut to bump the target on light sands. RB209-derived. */
+const LIGHT_SAND_K_BUMP_PER_CUT_KG = 13;
+
+/**
+ * Adjust a base K₂O target for soil type. Returns the input unchanged for
+ * all soils except light_sand, which gets a per-cut bump for leaching loss.
+ */
+export function adjustKTargetForSoil(baseK: number, soilType: SoilType): number {
+  if (soilType === 'light_sand') return baseK + LIGHT_SAND_K_BUMP_PER_CUT_KG;
+  return baseK;
+}
+
+/**
+ * Should the report flag sulphur risk for this field?
+ * Currently: light_sand triggers, regardless of season — the flag explains
+ * itself ("S response likely on light soils"). Season-specific gating can
+ * come later when there's UI to surface it.
+ */
+export function shouldFlagSulphurRisk(field: Field): boolean {
+  return getSoilType(field) === 'light_sand';
+}
+
+/**
+ * Should the report flag cold-clay N timing on this field?
+ * Currently: heavy_clay always flags — the message ("cold-clay N response
+ * is slower in early spring; consider delaying first dressing 2-3 weeks
+ * vs lighter soils") is informational, not a hard rule.
+ */
+export function shouldFlagColdClay(field: Field): boolean {
+  return getSoilType(field) === 'heavy_clay';
+}
+
 export function getCutTargets(
   field: Field,
   cutNumber: number,
@@ -441,10 +512,12 @@ export function getCutTargets(
   const nTarget = settings.nTargets[cutNumber as 1|2|3|4] ?? offtake.n;
   const isGrazing = cutType === 'grazing';
   const nFinal = isGrazing ? nTarget * (1 - (settings.grazingReturnPct ?? 0.70)) : nTarget;
+  // K target bumped for light sands. P and N untouched.
+  const k2oAdjusted = adjustKTargetForSoil(offtake.k2o, getSoilType(field));
   return {
     n: nFinal,
     p2o5: offtake.p2o5,
-    k2o: offtake.k2o,
+    k2o: k2oAdjusted,
     yieldDM: offtake.yieldDM,
     cutType,
   };

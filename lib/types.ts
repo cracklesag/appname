@@ -24,6 +24,12 @@ export type ProductCategory =
   | 'biosolids'
   | 'custom';
 
+/**
+ * Soil type categorisation, drives K target adjustment (light_sand) and
+ * report flags (S risk, cold-clay N timing). Default 'medium_loam'.
+ */
+export type SoilType = 'light_sand' | 'medium_loam' | 'heavy_clay' | 'deep_silt';
+
 export interface Field {
   id: string;
   user_id: string;
@@ -38,6 +44,7 @@ export interface Field {
   k_idx: number | null;
   sampled: boolean;
   sample_date: string | null;
+  soil_type: SoilType;
   last_ploughed: string | null;
   last_reseeded: string | null;
   notes: string | null;

@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Save } from 'lucide-react';
-import { Field } from '@/lib/types';
+import { Field, SoilType } from '@/lib/types';
+import { SOIL_TYPE_LABELS } from '@/lib/rules';
 import { saveSoil } from '@/lib/actions';
 import { validatePH, validateSoilIndex } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
@@ -18,6 +19,7 @@ export function SoilForm({ field }: { field: Field }) {
   const [ph, setPh] = useState(field.ph != null ? String(field.ph) : '');
   const [pIdx, setPIdx] = useState(field.p_idx != null ? String(field.p_idx) : '');
   const [kIdx, setKIdx] = useState(field.k_idx != null ? String(field.k_idx) : '');
+  const [soilType, setSoilType] = useState<SoilType>(field.soil_type || 'medium_loam');
   const [lastPloughed, setLastPloughed] = useState(field.last_ploughed ?? '');
   const [lastReseeded, setLastReseeded] = useState(field.last_reseeded ?? '');
   const [notes, setNotes] = useState(field.notes ?? '');
@@ -100,6 +102,26 @@ export function SoilForm({ field }: { field: Field }) {
             </div>
           </div>
           <InlineWarning warning={phWarning ?? pIdxWarning ?? kIdxWarning} />
+        </div>
+
+        <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+          <div className="label" style={{ marginBottom: 6 }}>Soil type</div>
+          <select
+            name="soil_type"
+            className="select"
+            value={soilType}
+            onChange={(e) => setSoilType(e.target.value as SoilType)}
+          >
+            {(Object.entries(SOIL_TYPE_LABELS) as [SoilType, string][]).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+            {soilType === 'light_sand' && 'K target bumped by ~13 kg K₂O/ha per cut. Sulphur risk flag in reports.'}
+            {soilType === 'medium_loam' && 'Default — no special adjustments.'}
+            {soilType === 'heavy_clay' && 'Cold-clay N timing nudge in early-spring reports.'}
+            {soilType === 'deep_silt' && 'Treated as loam — no special adjustments.'}
+          </div>
         </div>
 
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>

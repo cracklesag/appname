@@ -17,8 +17,11 @@ import {
   fmtDateShort,
   getNCap,
   getNextCutType,
+  getSoilType,
+  SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
 } from '@/lib/rules';
+import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 
 // =====================================================================
 // Grazing top-up report
@@ -237,6 +240,10 @@ export function GrazingReportShell({
   const handlePrint = () => {
     if (typeof window !== 'undefined') window.print();
   };
+  const handleCsv = () => {
+    const csv = buildCsv(visibleStates, settings, groups, cadenceKgN, cadenceWeeks);
+    downloadCsv(csvFilename('grazing'), csv);
+  };
 
   // ---- Render ----------------------------------------------------------
 
@@ -354,20 +361,28 @@ export function GrazingReportShell({
 
       {/* Actions */}
       {visibleStates.length > 0 && (
-        <div className="report-actions no-print" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <div className="report-actions no-print" style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn-ghost"
             onClick={handleCopy}
-            style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+            style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
           >
             {copied ? '✓ Copied' : 'Copy as text'}
           </button>
           <button
             type="button"
+            className="btn-ghost"
+            onClick={handleCsv}
+            style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
+          >
+            Download CSV
+          </button>
+          <button
+            type="button"
             className="btn-primary"
             onClick={handlePrint}
-            style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+            style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
           >
             Print
           </button>
@@ -561,4 +576,79 @@ function buildPlainText(
     lines.push('');
   });
   return lines.join('\n');
+}
+
+/**
+ * Build CSV body for the grazing top-up schedule — one row per visible field.
+ *
+ * Includes everything a contractor or agronomist would want from a grazing
+ * round: when each field was last topped up, when the next dose is due,
+ * status (overdue / due now / etc.), and the recommended kg total per field.
+ */
+function buildCsv(
+  states: {
+    field: Field;
+    lastNApp?: { date: string; nPerHa: number };
+    nextDueIso: string;
+    daysToNextDue: number;
+    seasonNApplied: number;
+    nCap: number;
+    status: DueStatus;
+  }[],
+  settings: Settings,
+  groups: Group[],
+  cadenceKgN: number,
+  cadenceWeeks: number,
+): string {
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
+  const lines: string[] = [];
+  lines.push(csvRow([
+    'Field',
+    'Group',
+    `Area (${settings.unitSystem === 'acres' ? 'ac' : 'ha'})`,
+    'Soil type',
+    'Status',
+    'Last N date',
+    'Last N (kg/ha)',
+    'Next due',
+    'Days to next due',
+    'Recommended N (kg/ha)',
+    'Recommended N total (kg)',
+    'Season N applied (kg/ha)',
+    'Annual N cap (kg/ha)',
+    'Cadence (kg N/ha)',
+    'Cadence (weeks)',
+  ]));
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  states.forEach((s) => {
+    const f = s.field;
+    const areaVal = settings.unitSystem === 'acres' ? f.acres : f.ha;
+    const groupName = f.group_id ? (groupNameById.get(f.group_id) ?? '') : '';
+    const statusLabel =
+      s.status.kind === 'overdue'  ? `Overdue by ${s.status.days}d` :
+      s.status.kind === 'due_now'  ? 'Due now' :
+      s.status.kind === 'upcoming' ? `In ${s.status.days}d` :
+                                      'Awaiting first dose';
+    const totalNKg = cadenceKgN * f.ha;
+    lines.push(csvRow([
+      f.name,
+      groupName,
+      round1(areaVal),
+      SOIL_TYPE_SHORT_LABELS[getSoilType(f)],
+      statusLabel,
+      s.lastNApp?.date ?? '',
+      s.lastNApp ? round1(s.lastNApp.nPerHa) : '',
+      s.nextDueIso,
+      s.daysToNextDue,
+      cadenceKgN,
+      round1(totalNKg),
+      round1(s.seasonNApplied),
+      s.nCap,
+      cadenceKgN,
+      cadenceWeeks,
+    ]));
+  });
+
+  return lines.join('\r\n');
 }

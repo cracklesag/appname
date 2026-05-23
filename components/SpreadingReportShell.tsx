@@ -26,9 +26,14 @@ import {
   NEXT_CUT_LABELS,
   sampleAgeYears,
   sampleYear,
+  shouldFlagColdClay,
+  shouldFlagSulphurRisk,
+  SOIL_TYPE_SHORT_LABELS,
+  getSoilType,
   soilMetricColor,
   sumNutrients,
 } from '@/lib/rules';
+import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 
 type ReportMode = 'post_cut' | 'spring' | 'mid_season';
 
@@ -665,6 +670,7 @@ export function SpreadingReportShell({
         applications={applications}
         cuts={cuts}
         products={products}
+        groups={groups}
         settings={settings}
         seasonStart={seasonStart}
         planSlurry={slurryActive ? planSlurry : 0}
@@ -847,6 +853,7 @@ function ReportSection(props: {
   applications: Application[];
   cuts: Cut[];
   products: Product[];
+  groups: Group[];
   settings: Settings;
   seasonStart: string;
   planSlurry: number;
@@ -860,7 +867,7 @@ function ReportSection(props: {
 }) {
   const {
     mode, split, totalDressings, dressingNumber, splitPct,
-    eligibleStates, selectedIds, applications, cuts, products, settings,
+    eligibleStates, selectedIds, applications, cuts, products, groups, settings,
     seasonStart,
     planSlurry, planSolid, planN, slurryUnit, solidUnit,
     slurryProduct, solidProduct, todayIso,
@@ -1018,6 +1025,10 @@ function ReportSection(props: {
   const handlePrint = () => {
     if (typeof window !== 'undefined') window.print();
   };
+  const handleCsv = () => {
+    const csv = buildCsv(rows, settings, groups);
+    downloadCsv(csvFilename('spreading'), csv);
+  };
 
   if (rows.length === 0) {
     return (
@@ -1079,20 +1090,28 @@ function ReportSection(props: {
       <ReportFootnotes />
 
       {/* Actions — hidden on print */}
-      <div className="report-actions no-print" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+      <div className="report-actions no-print" style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
         <button
           type="button"
           className="btn-ghost"
           onClick={handleCopy}
-          style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+          style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
         >
           {copied ? '✓ Copied' : 'Copy as text'}
         </button>
         <button
           type="button"
+          className="btn-ghost"
+          onClick={handleCsv}
+          style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
+        >
+          Download CSV
+        </button>
+        <button
+          type="button"
           className="btn-primary"
           onClick={handlePrint}
-          style={{ flex: 1, padding: '10px 14px', fontSize: 13 }}
+          style={{ flex: 1, minWidth: 110, padding: '10px 14px', fontSize: 13 }}
         >
           Print
         </button>
@@ -1244,6 +1263,37 @@ function ReportFieldCard({
           {overCap
             ? `⚠ Over annual N cap — ${fmt(seasonNApplied)} kg/ha applied vs ${nCap} cap.`
             : `Approaching annual N cap — ${fmt(seasonNApplied)} kg/ha of ${nCap} (${fmt(nCapHeadroom)} headroom).`}
+        </div>
+      )}
+
+      {/* Sulphur risk flag — light_sand soils most at risk of S deficiency,
+          especially in spring/early-season. RB209 recommends S response
+          testing or routine application on light soils. */}
+      {shouldFlagSulphurRisk(f) && (mode === 'spring' || mode === 'post_cut') && (
+        <div style={{
+          marginTop: 8,
+          padding: '6px 8px',
+          fontSize: 11,
+          borderRadius: 4,
+          background: '#f7efde',
+          color: 'var(--ink-soft)',
+        }}>
+          ⓘ Light soil — S response likely. Consider a sulphur-containing fertiliser if not already planned.
+        </div>
+      )}
+
+      {/* Cold-clay N timing nudge — heavy clay warms slowly so early-spring
+          N response is reduced. Only meaningful for spring mode. */}
+      {shouldFlagColdClay(f) && mode === 'spring' && (
+        <div style={{
+          marginTop: 8,
+          padding: '6px 8px',
+          fontSize: 11,
+          borderRadius: 4,
+          background: '#f7efde',
+          color: 'var(--ink-soft)',
+        }}>
+          ⓘ Heavy clay — N response is slower in cold soils. Consider delaying first dressing 2–3 weeks vs lighter soils.
         </div>
       )}
     </div>
@@ -1444,6 +1494,90 @@ function buildPlainText(
   lines.push('  50 m³/ha slurry). Rain within 24-48h increases it (~10-15 kg/ha).');
 
   return lines.join('\n');
+}
+
+/**
+ * Build CSV body for the spreading report — one row per field. Columns are
+ * machine-readable (units in the header line) so the file opens cleanly in
+ * Excel or Google Sheets without further fiddling.
+ *
+ * All N values are crop-available (same convention as the report cards);
+ * P and K are total content per the RB209 model.
+ */
+function buildCsv(rows: ReportRow[], settings: Settings, groups: Group[]): string {
+  // Build a lookup map so we can resolve group names per row.
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
+
+  // Header row — units in the column names so receivers don't have to guess.
+  const lines: string[] = [];
+  lines.push(csvRow([
+    'Field',
+    'Group',
+    `Area (${settings.unitSystem === 'acres' ? 'ac' : 'ha'})`,
+    'Soil type',
+    'Last cut date',
+    'Next cut',
+    'Status',
+    'Target N (kg/ha)',
+    'Applied N (kg/ha)',
+    'Planned N (kg/ha)',
+    'Remaining N (kg/ha)',
+    'Target P2O5 (kg/ha)',
+    'Applied P2O5 (kg/ha)',
+    'Planned P2O5 (kg/ha)',
+    'Remaining P2O5 (kg/ha)',
+    'Target K2O (kg/ha)',
+    'Applied K2O (kg/ha)',
+    'Planned K2O (kg/ha)',
+    'Remaining K2O (kg/ha)',
+    'Remaining N total (kg)',
+    'Remaining P2O5 total (kg)',
+    'Remaining K2O total (kg)',
+    'Season N applied (kg/ha)',
+    'Annual N cap (kg/ha)',
+  ]));
+
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  rows.forEach((r) => {
+    const f = r.state.field;
+    const areaVal = settings.unitSystem === 'acres' ? f.acres : f.ha;
+    const groupName = f.group_id ? (groupNameById.get(f.group_id) ?? '') : '';
+    const statusLabel =
+      r.status === 'covered'     ? 'Covered' :
+      r.status === 'short_n'     ? 'Short of N' :
+      r.status === 'short_p'     ? 'Short of P' :
+      r.status === 'short_k'     ? 'Short of K' :
+                                   'Multiple shortfalls';
+    lines.push(csvRow([
+      f.name,
+      groupName,
+      round1(areaVal),
+      SOIL_TYPE_SHORT_LABELS[getSoilType(f)],
+      r.state.lastCut?.cut_date ?? '',
+      NEXT_CUT_LABELS[r.state.nextCutType],
+      statusLabel,
+      round1(r.target.n),
+      round1(r.applied.n),
+      round1(r.planned.n),
+      round1(r.remaining.n),
+      round1(r.target.p),
+      round1(r.applied.p),
+      round1(r.planned.p),
+      round1(r.remaining.p),
+      round1(r.target.k),
+      round1(r.applied.k),
+      round1(r.planned.k),
+      round1(r.remaining.k),
+      round1(r.remaining.n * f.ha),
+      round1(r.remaining.p * f.ha),
+      round1(r.remaining.k * f.ha),
+      round1(r.seasonNApplied),
+      r.nCap,
+    ]));
+  });
+
+  return lines.join('\r\n');
 }
 
 function fmtToday(todayIso: string): string {
