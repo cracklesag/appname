@@ -6,8 +6,9 @@ import { NutrientBar } from '@/components/NutrientBar';
 import {
   ApplicationCard, CutEntry, NAvailabilityStrip,
 } from '@/components/FieldDetailCards';
+import { FieldGroupPicker } from '@/components/FieldGroupPicker';
 import {
-  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings,
+  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGroups,
 } from '@/lib/data';
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
@@ -26,12 +27,13 @@ export default async function FieldDetailPage({
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
-  const [field, applications, cuts, products, settings] = await Promise.all([
+  const [field, applications, cuts, products, settings, groups] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),
     loadCutsForField(params.id),
     loadAllProducts(),
     loadSettings(),
+    loadGroups(),
   ]);
 
   if (!field) notFound();
@@ -97,7 +99,11 @@ export default async function FieldDetailPage({
         title={field.name}
         subtitle={(() => {
           const a = displayFieldArea(field, settings.unitSystem);
-          return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut`;
+          const groupName = field.group_id
+            ? (groups.find((g) => g.id === field.group_id)?.name ?? null)
+            : null;
+          const groupBit = groupName ? ` · ${groupName}` : '';
+          return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut${groupBit}`;
         })()}
         backHref="/"
       />
@@ -109,6 +115,18 @@ export default async function FieldDetailPage({
 
       {tab === 'overview' && (
         <div style={{ padding: 16 }}>
+          {/* Group */}
+          <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="label" style={{ margin: 0, flexShrink: 0 }}>Group</div>
+            <div style={{ flex: 1 }}>
+              <FieldGroupPicker
+                fieldId={field.id}
+                currentGroupId={field.group_id}
+                groups={groups}
+              />
+            </div>
+          </div>
+
           {/* Soil sample */}
           {field.sampled ? (
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>

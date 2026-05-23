@@ -2,17 +2,23 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Save } from 'lucide-react';
-import { CutType } from '@/lib/types';
+import { Save, Plus, X } from 'lucide-react';
+import { CutType, Group } from '@/lib/types';
 import { CUT_TYPE_LABELS } from '@/lib/rules';
-import { createField } from '@/lib/actions';
+import { createField, createGroup } from '@/lib/actions';
 import { validateAcres, validateHa } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 // Conversion: 1 ha = 2.4711 acres
 const ACRES_PER_HA = 2.4711;
 
-export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' }) {
+export function AddFieldForm({
+  unitSystem,
+  groups: initialGroups,
+}: {
+  unitSystem: 'acres' | 'hectares';
+  groups: Group[];
+}) {
   const [name, setName] = useState('');
   // Size input is in the user's preferred system; the other side is derived
   const [size, setSize] = useState('');
@@ -21,6 +27,16 @@ export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' 
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Group state — keep groups list local so a newly-created one appears
+  // immediately without a page reload.
+  const [groups, setGroups] = useState<Group[]>(initialGroups);
+  const [groupId, setGroupId] = useState<string>('');  // '' = ungrouped
+  // Inline "+ New group" mini-form, hidden until user opens it.
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
 
   // Compute the missing side so the database always has both
   const sizeNum = parseFloat(size);
@@ -54,6 +70,34 @@ export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' 
 
   const canSubmit = name.trim().length > 0 && acresNum > 0 && haNum > 0 && !hasHardError && cutProfile >= 1 && cutProfile <= 4 && !submitting;
 
+  async function handleCreateGroup() {
+    setGroupError(null);
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    setCreatingGroup(true);
+    try {
+      const fd = new FormData();
+      fd.set('name', trimmed);
+      const newGroup = await createGroup(fd);
+      // Optimistically append to local list and auto-select the new group
+      // so the user doesn't have to scroll through the dropdown for it.
+      setGroups((prev) => [...prev, {
+        id: newGroup.id,
+        user_id: '',  // not used in the picker
+        name: newGroup.name,
+        sort_order: prev.length,
+        created_at: new Date().toISOString(),
+      }]);
+      setGroupId(newGroup.id);
+      setNewGroupName('');
+      setShowNewGroup(false);
+    } catch (err) {
+      if (err instanceof Error) setGroupError(err.message);
+    } finally {
+      setCreatingGroup(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -76,6 +120,7 @@ export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' 
       <input type="hidden" name="acres" value={acres} />
       <input type="hidden" name="ha" value={ha} />
       <input type="hidden" name="cut_profile" value={cutProfile} />
+      <input type="hidden" name="group_id" value={groupId} />
       {plannedCuts.map((t, i) => (
         <input key={i} type="hidden" name={`cut_${i}`} value={t} />
       ))}
@@ -121,6 +166,89 @@ export function AddFieldForm({ unitSystem }: { unitSystem: 'acres' | 'hectares' 
                 {unitSystem === 'acres'
                   ? `≈ ${ha} ha`
                   : `≈ ${acres} ac`}
+              </div>
+            )}
+          </div>
+
+          {/* Group picker */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <div className="label" style={{ fontSize: 11 }}>Group (optional)</div>
+              {!showNewGroup && (
+                <button
+                  type="button"
+                  onClick={() => { setShowNewGroup(true); setGroupError(null); }}
+                  style={{
+                    border: 'none', background: 'transparent', padding: 0,
+                    color: 'var(--forest-dark, #3d5b29)', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <Plus size={12} /> New
+                </button>
+              )}
+            </div>
+            {!showNewGroup ? (
+              <select
+                className="select"
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+                style={{ marginTop: 4 }}
+              >
+                <option value="">— Ungrouped —</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            ) : (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    type="text"
+                    className="input"
+                    autoFocus
+                    placeholder="New group name"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleCreateGroup(); }
+                      if (e.key === 'Escape') {
+                        setShowNewGroup(false);
+                        setNewGroupName('');
+                        setGroupError(null);
+                      }
+                    }}
+                    maxLength={80}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateGroup}
+                    disabled={creatingGroup || !newGroupName.trim()}
+                    className="btn-primary"
+                    style={{ padding: '0 12px', fontSize: 13 }}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewGroup(false);
+                      setNewGroupName('');
+                      setGroupError(null);
+                    }}
+                    className="btn-ghost"
+                    style={{ padding: '0 10px' }}
+                    aria-label="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {groupError && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red, #b85b3a)' }}>
+                    {groupError}
+                  </div>
+                )}
               </div>
             )}
           </div>
