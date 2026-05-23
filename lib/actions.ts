@@ -306,6 +306,9 @@ export async function createField(formData: FormData) {
     plannedCuts.push((v ? String(v) : 'silage') as CutType);
   }
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  // Optional group assignment — empty string or absence means "ungrouped".
+  const rawGroupId = String(formData.get('group_id') ?? '').trim();
+  const groupId: string | null = rawGroupId === '' ? null : rawGroupId;
 
   // Validation: name required, acres > 0, ha > 0, cut profile 1-4
   if (!name) throw new Error('Field name is required');
@@ -315,6 +318,7 @@ export async function createField(formData: FormData) {
 
   const { data, error } = await supabase.from('fields').insert({
     user_id: user.id,
+    group_id: groupId,
     name,
     acres,
     ha,
@@ -747,3 +751,178 @@ export async function deleteCustomProduct(formData: FormData) {
   redirect('/products');
 }
 
+// =====================================================================
+// GROUPS (blocks of land)
+// =====================================================================
+//
+// Users group fields into named blocks for filtering and reporting.
+// One group per field; deletion ungroups affected fields rather than
+// removing them (FK ON DELETE SET NULL on fields.group_id).
+
+/** Trim and normalise a group name; throws if empty or too long. */
+function normaliseGroupName(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) throw new Error('Group name is required');
+  if (s.length > 80) throw new Error('Group name is too long (max 80 chars)');
+  return s;
+}
+
+export async function createGroup(formData: FormData): Promise<{ id: string; name: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const name = normaliseGroupName(formData.get('name'));
+
+  // Pick a sort_order at the end of the current list so new groups land
+  // last rather than jostling the user's existing order.
+  const { data: existing } = await supabase
+    .from('groups')
+    .select('sort_order')
+    .eq('user_id', user.id)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextSort = (existing?.sort_order ?? -1) + 1;
+
+  const { data, error } = await supabase.from('groups').insert({
+    user_id: user.id,
+    name,
+    sort_order: nextSort,
+  }).select('id, name').single();
+  if (error) {
+    if (error.code === '23505') throw new Error(`A group named "${name}" already exists.`);
+    throw new Error(`Could not create group: ${error.message}`);
+  }
+
+  revalidatePath('/settings/groups');
+  revalidatePath('/', 'layout');
+  return { id: data.id, name: data.name };
+}
+
+export async function renameGroup(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id') ?? '').trim();
+  const name = normaliseGroupName(formData.get('name'));
+  if (!id) throw new Error('Group id is required');
+
+  // RLS already blocks updates to other users' rows, but filter user_id
+  // explicitly as belt + braces.
+  const { error } = await supabase
+    .from('groups')
+    .update({ name })
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) {
+    if (error.code === '23505') throw new Error(`A group named "${name}" already exists.`);
+    throw new Error(`Could not rename group: ${error.message}`);
+  }
+
+  revalidatePath('/settings/groups');
+  revalidatePath('/', 'layout');
+}
+
+export async function deleteGroup(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('Group id is required');
+
+  // ON DELETE SET NULL on fields.group_id means affected fields just
+  // become ungrouped, no extra cleanup needed.
+  const { error } = await supabase
+    .from('groups')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not delete group: ${error.message}`);
+
+  revalidatePath('/settings/groups');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Move a group up or down one slot in the sort order. Swaps sort_order
+ * with the adjacent group rather than rebuilding the whole sequence —
+ * less data to write and works with concurrent edits.
+ *
+ * Direction is 'up' (smaller sort_order, appears earlier) or 'down'.
+ */
+export async function moveGroup(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id') ?? '').trim();
+  const direction = String(formData.get('direction') ?? '') as 'up' | 'down';
+  if (!id) throw new Error('Group id is required');
+  if (direction !== 'up' && direction !== 'down') throw new Error('Invalid direction');
+
+  // Fetch current group + neighbour in one round-trip each.
+  const { data: current } = await supabase
+    .from('groups')
+    .select('id, sort_order')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!current) return; // silently no-op if missing
+
+  // Find the immediate neighbour in the requested direction.
+  // 'up'   = neighbour with the largest sort_order that's < current.sort_order
+  // 'down' = neighbour with the smallest sort_order that's > current.sort_order
+  const neighbourQuery = supabase
+    .from('groups')
+    .select('id, sort_order')
+    .eq('user_id', user.id);
+  const { data: neighbour } = direction === 'up'
+    ? await neighbourQuery
+        .lt('sort_order', current.sort_order)
+        .order('sort_order', { ascending: false })
+        .limit(1).maybeSingle()
+    : await neighbourQuery
+        .gt('sort_order', current.sort_order)
+        .order('sort_order', { ascending: true })
+        .limit(1).maybeSingle();
+  if (!neighbour) return; // already at top/bottom — no-op
+
+  // Swap. Two updates; not transactional but worst case is a momentary
+  // out-of-order state that the next read fixes.
+  await supabase.from('groups').update({ sort_order: neighbour.sort_order })
+    .eq('id', current.id).eq('user_id', user.id);
+  await supabase.from('groups').update({ sort_order: current.sort_order })
+    .eq('id', neighbour.id).eq('user_id', user.id);
+
+  revalidatePath('/settings/groups');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Change a single field's group assignment. Used from the field detail page
+ * and the field add/edit form. Empty string clears the group (sets to null).
+ */
+export async function setFieldGroup(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field id is required');
+  const rawGroupId = String(formData.get('group_id') ?? '').trim();
+  const groupId: string | null = rawGroupId === '' ? null : rawGroupId;
+
+  const { error } = await supabase
+    .from('fields')
+    .update({ group_id: groupId, updated_at: new Date().toISOString() })
+    .eq('id', fieldId)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not update group: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  revalidatePath('/settings/groups');
+}

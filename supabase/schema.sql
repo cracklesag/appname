@@ -6,10 +6,26 @@
 -- data even in single-tenant mode.
 -- =====================================================================
 
+-- ---------- GROUPS (blocks of land) ----------
+-- Named groupings of fields, e.g. "Top Farm", "River Meadows".
+-- One group per field; created and managed by the user. Deleting a group
+-- ungroups its fields rather than deleting them (ON DELETE SET NULL on the
+-- fields.group_id FK below).
+create table public.groups (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  name        text not null,
+  sort_order  int  not null default 0,
+  created_at  timestamptz not null default now(),
+  unique (user_id, name)
+);
+create index groups_user_sort_idx on public.groups (user_id, sort_order, name);
+
 -- ---------- FIELDS ----------
 create table public.fields (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid references auth.users(id) on delete cascade not null,
+  group_id     uuid references public.groups(id) on delete set null,
   name         text not null,
   acres        numeric not null check (acres > 0),
   ha           numeric not null check (ha > 0),
@@ -27,6 +43,7 @@ create table public.fields (
   updated_at   timestamptz not null default now()
 );
 create index on public.fields (user_id);
+create index fields_group_id_idx on public.fields (group_id) where group_id is not null;
 
 -- ---------- PRODUCTS ----------
 -- Shared catalogue + user-owned custom rows. user_id IS NULL → shared row
@@ -119,6 +136,7 @@ create table public.settings (
 -- ROW-LEVEL SECURITY
 -- =====================================================================
 alter table public.fields       enable row level security;
+alter table public.groups       enable row level security;
 alter table public.applications enable row level security;
 alter table public.cuts         enable row level security;
 alter table public.settings     enable row level security;
@@ -152,6 +170,12 @@ create policy "users select own fields"  on public.fields for select using (auth
 create policy "users insert own fields"  on public.fields for insert with check (auth.uid() = user_id);
 create policy "users update own fields"  on public.fields for update using (auth.uid() = user_id);
 create policy "users delete own fields"  on public.fields for delete using (auth.uid() = user_id);
+
+-- Groups: own rows only
+create policy "users select own groups"  on public.groups for select using (auth.uid() = user_id);
+create policy "users insert own groups"  on public.groups for insert with check (auth.uid() = user_id);
+create policy "users update own groups"  on public.groups for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "users delete own groups"  on public.groups for delete using (auth.uid() = user_id);
 
 -- Applications: own rows only
 create policy "users select own applications"  on public.applications for select using (auth.uid() = user_id);

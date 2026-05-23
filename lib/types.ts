@@ -27,6 +27,7 @@ export type ProductCategory =
 export interface Field {
   id: string;
   user_id: string;
+  group_id: string | null;
   name: string;
   acres: number;
   ha: number;
@@ -43,6 +44,20 @@ export interface Field {
   needs_setup: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * A user-named grouping of fields ("block of land"). Plain entity — no
+ * cascading rules, no nutrient defaults yet. Fields reference these via
+ * fields.group_id; deleting a group sets that FK to null, leaving the
+ * fields ungrouped rather than orphaned.
+ */
+export interface Group {
+  id: string;
+  user_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface Product {

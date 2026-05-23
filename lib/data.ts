@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, Cut, DEFAULT_SETTINGS, Field, Product, Settings } from './types';
+import { Application, Cut, DEFAULT_SETTINGS, Field, Group, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -13,6 +13,16 @@ export async function loadFields(): Promise<Field[]> {
   const { data, error } = await supabase.from('fields').select('*').order('name');
   if (error) throw error;
   return (data || []) as Field[];
+}
+
+export async function loadGroups(): Promise<Group[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('groups').select('*')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return (data || []) as Group[];
 }
 
 export async function loadField(id: string): Promise<Field | null> {
