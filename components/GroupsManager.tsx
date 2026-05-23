@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { ChevronUp, ChevronDown, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronUp, ChevronDown, ChevronRight, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
 import { Group } from '@/lib/types';
 import {
   createGroup,
@@ -123,7 +124,8 @@ export function GroupsManager({
     <div style={{ padding: 16 }}>
       <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
         Group fields into named blocks of land — useful for filtering the home dashboard,
-        reports and activity. Deleting a group leaves its fields ungrouped, not deleted.
+        reports and activity. Tap a group to add or remove fields. Deleting a group leaves
+        its fields ungrouped, not deleted.
       </div>
 
       {/* Create */}
@@ -210,7 +212,7 @@ export function GroupsManager({
                 </button>
               </div>
 
-              {/* Name + count */}
+              {/* Name + count — clickable to open the membership editor */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {isEditing ? (
                   <input
@@ -227,14 +229,26 @@ export function GroupsManager({
                     style={{ fontSize: 14, fontWeight: 700 }}
                   />
                 ) : (
-                  <>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-                      {g.name}
+                  <Link
+                    href={`/settings/groups/${g.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      textDecoration: 'none',
+                      color: 'inherit',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+                        {g.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                        {count} field{count === 1 ? '' : 's'} · tap to manage
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                      {count} field{count === 1 ? '' : 's'}
-                    </div>
-                  </>
+                    <ChevronRight size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                  </Link>
                 )}
               </div>
 

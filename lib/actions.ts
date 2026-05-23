@@ -941,3 +941,79 @@ export async function setFieldGroup(formData: FormData) {
   revalidatePath('/');
   revalidatePath('/settings/groups');
 }
+/**
+ * Replace a group's membership wholesale. The provided fieldIds become the
+ * new set of fields belonging to the group; anything previously in the
+ * group that's not in the list gets ungrouped.
+ *
+ * Two-statement approach (not transactional but the worst case is a brief
+ * intermediate state):
+ *   1. Clear the group from any field currently in it that's not in the new
+ *      list — `group_id = null where group_id = :groupId and id not in :keep`
+ *   2. Assign the group to all fields in the new list (covers both "new
+ *      additions" and idempotent re-assigns of existing members) —
+ *      `group_id = :groupId where id in :fieldIds and user_id = :user`
+ *
+ * The user_id filter on step 2 is essential — it stops a malicious caller
+ * from grabbing fields they don't own. Step 1 is implicitly safe because
+ * the group itself is filtered to the user via RLS.
+ */
+export async function setGroupMembership(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const groupId = String(formData.get('group_id') ?? '').trim();
+  if (!groupId) throw new Error('Group id is required');
+
+  // Parse the comma-separated field IDs. Empty string is valid — means
+  // "no fields in this group".
+  const fieldIdsRaw = String(formData.get('field_ids') ?? '').trim();
+  const fieldIds = fieldIdsRaw === '' ? [] : fieldIdsRaw.split(',').filter(Boolean);
+
+  // Verify the group belongs to this user — RLS would block the writes
+  // anyway, but failing loudly here gives a better error message.
+  const { data: groupRow, error: groupErr } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', groupId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (groupErr || !groupRow) throw new Error('Group not found or not yours');
+
+  // Step 1: ungroup any field currently in the group that's not in the new list.
+  // PostgREST's `not.in` expects `(a,b,c)` — empty list means "remove all".
+  if (fieldIds.length === 0) {
+    const { error } = await supabase
+      .from('fields')
+      .update({ group_id: null, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('group_id', groupId);
+    if (error) throw new Error(`Could not clear group: ${error.message}`);
+  } else {
+    const { error } = await supabase
+      .from('fields')
+      .update({ group_id: null, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('group_id', groupId)
+      .not('id', 'in', `(${fieldIds.map((id) => `"${id}"`).join(',')})`);
+    if (error) throw new Error(`Could not clear removed fields: ${error.message}`);
+
+    // Step 2: assign the group to the new list. Idempotent — existing
+    // members get set to the same value, new additions get the new value,
+    // fields moved from another group get reassigned.
+    const { error: assignErr } = await supabase
+      .from('fields')
+      .update({ group_id: groupId, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .in('id', fieldIds);
+    if (assignErr) throw new Error(`Could not assign fields: ${assignErr.message}`);
+  }
+
+  revalidatePath('/settings/groups');
+  revalidatePath(`/settings/groups/${groupId}`);
+  revalidatePath('/');
+  revalidatePath('/activity');
+  revalidatePath('/reports/spreading');
+  revalidatePath('/reports/grazing');
+}
