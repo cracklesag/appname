@@ -6,6 +6,7 @@ import {
   loadAllApplications,
   loadAllCuts,
   loadAllProducts,
+  loadGroups,
   loadSettings,
 } from '@/lib/data';
 import { getSeasonStart } from '@/lib/rules';
@@ -40,16 +41,17 @@ function isoDaysAgo(todayIso: string, days: number): string {
 export default async function SpreadingReportPage({
   searchParams,
 }: {
-  searchParams: { mode?: ReportMode; window?: string; fields?: string };
+  searchParams: { mode?: ReportMode; window?: string; fields?: string; group?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products] = await Promise.all([
+  const [fields, applications, cuts, products, groups] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
+    loadGroups(),
   ]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -67,10 +69,12 @@ export default async function SpreadingReportPage({
         initialMode={mode}
         initialWindowDays={windowDays}
         initialFieldsParam={searchParams.fields ?? null}
+        initialGroupParam={searchParams.group ?? null}
         fields={fields}
         applications={applications}
         cuts={cuts}
         products={products}
+        groups={groups}
         settings={settings}
         seasonStart={seasonStart}
         todayIso={todayIso}

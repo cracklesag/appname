@@ -2,10 +2,12 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { FilterChips } from '@/components/FilterChips';
 import {
   Application,
   Cut,
   Field,
+  Group,
   Product,
   Settings,
 } from '@/lib/types';
@@ -68,10 +70,12 @@ export function SpreadingReportShell({
   initialMode,
   initialWindowDays,
   initialFieldsParam,
+  initialGroupParam,
   fields,
   applications,
   cuts,
   products,
+  groups,
   settings,
   seasonStart,
   todayIso,
@@ -79,10 +83,12 @@ export function SpreadingReportShell({
   initialMode: ReportMode;
   initialWindowDays: number;
   initialFieldsParam: string | null;
+  initialGroupParam: string | null;
   fields: Field[];
   applications: Application[];
   cuts: Cut[];
   products: Product[];
+  groups: Group[];
   settings: Settings;
   seasonStart: string;
   todayIso: string;
@@ -94,12 +100,20 @@ export function SpreadingReportShell({
   const mode = (params.get('mode') as ReportMode | null) ?? initialMode;
   const windowDays = clampWindow(parseInt(params.get('window') ?? String(initialWindowDays), 10));
   const fieldsParam = params.get('fields') ?? initialFieldsParam ?? null;
+  const groupFilter = params.get('group') ?? initialGroupParam ?? 'all';
 
   // Calibration params — all URL-backed so the report is shareable / reloadable.
   // `split` = 'single' (default) | 'split'
   // `total` = 2 | 3 (only meaningful when split)
   // `dressing` = 1 | 2 | 3 (which dressing this is — 1-indexed)
-  // Plan rates: empty string or 0 means "not planning this input".
+  //
+  // "Active" flag and "rate value" are stored as separate URL params so that
+  // the user can tick the checkbox before typing a rate without the URL
+  // writer treating the empty rate as "unchecked". The earlier single-param
+  // approach mis-fired when toggling: ticking with no value wrote an empty
+  // string, which the URL writer deleted, bouncing the checkbox back off.
+  //   slurry_on=1 / solid_on=1 / n_on=1  — opt-in flags
+  //   plan_slurry / plan_solid / plan_n  — rate values (may be empty)
   const split = (params.get('split') === 'split') ? 'split' as const : 'single' as const;
   const totalDressings = clampInt(params.get('total'), 2, 3, 2);
   const dressingNumber = clampInt(params.get('dressing'), 1, totalDressings, 1);
@@ -109,11 +123,12 @@ export function SpreadingReportShell({
   const planSlurry = parseFloat(planSlurryRaw);
   const planSolid = parseFloat(planSolidRaw);
   const planN = parseFloat(planNRaw);
-  // "checked" = the user has decided to include this input. Empty input
-  // means unchecked; numeric (even zero) means checked.
-  const slurryActive = planSlurryRaw !== '';
-  const solidActive = planSolidRaw !== '';
-  const granularActive = planNRaw !== '';
+  // Active flag in URL — explicit `*_on=1` is the canonical source. For
+  // back-compat with old shared URLs that only had `plan_*=value`, treat
+  // the presence of any numeric value as implicit-active.
+  const slurryActive = params.get('slurry_on') === '1' || (planSlurryRaw !== '' && !isNaN(planSlurry));
+  const solidActive = params.get('solid_on') === '1' || (planSolidRaw !== '' && !isNaN(planSolid));
+  const granularActive = params.get('n_on') === '1' || (planNRaw !== '' && !isNaN(planN));
 
   // ---- Derive each field's per-season state once -------------------
   //
@@ -154,6 +169,15 @@ export function SpreadingReportShell({
   const eligibleStates: FieldState[] = useMemo(() => {
     return fieldStates.filter((s) => {
       if (s.nextCutType === 'complete') return false;
+      // Group filter — applied alongside mode eligibility so the chip
+      // narrows the picker list without changing which mode it's in.
+      if (groupFilter !== 'all') {
+        if (groupFilter === 'unassigned') {
+          if (s.field.group_id) return false;
+        } else if (s.field.group_id !== groupFilter) {
+          return false;
+        }
+      }
       if (mode === 'spring') {
         // Zero cuts taken this season — captures both silage prep and
         // grazing kick-off. Spring report works regardless of next-cut type.
@@ -174,7 +198,7 @@ export function SpreadingReportShell({
       if (s.daysSinceLastCut != null && s.daysSinceLastCut <= windowDays) return false;
       return true;
     });
-  }, [fieldStates, mode, windowDays]);
+  }, [fieldStates, mode, windowDays, groupFilter]);
 
   // Selected field IDs — read from the URL param. "all" or absent =
   // every eligible field. Specific list overrides that.
@@ -192,12 +216,16 @@ export function SpreadingReportShell({
       mode?: ReportMode;
       windowDays?: number;
       selected?: 'all' | string[];
+      group?: string;  // 'all' | group id | 'unassigned'
       split?: 'single' | 'split';
       totalDressings?: number;
       dressingNumber?: number;
       planSlurry?: string;   // empty string = remove from URL = unchecked
       planSolid?: string;
       planN?: string;
+      slurryOn?: boolean;
+      solidOn?: boolean;
+      granularOn?: boolean;
     }) => {
       const sp = new URLSearchParams(params.toString());
       if (next.mode !== undefined) {
@@ -219,6 +247,13 @@ export function SpreadingReportShell({
         } else {
           sp.set('fields', next.selected.join(','));
         }
+      }
+      if (next.group !== undefined) {
+        // Group narrows eligibility → drop manual field selection so it
+        // doesn't bleed in fields outside the new group.
+        if (next.group === 'all') sp.delete('group');
+        else sp.set('group', next.group);
+        sp.delete('fields');
       }
       if (next.split !== undefined) {
         if (next.split === 'single') {
@@ -250,6 +285,18 @@ export function SpreadingReportShell({
         if (val === undefined) continue;
         if (val === '') sp.delete(key);
         else sp.set(key, val);
+      }
+      // Active-flag updates: true sets '1', false removes the key. These
+      // are separate from the rate values so the checkbox state survives
+      // even when no rate has been typed yet.
+      for (const [key, val] of [
+        ['slurry_on', next.slurryOn],
+        ['solid_on', next.solidOn],
+        ['n_on', next.granularOn],
+      ] as const) {
+        if (val === undefined) continue;
+        if (val) sp.set(key, '1');
+        else sp.delete(key);
       }
       router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     },
@@ -355,8 +402,55 @@ export function SpreadingReportShell({
         </div>
       )}
 
+      {/* Group filter — chip row above the field selection. Only shows when
+          groups exist. Same options shape as the home dashboard. */}
+      {groups.length > 0 && (() => {
+        const anyUngrouped = fields.some((f) => !f.group_id);
+        const opts: { value: string; label: string }[] = [
+          { value: 'all', label: 'All groups' },
+          ...groups.map((g) => ({ value: g.id, label: g.name })),
+          ...(anyUngrouped ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
+        ];
+        return (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Group</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {opts.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
+                  onClick={() => writeUrl({ group: o.value })}
+                  style={{ fontSize: 13, padding: '6px 12px' }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Field selection */}
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+        {/* Group filter — chip row, only when groups exist */}
+        {groups.length > 0 && (() => {
+          const anyUngroupedField = fields.some((f) => !f.group_id);
+          const opts = [
+            { value: 'all', label: 'All groups' },
+            ...groups.map((g) => ({ value: g.id, label: g.name })),
+            ...(anyUngroupedField ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
+          ];
+          return (
+            <div style={{ marginBottom: 10 }}>
+              <FilterChips
+                paramName="group"
+                ariaLabel="Filter by group"
+                options={opts}
+              />
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div>
             <div className="label" style={{ margin: 0 }}>Fields</div>
@@ -514,7 +608,7 @@ export function SpreadingReportShell({
           {/* Slurry */}
           <CalibrationRow
             checked={slurryActive}
-            onToggle={(on) => writeUrl({ planSlurry: on ? String(planSlurry || '') : '' })}
+            onToggle={(on) => writeUrl({ slurryOn: on })}
             label="Slurry"
             sublabel="Dairy slurry 6% DM defaults used for the N/P/K estimate."
             value={planSlurryRaw}
@@ -526,7 +620,7 @@ export function SpreadingReportShell({
           {/* Solid manure */}
           <CalibrationRow
             checked={solidActive}
-            onToggle={(on) => writeUrl({ planSolid: on ? String(planSolid || '') : '' })}
+            onToggle={(on) => writeUrl({ solidOn: on })}
             label="Solid manure"
             sublabel="Cattle FYM defaults used for the N/P/K estimate."
             value={planSolidRaw}
@@ -538,7 +632,7 @@ export function SpreadingReportShell({
           {/* Granular fert (N only) */}
           <CalibrationRow
             checked={granularActive}
-            onToggle={(on) => writeUrl({ planN: on ? String(planN || '') : '' })}
+            onToggle={(on) => writeUrl({ granularOn: on })}
             label="Granular fert (N only)"
             sublabel="Quick estimate — enter the N you're planning; P and K not modelled from this source."
             value={planNRaw}

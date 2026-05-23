@@ -7,6 +7,7 @@ import {
   loadAllCuts,
   loadAllProducts,
   loadFields,
+  loadGroups,
   loadSettings,
 } from '@/lib/data';
 import {
@@ -29,6 +30,8 @@ type Search = {
   period?: 'this_year' | 'last_12m' | 'all' | string;
   /** Filter by the field's next-planned cut type. Default 'active' excludes complete fields. */
   next?: 'active' | NextCutType;
+  /** Filter by the field's group. 'all' (default) | <group_id> | 'unassigned'. */
+  group?: string;
   /** Sort key for the application list. Default date_desc (newest first). */
   sort?: SortKey;
 };
@@ -38,14 +41,16 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const productId = searchParams.product || 'all';
   const period = searchParams.period || 'this_year';
   const nextFilter = searchParams.next || 'active';
+  const groupFilter = searchParams.group || 'all';
   const sortKey: SortKey = searchParams.sort || 'date_desc';
 
-  const [applications, products, fields, cuts, settings] = await Promise.all([
+  const [applications, products, fields, cuts, settings, groups] = await Promise.all([
     loadAllApplications(),
     loadAllProducts(),
     loadFields(),
     loadAllCuts(),
     loadSettings(),
+    loadGroups(),
   ]);
 
   const fieldById = Object.fromEntries(fields.map((f) => [f.id, f]));
@@ -94,6 +99,16 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
     if (!product) return false;
     if (type !== 'all' && product.type !== type) return false;
     if (type === 'bag_fert' && productId !== 'all' && String(a.product_id) !== productId) return false;
+    // Group filter — applied to the application's field's group.
+    if (groupFilter !== 'all') {
+      const field = fieldById[a.field_id];
+      if (!field) return false;
+      if (groupFilter === 'unassigned') {
+        if (field.group_id) return false;
+      } else if (field.group_id !== groupFilter) {
+        return false;
+      }
+    }
     // Next-cut-type filter: drop applications whose field's next-cut-type
     // doesn't match the chip. 'active' = anything not complete.
     const ncType = nextCutTypeByField[a.field_id];
@@ -194,12 +209,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const bagProducts = products.filter((p) => p.type === 'bag_fert');
 
   const baseHref = (overrides: Partial<Search>) => {
-    const merged = { type, product: productId, period, next: nextFilter, sort: sortKey, ...overrides };
+    const merged = { type, product: productId, period, next: nextFilter, group: groupFilter, sort: sortKey, ...overrides };
     const sp = new URLSearchParams();
     if (merged.type && merged.type !== 'all') sp.set('type', merged.type);
     if (merged.type === 'bag_fert' && merged.product && merged.product !== 'all') sp.set('product', String(merged.product));
     if (merged.period && merged.period !== 'this_year') sp.set('period', String(merged.period));
     if (merged.next && merged.next !== 'active') sp.set('next', String(merged.next));
+    if (merged.group && merged.group !== 'all') sp.set('group', String(merged.group));
     if (merged.sort && merged.sort !== 'date_desc') sp.set('sort', String(merged.sort));
     const q = sp.toString();
     return `/activity${q ? `?${q}` : ''}`;
@@ -210,6 +226,22 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
       <Header title="Activity" subtitle="Cross-farm history" />
 
       <div style={{ padding: '12px 16px 0' }}>
+        {/* Filter chips — group. URL param: ?group= */}
+        {groups.length > 0 && (() => {
+          const anyUngroupedField = fields.some((f) => !f.group_id);
+          const opts = [
+            { value: 'all', label: 'All groups' },
+            ...groups.map((g) => ({ value: g.id, label: g.name })),
+            ...(anyUngroupedField ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
+          ];
+          return (
+            <FilterChips
+              paramName="group"
+              ariaLabel="Filter by group"
+              options={opts}
+            />
+          );
+        })()}
         <FilterChips
           paramName="next"
           ariaLabel="Filter by next cut type"
@@ -252,6 +284,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
           {type !== 'all' && <input type="hidden" name="type" value={type} />}
           {/* hidden field to preserve the next-cut filter across form submit */}
           {nextFilter !== 'active' && <input type="hidden" name="next" value={nextFilter} />}
+          {/* hidden field to preserve the group filter across form submit */}
+          {groupFilter !== 'all' && <input type="hidden" name="group" value={groupFilter} />}
 
           <div style={{ marginBottom: 10 }}>
             <div className="label" style={{ marginBottom: 6 }}>Period</div>
