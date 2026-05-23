@@ -41,7 +41,10 @@ export const NEXT_CUT_LABELS: Record<NextCutType, string> = {
   silage: 'Silage',
   bales: 'Bales',
   grazing: 'Grazing',
-  complete: 'Complete',
+  // "Cuts done" rather than "Complete" — a grass field still has grazing
+  // potential after its planned cuts are taken. Only truly inactive when
+  // overwintered or non-grass crops are harvested (chunk for later).
+  complete: 'Cuts done',
 };
 
 // ---- Soil sample age ----------------------------------------------

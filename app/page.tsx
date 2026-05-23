@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ChevronRight, Plus, FileUp } from 'lucide-react';
+import { ChevronRight, Plus, FileUp, FileText } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { MiniBar } from '@/components/NutrientBar';
 import { FilterChips } from '@/components/FilterChips';
@@ -182,6 +182,25 @@ export default async function HomePage({
               <FileUp size={14} /> Import
             </Link>
             <Link
+              href="/reports/spreading"
+              className="icon-btn"
+              aria-label="Spreading report"
+              style={{
+                border: '1px solid var(--line)',
+                borderRadius: 4,
+                padding: '6px 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--ink-soft)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                textDecoration: 'none',
+              }}
+            >
+              <FileText size={14} /> Report
+            </Link>
+            <Link
               href="/fields/new"
               className="icon-btn"
               aria-label="Add field"
@@ -215,7 +234,7 @@ export default async function HomePage({
                 { value: 'silage',   label: 'Silage' },
                 { value: 'bales',    label: 'Bales' },
                 { value: 'grazing',  label: 'Grazing' },
-                { value: 'complete', label: 'Complete' },
+                { value: 'complete', label: 'Cuts done' },
               ]}
             />
             {/* Filter chips — shortfall. URL param: ?short= */}

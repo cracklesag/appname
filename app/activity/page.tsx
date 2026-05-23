@@ -218,7 +218,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             { value: 'silage',   label: 'Silage' },
             { value: 'bales',    label: 'Bales' },
             { value: 'grazing',  label: 'Grazing' },
-            { value: 'complete', label: 'Complete' },
+            { value: 'complete', label: 'Cuts done' },
           ]}
         />
       </div>

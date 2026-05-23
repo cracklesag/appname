@@ -222,6 +222,9 @@ export default async function FieldDetailPage({
                   <NutrientBar label="N"    applied={nView.value} target={nTgt} unit={nView.unit} />
                   <NutrientBar label="P₂O₅" applied={pView.value} target={pTgt} unit={pView.unit} carryover={pCarry} />
                   <NutrientBar label="K₂O"  applied={kView.value} target={kTgt} unit={kView.unit} carryover={kCarry} />
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+                    N shown as crop-available (RB209) — slurry/manure already adjusted for typical losses.
+                  </div>
                   {showSulphurMagnesium && (
                     <div style={{
                       display: 'flex', gap: 18, marginTop: 4, paddingTop: 8,

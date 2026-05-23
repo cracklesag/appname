@@ -258,6 +258,22 @@ export default async function SettingsPage() {
 
       <div style={{ padding: 16 }}>
         <Link
+          href="/reports/spreading"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Spreading report</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              Plan a round of inputs and see remaining shortfall per field
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+        <Link
           href="/products"
           className="card"
           style={{
