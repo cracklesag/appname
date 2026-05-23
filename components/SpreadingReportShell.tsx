@@ -473,37 +473,37 @@ export function SpreadingReportShell({
 
           {split === 'split' && (
             <div style={{ marginTop: 10, paddingLeft: 4 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>Dressing</span>
-                {/* Dressing-number buttons */}
-                {Array.from({ length: totalDressings }, (_, i) => i + 1).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`toggle-btn ${dressingNumber === n ? 'active' : ''}`}
-                    onClick={() => writeUrl({ dressingNumber: n })}
-                    style={{ fontSize: 12, padding: '4px 10px', minWidth: 32 }}
-                  >
-                    {n}
-                  </button>
-                ))}
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>of</span>
-                {/* Total dressings */}
-                {[2, 3].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`toggle-btn ${totalDressings === n ? 'active' : ''}`}
-                    onClick={() => writeUrl({ totalDressings: n })}
-                    style={{ fontSize: 12, padding: '4px 10px', minWidth: 32 }}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
-                This dressing gets {Math.round(thisDressingNShare)}% of N. P and K stay full on every dressing.
-                {' '}First-dressing N % is set in Settings → Report defaults ({splitPct}%).
+              <select
+                className="select"
+                value={`${dressingNumber}/${totalDressings}`}
+                onChange={(e) => {
+                  // value is "<dressing>/<total>" e.g. "1/2"
+                  const [d, t] = e.target.value.split('/').map((x) => parseInt(x, 10));
+                  if (!Number.isFinite(d) || !Number.isFinite(t)) return;
+                  // Update both at once so dressingNumber clamp doesn't fire
+                  // mid-update.
+                  writeUrl({ totalDressings: t, dressingNumber: d });
+                }}
+                style={{ fontSize: 13, padding: '6px 8px', maxWidth: 320 }}
+              >
+                {/* Build the five split options. Front-load % drives the share
+                    for dressing 1; subsequent dressings share the remainder. */}
+                {([
+                  [1, 2], [2, 2],
+                  [1, 3], [2, 3], [3, 3],
+                ] as const).map(([d, t]) => {
+                  const share = d === 1
+                    ? splitPct
+                    : (100 - splitPct) / (t - 1);
+                  return (
+                    <option key={`${d}/${t}`} value={`${d}/${t}`}>
+                      Dressing {d} of {t} — {Math.round(share)}% of N
+                    </option>
+                  );
+                })}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', marginTop: 6 }}>
+                P and K stay full on every dressing. First-dressing N % is set in Settings → Report defaults ({splitPct}%).
               </div>
             </div>
           )}
