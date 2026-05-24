@@ -531,35 +531,60 @@ function FormBody({
           style={{ width: '100%', resize: 'vertical' }}
         />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-        <div>
-          <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>N cap (kg/ha)</div>
-          <input
-            type="number" inputMode="numeric" min="0" max="1000" step="1"
-            className="input"
-            value={nCap}
-            onChange={(e) => setNCap(e.target.value)}
-          />
+
+      {/* N cap — kg N/ha, integer */}
+      <div style={{ marginBottom: 12 }}>
+        <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>
+          Annual N cap (kg N/ha)
         </div>
-        <div>
-          <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>N target ×</div>
-          <input
-            type="number" inputMode="decimal" min="0.01" max="2" step="0.05"
-            className="input"
-            value={nMult}
-            onChange={(e) => setNMult(e.target.value)}
-          />
-        </div>
-        <div>
-          <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>K ×</div>
-          <input
-            type="number" inputMode="decimal" min="0.01" max="2" step="0.05"
-            className="input"
-            value={kMult}
-            onChange={(e) => setKMult(e.target.value)}
-          />
+        <input
+          type="number" inputMode="numeric" min="0" max="1000" step="1"
+          className="input"
+          value={nCap}
+          onChange={(e) => setNCap(e.target.value)}
+          style={{ width: '100%' }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+          Maximum N/ha the report will recommend across the year. Common: 320 PRG, 180 clover-rich, 100 herbal, 360 Italian ryegrass.
         </div>
       </div>
+
+      {/* N target multiplier — decimal, step=any to allow 0.70, 0.65, 1.00 etc */}
+      <div style={{ marginBottom: 12 }}>
+        <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>
+          N target multiplier
+        </div>
+        <input
+          type="number" inputMode="decimal" min="0.01" max="2" step="any"
+          className="input"
+          value={nMult}
+          onChange={(e) => setNMult(e.target.value)}
+          style={{ width: '100%' }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+          Fraction of perennial ryegrass N targets. <strong>1.00 = same as PRG.</strong> 0.70 = 30% less.
+          Typical: 0.70 clover-rich, 0.30 herbal, 1.15 Italian ryegrass.
+        </div>
+      </div>
+
+      {/* K multiplier — decimal, step=any */}
+      <div style={{ marginBottom: 12 }}>
+        <div className="label" style={{ marginBottom: 4, fontSize: 11 }}>
+          K (potash) multiplier
+        </div>
+        <input
+          type="number" inputMode="decimal" min="0.01" max="2" step="any"
+          className="input"
+          value={kMult}
+          onChange={(e) => setKMult(e.target.value)}
+          style={{ width: '100%' }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+          Fraction of perennial ryegrass K₂O offtake. <strong>1.00 = same as PRG.</strong>
+          Typical: 1.00 clover-rich, 0.90 herbal, 1.20 Italian ryegrass.
+        </div>
+      </div>
+
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
         <input
           type="checkbox"
@@ -567,7 +592,7 @@ function FormBody({
           onChange={(e) => setIsLegume(e.target.checked)}
           style={{ width: 16, height: 16 }}
         />
-        <span style={{ color: 'var(--ink)' }}>Legume-rich (clover-suppression advisory)</span>
+        <span style={{ color: 'var(--ink)' }}>Legume-rich (drives clover-suppression advisory in spring)</span>
       </label>
     </>
   );

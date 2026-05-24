@@ -41,7 +41,7 @@ import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 type ReportMode = 'post_cut' | 'spring' | 'mid_season';
 
 const MODE_LABELS: Record<ReportMode, string> = {
-  post_cut: 'Post-cut top-up',
+  post_cut: 'After-cut application',
   spring: 'Spring dressing',
   mid_season: 'Mid-season top-up',
 };
@@ -111,6 +111,10 @@ export function SpreadingReportShell({
   const windowDays = clampWindow(parseInt(params.get('window') ?? String(initialWindowDays), 10));
   const fieldsParam = params.get('fields') ?? initialFieldsParam ?? null;
   const groupFilter = params.get('group') ?? initialGroupParam ?? 'all';
+  // Cut-type filter narrows the eligible fields to those whose NEXT planned
+  // cut matches the chip the user clicked. 'all' = no filter. Always visible
+  // in all modes for consistency, even if certain combinations show empty.
+  const cutTypeFilter = (params.get('cutType') ?? 'all') as 'all' | 'silage' | 'bales' | 'grazing';
 
   // Calibration params — all URL-backed so the report is shareable / reloadable.
   // `split` = 'single' (default) | 'split'
@@ -188,6 +192,16 @@ export function SpreadingReportShell({
           return false;
         }
       }
+      // Cut-type filter — narrows by the field's NEXT planned cut. Fields
+      // whose next cut is silage/bales/grazing show up under the matching
+      // chip. 'all' = no filter. Independent of mode (works the same in
+      // spring / after-cut / mid-season).
+      if (cutTypeFilter !== 'all') {
+        // s.nextCutType is the resolved next planned cut for this field
+        // ('silage' | 'bales' | 'grazing' | 'complete'). 'complete' fields
+        // are already filtered out above, so we can compare directly.
+        if (s.nextCutType !== cutTypeFilter) return false;
+      }
       if (mode === 'spring') {
         // Zero cuts taken this season — captures both silage prep and
         // grazing kick-off. Spring report works regardless of next-cut type.
@@ -208,7 +222,7 @@ export function SpreadingReportShell({
       if (s.daysSinceLastCut != null && s.daysSinceLastCut <= windowDays) return false;
       return true;
     });
-  }, [fieldStates, mode, windowDays, groupFilter]);
+  }, [fieldStates, mode, windowDays, groupFilter, cutTypeFilter]);
 
   // Selected field IDs — read from the URL param. "all" or absent =
   // every eligible field. Specific list overrides that.
@@ -227,6 +241,7 @@ export function SpreadingReportShell({
       windowDays?: number;
       selected?: 'all' | string[];
       group?: string;  // 'all' | group id | 'unassigned'
+      cutType?: string;  // 'all' | 'silage' | 'bales' | 'grazing'
       split?: 'single' | 'split';
       totalDressings?: number;
       dressingNumber?: number;
@@ -263,6 +278,13 @@ export function SpreadingReportShell({
         // doesn't bleed in fields outside the new group.
         if (next.group === 'all') sp.delete('group');
         else sp.set('group', next.group);
+        sp.delete('fields');
+      }
+      if (next.cutType !== undefined) {
+        // Cut-type filter narrows eligibility → drop manual field selection
+        // so the picker tally stays honest.
+        if (next.cutType === 'all') sp.delete('cutType');
+        else sp.set('cutType', next.cutType);
         sp.delete('fields');
       }
       if (next.split !== undefined) {
@@ -360,7 +382,7 @@ export function SpreadingReportShell({
       <div style={{ marginBottom: 14 }}>
         <div className="label" style={{ marginBottom: 6 }}>Report mode</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(['post_cut', 'spring', 'mid_season'] as ReportMode[]).map((m) => (
+          {(['spring', 'post_cut', 'mid_season'] as ReportMode[]).map((m) => (
             <button
               key={m}
               type="button"
@@ -431,6 +453,38 @@ export function SpreadingReportShell({
                   type="button"
                   className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
                   onClick={() => writeUrl({ group: o.value })}
+                  style={{ fontSize: 13, padding: '6px 12px' }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Cut-type filter — chip row narrowing by the field's NEXT planned
+          cut (silage / bales / grazing). Always visible regardless of mode
+          so the user can quickly look at all silage-bound fields, etc.
+          'All' is the default. Resets the field-picker checkbox state on
+          change so the count stays honest. */}
+      {(() => {
+        const opts: { value: 'all' | 'silage' | 'bales' | 'grazing'; label: string }[] = [
+          { value: 'all', label: 'All cut types' },
+          { value: 'silage', label: 'Silage' },
+          { value: 'bales', label: 'Bales' },
+          { value: 'grazing', label: 'Grazing' },
+        ];
+        return (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Next cut type</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {opts.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`toggle-btn ${cutTypeFilter === o.value ? 'active' : ''}`}
+                  onClick={() => writeUrl({ cutType: o.value })}
                   style={{ fontSize: 13, padding: '6px 12px' }}
                 >
                   {o.label}
@@ -697,8 +751,8 @@ export function SpreadingReportShell({
 function EmptyState({ mode }: { mode: ReportMode }) {
   const suggestion =
     mode === 'post_cut' ? 'Nothing cut in the window. Try widening to 30 days, or switch to Spring or Mid-season mode.' :
-    mode === 'spring'   ? 'Every field has already been cut this season. Try Post-cut top-up or Mid-season top-up instead.' :
-                          'No fields between cuts. Try Post-cut top-up if you just cut, or Spring dressing if no cuts yet.';
+    mode === 'spring'   ? 'Every field has already been cut this season. Try After-cut application or Mid-season top-up instead.' :
+                          'No fields between cuts. Try After-cut application if you just cut, or Spring dressing if no cuts yet.';
   return (
     <div style={{ padding: 14, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
       {suggestion}
@@ -1546,6 +1600,7 @@ function buildCsv(rows: ReportRow[], settings: Settings, groups: Group[]): strin
     'Group',
     `Area (${settings.unitSystem === 'acres' ? 'ac' : 'ha'})`,
     'Soil type',
+    'Grass system',
     'Last cut date',
     'Next cut',
     'Status',
@@ -1585,6 +1640,7 @@ function buildCsv(rows: ReportRow[], settings: Settings, groups: Group[]): strin
       groupName,
       round1(areaVal),
       SOIL_TYPE_SHORT_LABELS[getSoilType(f)],
+      r.grassSystem?.short_label ?? '',
       r.state.lastCut?.cut_date ?? '',
       NEXT_CUT_LABELS[r.state.nextCutType],
       statusLabel,

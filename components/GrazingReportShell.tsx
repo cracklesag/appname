@@ -104,6 +104,8 @@ export function GrazingReportShell({
   // shape of the spreading report's eligibleStates so the two feel familiar.
   type FieldState = {
     field: Field;
+    /** Resolved grass system, or undefined when not assigned. */
+    grassSystem: GrassSystem | undefined;
     /** Most recent N-bearing application this season, or undefined if none. */
     lastNApp?: { date: string; nPerHa: number };
     /** Next-due date = lastNApp.date + cadenceWeeks. If no app, today. */
@@ -173,6 +175,7 @@ export function GrazingReportShell({
 
         return {
           field: f,
+          grassSystem: system,
           lastNApp,
           nextDueIso,
           daysToNextDue,
@@ -593,6 +596,7 @@ function buildPlainText(
 function buildCsv(
   states: {
     field: Field;
+    grassSystem: GrassSystem | undefined;
     lastNApp?: { date: string; nPerHa: number };
     nextDueIso: string;
     daysToNextDue: number;
@@ -612,6 +616,7 @@ function buildCsv(
     'Group',
     `Area (${settings.unitSystem === 'acres' ? 'ac' : 'ha'})`,
     'Soil type',
+    'Grass system',
     'Status',
     'Last N date',
     'Last N (kg/ha)',
@@ -641,6 +646,7 @@ function buildCsv(
       groupName,
       round1(areaVal),
       SOIL_TYPE_SHORT_LABELS[getSoilType(f)],
+      s.grassSystem?.short_label ?? '',
       statusLabel,
       s.lastNApp?.date ?? '',
       s.lastNApp ? round1(s.lastNApp.nPerHa) : '',
