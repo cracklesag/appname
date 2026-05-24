@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { GrazingReportShell } from '@/components/GrazingReportShell';
+import { SnapshotReportShell } from '@/components/SnapshotReportShell';
 import {
   loadFields,
   loadAllApplications,
@@ -13,10 +13,10 @@ import { getSeasonStart } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
 
-export default async function GrazingReportPage({
+export default async function SnapshotReportPage({
   searchParams,
 }: {
-  searchParams: { group?: string; window?: string; due?: string; fields?: string };
+  searchParams: { group?: string; next?: string; sort?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
@@ -34,8 +34,8 @@ export default async function GrazingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Grazing top-up" subtitle="N cadence schedule" backHref="/settings" />
-      <GrazingReportShell
+      <Header title="Field snapshot" subtitle="Where everything's at" backHref="/settings" />
+      <SnapshotReportShell
         fields={fields}
         applications={applications}
         cuts={cuts}

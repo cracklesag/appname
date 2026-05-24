@@ -257,12 +257,20 @@ export default async function SettingsPage() {
       </form>
 
       <div style={{ padding: 16 }}>
+        {/* Reports section */}
+        <div style={{
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '0.06em', color: 'var(--muted)',
+          marginBottom: 8, paddingLeft: 2,
+        }}>
+          Reports
+        </div>
         <Link
           href="/reports/spreading"
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+            padding: 14, marginBottom: 8, textDecoration: 'none', color: 'inherit',
           }}
         >
           <div>
@@ -278,7 +286,7 @@ export default async function SettingsPage() {
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+            padding: 14, marginBottom: 8, textDecoration: 'none', color: 'inherit',
           }}
         >
           <div>
@@ -289,6 +297,31 @@ export default async function SettingsPage() {
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
+        <Link
+          href="/reports/snapshot"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 18, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Field snapshot</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              Compact &quot;where everything&apos;s at&quot; — every field, season totals, gaps
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+
+        {/* Tools section */}
+        <div style={{
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '0.06em', color: 'var(--muted)',
+          marginBottom: 8, paddingLeft: 2,
+        }}>
+          Tools
+        </div>
         <Link
           href="/products"
           className="card"

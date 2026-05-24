@@ -64,7 +64,7 @@ export default async function SpreadingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Spreading report" subtitle="Plan and review" backHref="/" />
+      <Header title="Spreading report" subtitle="Plan and review" backHref="/settings" />
       <SpreadingReportShell
         initialMode={mode}
         initialWindowDays={windowDays}
