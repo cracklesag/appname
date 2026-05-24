@@ -8,13 +8,14 @@ import {
 } from '@/components/FieldDetailCards';
 import { FieldGroupPicker } from '@/components/FieldGroupPicker';
 import {
-  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGroups,
+  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups,
 } from '@/lib/data';
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
   getSoilType, SOIL_TYPE_SHORT_LABELS,
   getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, methodLabel,
+  resolveGrassSystem,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 
@@ -28,19 +29,24 @@ export default async function FieldDetailPage({
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
-  const [field, applications, cuts, products, settings, groups] = await Promise.all([
+  const [field, applications, cuts, products, settings, groups, grassSystems] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),
     loadCutsForField(params.id),
     loadAllProducts(),
     loadSettings(),
     loadGroups(),
+    loadGrassSystems(),
   ]);
 
   if (!field) notFound();
 
   const seasonStart = getSeasonStart();
   const seasonLabel = getSeasonLabel();
+
+  // Resolve the field's grass system once — drives N/K multipliers in
+  // getCutTargets and the subtitle line below.
+  const grassSystem = resolveGrassSystem(field, grassSystems);
 
   const fApps = applications; // already date-desc
   const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
@@ -52,7 +58,7 @@ export default async function FieldDetailPage({
   const cutsDone = fCuts.length;
   const nextCutNumber = Math.min(cutsDone + 1, field.cut_profile);
   const cutsRemaining = Math.max(0, field.cut_profile - cutsDone);
-  const targets = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings) : null;
+  const targets = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem) : null;
 
   const appsSinceCut = seasonApps.filter((a) => a.date_applied >= windowStart);
   const sinceCutTotals = sumNutrients(appsSinceCut, products);
@@ -104,7 +110,8 @@ export default async function FieldDetailPage({
             ? (groups.find((g) => g.id === field.group_id)?.name ?? null)
             : null;
           const groupBit = groupName ? ` · ${groupName}` : '';
-          return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut${groupBit}`;
+          const systemBit = grassSystem ? ` · ${grassSystem.short_label}` : '';
+          return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut${groupBit}${systemBit}`;
         })()}
         backHref="/"
       />

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Save, Plus, X } from 'lucide-react';
-import { CutType, Group, SoilType } from '@/lib/types';
+import { CutType, GrassSystem, Group, SoilType } from '@/lib/types';
 import { CUT_TYPE_LABELS, SOIL_TYPE_LABELS } from '@/lib/rules';
 import { createField, createGroup } from '@/lib/actions';
 import { validateAcres, validateHa } from '@/lib/validation';
@@ -15,9 +15,14 @@ const ACRES_PER_HA = 2.4711;
 export function AddFieldForm({
   unitSystem,
   groups: initialGroups,
+  grassSystems,
+  hiddenGrassSystemIds,
 }: {
   unitSystem: 'acres' | 'hectares';
   groups: Group[];
+  grassSystems: GrassSystem[];
+  /** IDs the user has hidden from their dropdown (settings). */
+  hiddenGrassSystemIds: string[];
 }) {
   const [name, setName] = useState('');
   // Size input is in the user's preferred system; the other side is derived
@@ -28,6 +33,20 @@ export function AddFieldForm({
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Grass system state — default to the perennial_ryegrass seed if present,
+  // else the first visible system, else empty (server action will fill in
+  // the PRG default if it can).
+  const visibleGrassSystems = useMemo(() => {
+    const hidden = new Set(hiddenGrassSystemIds);
+    return grassSystems.filter((s) => !hidden.has(s.id));
+  }, [grassSystems, hiddenGrassSystemIds]);
+  const initialGrassSystemId = useMemo(() => {
+    const prg = grassSystems.find((s) => s.seed_key === 'perennial_ryegrass');
+    if (prg) return prg.id;
+    return visibleGrassSystems[0]?.id ?? '';
+  }, [grassSystems, visibleGrassSystems]);
+  const [grassSystemId, setGrassSystemId] = useState<string>(initialGrassSystemId);
 
   // Group state — keep groups list local so a newly-created one appears
   // immediately without a page reload.
@@ -123,6 +142,7 @@ export function AddFieldForm({
       <input type="hidden" name="cut_profile" value={cutProfile} />
       <input type="hidden" name="group_id" value={groupId} />
       <input type="hidden" name="soil_type" value={soilType} />
+      <input type="hidden" name="grass_system_id" value={grassSystemId} />
       {plannedCuts.map((t, i) => (
         <input key={i} type="hidden" name={`cut_${i}`} value={t} />
       ))}
@@ -272,6 +292,33 @@ export function AddFieldForm({
             {soilType === 'medium_loam' && 'Default — no special adjustments.'}
             {soilType === 'heavy_clay' && 'Cold-clay N timing nudge in early-spring reports.'}
             {soilType === 'deep_silt' && 'Treated as loam — no special adjustments.'}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+          <div className="label" style={{ marginBottom: 6 }}>Grass system</div>
+          <select
+            className="select"
+            value={grassSystemId}
+            onChange={(e) => setGrassSystemId(e.target.value)}
+          >
+            {visibleGrassSystems.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {(() => {
+            const selected = grassSystems.find((s) => s.id === grassSystemId);
+            if (!selected?.description) return null;
+            return (
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+                {selected.description}
+              </div>
+            );
+          })()}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+            <Link href="/settings/grass-systems" style={{ color: 'var(--forest-dark, #3d5b29)' }}>
+              Manage available systems
+            </Link>
           </div>
         </div>
 

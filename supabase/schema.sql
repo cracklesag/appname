@@ -21,6 +21,29 @@ create table public.groups (
 );
 create index groups_user_sort_idx on public.groups (user_id, sort_order, name);
 
+-- ---------- GRASS SYSTEMS ----------
+-- Shared seed rows (user_id NULL) + user-owned custom rows. Per-user
+-- visibility hiding is stored in settings JSONB (`hiddenGrassSystemIds`),
+-- not as a join table. Seed rows are inserted by the migration; this file
+-- documents the structure for fresh installs.
+create table public.grass_systems (
+  id                    uuid primary key default gen_random_uuid(),
+  user_id               uuid references auth.users(id) on delete cascade,
+  seed_key              text,
+  name                  text not null,
+  short_label           text not null,
+  description           text,
+  n_cap_kg_per_ha       numeric not null,
+  n_target_multiplier   numeric not null default 1.00 check (n_target_multiplier > 0 and n_target_multiplier <= 2),
+  k_multiplier          numeric not null default 1.00 check (k_multiplier > 0 and k_multiplier <= 2),
+  is_legume_rich        boolean not null default false,
+  sort_order            int not null default 0,
+  created_at            timestamptz not null default now(),
+  unique (user_id, name),
+  unique (seed_key)
+);
+create index grass_systems_user_idx on public.grass_systems (user_id, sort_order, name);
+
 -- ---------- FIELDS ----------
 create table public.fields (
   id           uuid primary key default gen_random_uuid(),
@@ -38,6 +61,7 @@ create table public.fields (
   sample_date  date,
   soil_type    text not null default 'medium_loam'
     check (soil_type in ('light_sand', 'medium_loam', 'heavy_clay', 'deep_silt')),
+  grass_system_id uuid references public.grass_systems(id) on delete set null,
   last_ploughed   date,
   last_reseeded   date,
   notes        text,
@@ -46,6 +70,7 @@ create table public.fields (
 );
 create index on public.fields (user_id);
 create index fields_group_id_idx on public.fields (group_id) where group_id is not null;
+create index fields_grass_system_id_idx on public.fields (grass_system_id);
 
 -- ---------- PRODUCTS ----------
 -- Shared catalogue + user-owned custom rows. user_id IS NULL → shared row
@@ -139,6 +164,7 @@ create table public.settings (
 -- =====================================================================
 alter table public.fields       enable row level security;
 alter table public.groups       enable row level security;
+alter table public.grass_systems enable row level security;
 alter table public.applications enable row level security;
 alter table public.cuts         enable row level security;
 alter table public.settings     enable row level security;
@@ -178,6 +204,21 @@ create policy "users select own groups"  on public.groups for select using (auth
 create policy "users insert own groups"  on public.groups for insert with check (auth.uid() = user_id);
 create policy "users update own groups"  on public.groups for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "users delete own groups"  on public.groups for delete using (auth.uid() = user_id);
+
+-- Grass systems: shared (user_id IS NULL, read-only) + own rows
+create policy "users select shared or own grass systems"
+  on public.grass_systems for select
+  using (user_id is null or user_id = auth.uid());
+create policy "users insert own grass systems"
+  on public.grass_systems for insert
+  with check (user_id = auth.uid());
+create policy "users update own grass systems"
+  on public.grass_systems for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+create policy "users delete own grass systems"
+  on public.grass_systems for delete
+  using (user_id = auth.uid());
 
 -- Applications: own rows only
 create policy "users select own applications"  on public.applications for select using (auth.uid() = user_id);

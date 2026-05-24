@@ -9,6 +9,7 @@ import {
   loadFields,
   loadAllApplications,
   loadAllCuts,
+  loadGrassSystems,
   loadGroups,
   loadSettings,
 } from '@/lib/data';
@@ -20,6 +21,7 @@ import {
   getSeasonLabel,
   getSeasonStart,
   isSampleStale,
+  resolveGrassSystem,
   sampleYear,
   soilMetricColor,
   sumNutrients,
@@ -42,12 +44,13 @@ export default async function HomePage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, products, applications, cuts, groups] = await Promise.all([
+  const [fields, products, applications, cuts, groups, grassSystems] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
     loadGroups(),
+    loadGrassSystems(),
   ]);
 
   const seasonStart = getSeasonStart();
@@ -75,6 +78,7 @@ export default async function HomePage({
   };
 
   const fieldStates: FieldState[] = fields.map((f) => {
+    const system = resolveGrassSystem(f, grassSystems);
     const fApps = applications.filter((a) => a.field_id === f.id);
     const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
     const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
@@ -85,7 +89,7 @@ export default async function HomePage({
     const sinceTotals = sumNutrients(sinceCutApps, products);
     const nextCut = Math.min(cutsDone + 1, f.cut_profile);
     const nextCutType = getNextCutType(f, cutsDone);
-    const targets = cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings) : null;
+    const targets = cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings, system) : null;
 
     // P/K carryover from applications before the last cut, minus offtake already
     // taken by cuts done this season. N has no carryover (mobile in soil).

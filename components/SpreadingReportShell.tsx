@@ -7,6 +7,7 @@ import {
   Application,
   Cut,
   Field,
+  GrassSystem,
   Group,
   Product,
   Settings,
@@ -24,9 +25,11 @@ import {
   getSplitTarget,
   isSampleStale,
   NEXT_CUT_LABELS,
+  resolveGrassSystem,
   sampleAgeYears,
   sampleYear,
   shouldFlagColdClay,
+  shouldFlagCloverSuppression,
   shouldFlagSulphurRisk,
   SOIL_TYPE_SHORT_LABELS,
   getSoilType,
@@ -81,6 +84,7 @@ export function SpreadingReportShell({
   cuts,
   products,
   groups,
+  grassSystems,
   settings,
   seasonStart,
   todayIso,
@@ -94,6 +98,7 @@ export function SpreadingReportShell({
   cuts: Cut[];
   products: Product[];
   groups: Group[];
+  grassSystems: GrassSystem[];
   settings: Settings;
   seasonStart: string;
   todayIso: string;
@@ -671,6 +676,7 @@ export function SpreadingReportShell({
         cuts={cuts}
         products={products}
         groups={groups}
+        grassSystems={grassSystems}
         settings={settings}
         seasonStart={seasonStart}
         planSlurry={slurryActive ? planSlurry : 0}
@@ -826,6 +832,9 @@ type Triple = { n: number; p: number; k: number };
 
 type ReportRow = {
   state: FieldStateLite;
+  /** The field's resolved grass system, or undefined if no FK. Used by the
+   *  card for the system subtitle line and advisory flags (clover, etc.). */
+  grassSystem: GrassSystem | undefined;
   /** Target N/P/K for this dressing (after split adjustment if applicable). */
   target: Triple;
   /** Already-applied + P/K carryover. */
@@ -854,6 +863,7 @@ function ReportSection(props: {
   cuts: Cut[];
   products: Product[];
   groups: Group[];
+  grassSystems: GrassSystem[];
   settings: Settings;
   seasonStart: string;
   planSlurry: number;
@@ -867,7 +877,7 @@ function ReportSection(props: {
 }) {
   const {
     mode, split, totalDressings, dressingNumber, splitPct,
-    eligibleStates, selectedIds, applications, cuts, products, groups, settings,
+    eligibleStates, selectedIds, applications, cuts, products, groups, grassSystems, settings,
     seasonStart,
     planSlurry, planSolid, planN, slurryUnit, solidUnit,
     slurryProduct, solidProduct, todayIso,
@@ -878,6 +888,9 @@ function ReportSection(props: {
     const selectedStates = eligibleStates.filter((s) => selectedIds.has(s.field.id));
     return selectedStates.map((s) => {
       const f = s.field;
+      // Resolve the field's grass system once per row; passed into target +
+      // cap calculations so multipliers (clover-rich, herbal, IRG etc.) fire.
+      const system = resolveGrassSystem(f, grassSystems);
 
       // ---- Target ----
       // For spring mode: target = first planned cut.
@@ -885,7 +898,7 @@ function ReportSection(props: {
       const cutNumber = mode === 'spring'
         ? 1
         : Math.min(s.cutsDoneThisSeason + 1, f.cut_profile);
-      const baseTarget = getCutTargets(f, cutNumber, settings);
+      const baseTarget = getCutTargets(f, cutNumber, settings, system);
       const fullTarget: Triple = baseTarget
         ? { n: baseTarget.n, p: baseTarget.p2o5, k: baseTarget.k2o }
         : { n: 0, p: 0, k: 0 };
@@ -974,7 +987,7 @@ function ReportSection(props: {
 
       // ---- Season N applied + cap ----
       const seasonNApplied = sumNutrients(seasonApps, products).n;
-      const nCap = getNCap(f, settings);
+      const nCap = getNCap(f, settings, system);
 
       // ---- Status flag ----
       const shorts: string[] = [];
@@ -985,13 +998,13 @@ function ReportSection(props: {
       if (shorts.length === 1) status = `short_${shorts[0]}` as ReportRow['status'];
       else if (shorts.length > 1) status = 'short_multi';
 
-      return { state: s, target, applied, planned, remaining, seasonNApplied, nCap, status };
+      return { state: s, grassSystem: system, target, applied, planned, remaining, seasonNApplied, nCap, status };
     });
   }, [
     eligibleStates, selectedIds, mode, applications, products, cuts, settings,
     seasonStart, split, totalDressings, dressingNumber, splitPct,
     planSlurry, planSolid, planN, slurryUnit, solidUnit,
-    slurryProduct, solidProduct, todayIso,
+    slurryProduct, solidProduct, todayIso, grassSystems,
   ]);
 
   // Summary counts.
@@ -1179,6 +1192,7 @@ function ReportFieldCard({
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>{f.name}</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
             {fmt(area.value, 1)} {area.unit}
+            {row.grassSystem && <> · {row.grassSystem.short_label}</>}
             {row.state.lastCut && row.state.daysSinceLastCut != null && (
               <> · last cut {fmtDateShort(row.state.lastCut.cut_date)} ({row.state.daysSinceLastCut}d ago)</>
             )}
@@ -1294,6 +1308,23 @@ function ReportFieldCard({
           color: 'var(--ink-soft)',
         }}>
           ⓘ Heavy clay — N response is slower in cold soils. Consider delaying first dressing 2–3 weeks vs lighter soils.
+        </div>
+      )}
+
+      {/* Clover / legume suppression — early-spring N suppresses clover nodule
+          activity and shifts the sward away from legume content. For legume-
+          rich systems (clover-rich, herbal ley) the advice is to skip or
+          minimise the first dressing. P/K still go on as normal. */}
+      {shouldFlagCloverSuppression(f, row.grassSystem, mode) && (
+        <div style={{
+          marginTop: 8,
+          padding: '6px 8px',
+          fontSize: 11,
+          borderRadius: 4,
+          background: '#f7efde',
+          color: 'var(--ink-soft)',
+        }}>
+          ⓘ {row.grassSystem?.short_label ?? 'Legume-rich'} — avoid early-spring N to maintain legume content. Apply P/K normally.
         </div>
       )}
     </div>

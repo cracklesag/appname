@@ -1,5 +1,5 @@
 import {
-  Application, Cut, CutType, Field, Product, ProductCategory, ProductType, Settings,
+  Application, Cut, CutType, Field, GrassSystem, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 
@@ -500,20 +500,75 @@ export function shouldFlagColdClay(field: Field): boolean {
   return getSoilType(field) === 'heavy_clay';
 }
 
+// ---- Grass system helpers -----------------------------------------
+//
+// A grass system describes a sward type (Perennial ryegrass, Clover-rich,
+// Italian ryegrass, etc.) and supplies three numeric knobs the reports
+// key off:
+//   - n_cap_kg_per_ha       — annual N cap, replaces the global setting
+//   - n_target_multiplier   — applied to per-cut N target (1.00 = PRG)
+//   - k_multiplier          — applied to per-cut K2O offtake (1.00 = PRG)
+// Plus a boolean is_legume_rich that drives advisory flags in spring mode.
+//
+// The DB lookup is done in the page / shell; helpers here take an already-
+// loaded GrassSystem (or undefined for fields with no system FK — treated
+// as PRG-equivalent so existing fields produce identical numbers).
+
+/** Resolve a field's grass system from a preloaded list. Undefined if FK is null. */
+export function resolveGrassSystem(
+  field: Field,
+  systems: GrassSystem[],
+): GrassSystem | undefined {
+  if (!field.grass_system_id) return undefined;
+  return systems.find((s) => s.id === field.grass_system_id);
+}
+
+/** Should the spreading report flag the clover-suppression advisory? Yes if
+ *  the field's system is legume-rich AND the report is in spring mode. */
+export function shouldFlagCloverSuppression(
+  field: Field,
+  system: GrassSystem | undefined,
+  mode: 'spring' | 'post_cut' | 'mid_season',
+): boolean {
+  if (!system?.is_legume_rich) return false;
+  return mode === 'spring';
+}
+
+/**
+ * Get the per-cut nutrient targets for a field.
+ *
+ * Applies, in order:
+ *   1. Base RB209 offtake for the cut profile + number + yield class
+ *   2. N target multiplier from grass system (1.00 = PRG default; clover-rich
+ *      ~0.70, herbal ~0.30, IRG ~1.15)
+ *   3. K multiplier from grass system
+ *   4. Grazing-returns reduction for grazing cuts (settings.grazingReturnPct)
+ *   5. Light-sand K bump (soil type)
+ *
+ * `system` is optional: when undefined, multipliers default to 1.00 — that
+ * matches PRG-default behaviour and keeps existing fields with no system
+ * FK producing identical numbers to before the grass-system feature.
+ */
 export function getCutTargets(
   field: Field,
   cutNumber: number,
-  settings: Settings
+  settings: Settings,
+  system?: GrassSystem,
 ): { n: number; p2o5: number; k2o: number; yieldDM: number; cutType: CutType } | null {
   if (!cutNumber) return null;
   const planned = getPlannedCuts(field);
   const cutType: CutType = planned[cutNumber - 1] || 'silage';
   const offtake = getOfftakeForCut(field.cut_profile, cutNumber, 'average', settings, cutType);
-  const nTarget = settings.nTargets[cutNumber as 1|2|3|4] ?? offtake.n;
+  const baseN = settings.nTargets[cutNumber as 1|2|3|4] ?? offtake.n;
+  // Apply grass-system N multiplier. Default 1.00 when no system.
+  const nMultiplier = system?.n_target_multiplier ?? 1.00;
+  const nTarget = baseN * nMultiplier;
   const isGrazing = cutType === 'grazing';
   const nFinal = isGrazing ? nTarget * (1 - (settings.grazingReturnPct ?? 0.70)) : nTarget;
-  // K target bumped for light sands. P and N untouched.
-  const k2oAdjusted = adjustKTargetForSoil(offtake.k2o, getSoilType(field));
+  // Apply grass-system K multiplier, then light-sand soil bump on top.
+  const kMultiplier = system?.k_multiplier ?? 1.00;
+  const k2oAfterSystem = offtake.k2o * kMultiplier;
+  const k2oAdjusted = adjustKTargetForSoil(k2oAfterSystem, getSoilType(field));
   return {
     n: nFinal,
     p2o5: offtake.p2o5,
@@ -522,6 +577,8 @@ export function getCutTargets(
     cutType,
   };
 }
+
+
 
 /**
  * Split a full-cut target across multiple dressings.
@@ -562,12 +619,15 @@ export function getSplitTarget(
 }
 
 /**
- * Annual N cap for the field, kg N/ha. Currently a single global setting;
- * per-field override deferred to a later chunk when grass-system-type
- * lands. Returns the cap regardless of field type — caller decides when
- * the cap applies (e.g. grass-only).
+ * Annual N cap for the field, kg N/ha.
+ *
+ * Prefers the grass system's per-system cap when one is provided. Falls back
+ * to `settings.reportDefaults.annualNCapKgPerHa` when no system is set on
+ * the field (rare — migration backfills every field with PRG, default cap
+ * 320). Caller decides when the cap applies (e.g. grass-only).
  */
-export function getNCap(field: Field, settings: Settings): number {
+export function getNCap(field: Field, settings: Settings, system?: GrassSystem): number {
+  if (system?.n_cap_kg_per_ha) return system.n_cap_kg_per_ha;
   return settings.reportDefaults?.annualNCapKgPerHa ?? 320;
 }
 

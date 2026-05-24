@@ -6,6 +6,7 @@ import {
   loadAllApplications,
   loadAllCuts,
   loadAllProducts,
+  loadGrassSystems,
   loadGroups,
   loadSettings,
 } from '@/lib/data';
@@ -21,12 +22,13 @@ export default async function SnapshotReportPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
     loadGroups(),
+    loadGrassSystems(),
   ]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -41,6 +43,7 @@ export default async function SnapshotReportPage({
         cuts={cuts}
         products={products}
         groups={groups}
+        grassSystems={grassSystems}
         settings={settings}
         seasonStart={seasonStart}
         todayIso={todayIso}

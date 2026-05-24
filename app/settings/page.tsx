@@ -354,6 +354,22 @@ export default async function SettingsPage() {
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
+        <Link
+          href="/settings/grass-systems"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Grass systems</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              Library of sward types (PRG, clover, herbal, IRG…) and custom systems
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
         <ResetDataSection />
         <form action={signOut}>
           <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>

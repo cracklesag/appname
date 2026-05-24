@@ -6,6 +6,7 @@ import {
   Application,
   Cut,
   Field,
+  GrassSystem,
   Group,
   Product,
   Settings,
@@ -18,6 +19,7 @@ import {
   getNCap,
   getNextCutType,
   getSoilType,
+  resolveGrassSystem,
   SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
 } from '@/lib/rules';
@@ -49,6 +51,7 @@ export function GrazingReportShell({
   cuts,
   products,
   groups,
+  grassSystems,
   settings,
   seasonStart,
   todayIso,
@@ -58,6 +61,7 @@ export function GrazingReportShell({
   cuts: Cut[];
   products: Product[];
   groups: Group[];
+  grassSystems: GrassSystem[];
   settings: Settings;
   seasonStart: string;
   todayIso: string;
@@ -156,7 +160,8 @@ export function GrazingReportShell({
           fApps,
           products,
         ).n;
-        const nCap = getNCap(f, settings);
+        const system = resolveGrassSystem(f, grassSystems);
+        const nCap = getNCap(f, settings, system);
 
         const status: DueStatus = !lastNApp
           ? { kind: 'no_history' }
@@ -178,7 +183,7 @@ export function GrazingReportShell({
       })
       .filter((s): s is FieldState => s != null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fields, cuts, applications, products, seasonStart, todayIso, cadenceWeeks, settings]);
+  }, [fields, cuts, applications, products, seasonStart, todayIso, cadenceWeeks, settings, grassSystems]);
 
   // Apply group + window + due-only filters.
   const visibleStates: FieldState[] = useMemo(() => {

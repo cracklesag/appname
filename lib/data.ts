@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, Cut, DEFAULT_SETTINGS, Field, Group, Product, Settings } from './types';
+import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -23,6 +23,24 @@ export async function loadGroups(): Promise<Group[]> {
     .order('name', { ascending: true });
   if (error) throw error;
   return (data || []) as Group[];
+}
+
+/**
+ * Load all grass systems visible to the current user — both shared seeds
+ * (user_id IS NULL, returned by RLS) and the user's own custom rows.
+ *
+ * Sort order: shared seeds first (by their sort_order then name), then
+ * user-owned custom rows alphabetically.
+ */
+export async function loadGrassSystems(): Promise<GrassSystem[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('grass_systems').select('*')
+    .order('user_id', { ascending: true, nullsFirst: true })  // shared first
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return (data || []) as GrassSystem[];
 }
 
 export async function loadField(id: string): Promise<Field | null> {

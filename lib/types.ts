@@ -45,12 +45,42 @@ export interface Field {
   sampled: boolean;
   sample_date: string | null;
   soil_type: SoilType;
+  /** FK to grass_systems. Migration backfills existing rows to perennial_ryegrass. */
+  grass_system_id: string | null;
   last_ploughed: string | null;
   last_reseeded: string | null;
   notes: string | null;
   needs_setup: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * A grass system / sward type — drives N caps, N target multipliers and K
+ * multipliers in nutrient reports. Library has shared seed rows
+ * (user_id = null) shipped by the migration, plus user-owned custom rows
+ * users can add via Settings → Grass systems.
+ *
+ * Per-user visibility (hiding shared systems the user doesn't want in
+ * their dropdown) lives in Settings.hiddenGrassSystemIds — NOT a column
+ * here — because it's a UI state, not part of the system definition.
+ */
+export interface GrassSystem {
+  id: string;
+  /** null for shared seeds; user uuid for custom rows. */
+  user_id: string | null;
+  /** Stable string key for shared seeds, NULL for user-owned. Used by code
+   *  that needs to find a specific shared system (e.g. flag logic). */
+  seed_key: string | null;
+  name: string;
+  short_label: string;
+  description: string | null;
+  n_cap_kg_per_ha: number;
+  n_target_multiplier: number;
+  k_multiplier: number;
+  is_legume_rich: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 /**
@@ -139,9 +169,9 @@ export interface Settings {
      */
     splitFrontLoadPct: number;
     /**
-     * Maximum N allowed across the season for an intensive grass system,
-     * kg N/ha. RB209 default 320 for cut+grazed; lower for clover-rich.
-     * One global default; per-field override deferred to a later chunk.
+     * Fallback annual N cap (kg N/ha). Used only when a field has no grass
+     * system assigned (rare — the migration backfills every field with PRG).
+     * Per-system caps live on the grass_systems table now.
      */
     annualNCapKgPerHa: number;
     /**
@@ -151,6 +181,13 @@ export interface Settings {
     grazingCadenceKgN: number;
     grazingCadenceWeeks: number;
   };
+  /**
+   * Grass system IDs the user has hidden from their dropdown. Shared seeds
+   * appear by default; users tick visibility checkboxes in Settings →
+   * Grass systems. Stored as IDs because seed_key isn't unique across
+   * user-custom rows.
+   */
+  hiddenGrassSystemIds: string[];
   onboarded: boolean;
 }
 
@@ -170,6 +207,7 @@ export const DEFAULT_SETTINGS: Settings = {
     grazingCadenceKgN: 40,
     grazingCadenceWeeks: 4,
   },
+  hiddenGrassSystemIds: [],
   onboarded: false,
 };
 

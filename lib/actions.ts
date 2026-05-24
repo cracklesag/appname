@@ -194,11 +194,18 @@ export async function saveSoil(formData: FormData) {
   const rawSoilType = String(formData.get('soil_type') ?? '');
   const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
   const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : null;
+  // Grass system — only set if the form sent a non-empty value. Same
+  // approach as soil type lets older forms keep working.
+  const rawGrassSystemId = String(formData.get('grass_system_id') ?? '').trim();
+  const grassSystemId: string | null | undefined = rawGrassSystemId === ''
+    ? undefined  // form didn't send it — leave alone
+    : rawGrassSystemId;
 
   const sampled = ph != null || pIdx != null || kIdx != null;
 
-  // Build the update object so we only set soil_type if it was actually
-  // submitted; same approach lets older forms keep working.
+  // Build the update object so we only set soil_type / grass_system_id if
+  // they were actually submitted; lets older forms (and partial saves)
+  // keep working without overwriting existing values.
   const update: Record<string, unknown> = {
     ph, p_idx: pIdx, k_idx: kIdx,
     sample_date: sampleDate, last_ploughed: lastPloughed, last_reseeded: lastReseeded,
@@ -206,6 +213,7 @@ export async function saveSoil(formData: FormData) {
     updated_at: new Date().toISOString(),
   };
   if (soilType) update.soil_type = soilType;
+  if (grassSystemId !== undefined) update.grass_system_id = grassSystemId;
 
   const { error } = await supabase.from('fields').update(update).eq('id', fieldId);
   if (error) throw new Error(error.message);
@@ -323,6 +331,16 @@ export async function createField(formData: FormData) {
   const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
   const rawSoilType = String(formData.get('soil_type') ?? '');
   const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : 'medium_loam';
+  // Grass system — optional FK. Empty string or absence → look up the PRG
+  // shared seed as default (matches the migration's backfill behaviour).
+  const rawGrassSystemId = String(formData.get('grass_system_id') ?? '').trim();
+  let grassSystemId: string | null = rawGrassSystemId === '' ? null : rawGrassSystemId;
+  if (!grassSystemId) {
+    const { data: prg } = await supabase
+      .from('grass_systems').select('id')
+      .eq('seed_key', 'perennial_ryegrass').maybeSingle();
+    if (prg?.id) grassSystemId = prg.id;
+  }
 
   // Validation: name required, acres > 0, ha > 0, cut profile 1-4
   if (!name) throw new Error('Field name is required');
@@ -339,6 +357,7 @@ export async function createField(formData: FormData) {
     cut_profile: cutProfile,
     planned_cuts: plannedCuts,
     soil_type: soilType,
+    grass_system_id: grassSystemId,
     sampled: false,
     notes,
   }).select('id').single();
@@ -1016,4 +1035,267 @@ export async function setGroupMembership(formData: FormData) {
   revalidatePath('/activity');
   revalidatePath('/reports/spreading');
   revalidatePath('/reports/grazing');
+}
+
+// =====================================================================
+// GRASS SYSTEMS
+// =====================================================================
+//
+// Library has shared seeds (user_id NULL) shipped by migration plus
+// user-owned custom rows users can add via Settings → Grass systems.
+//
+// Shared rows are read-only — RLS blocks user-side INSERT/UPDATE/DELETE
+// on user_id=NULL rows. Editing a shared row uses `forkGrassSystem` which
+// creates a user-owned copy with the same defaults.
+//
+// Per-user visibility (hiding shared systems from the dropdown) lives in
+// `settings.hiddenGrassSystemIds` — toggled via `setGrassSystemHidden`.
+
+/** Normalise a system name; throws if invalid. */
+function normaliseSystemName(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) throw new Error('System name is required');
+  if (s.length > 80) throw new Error('System name is too long (max 80 chars)');
+  return s;
+}
+
+/**
+ * Parse numeric field from form data, with clamping bounds. Throws on
+ * unparseable input.
+ */
+function parseSystemNumber(
+  raw: unknown,
+  fieldName: string,
+  min: number,
+  max: number,
+): number {
+  const n = parseFloat(String(raw ?? ''));
+  if (!Number.isFinite(n)) throw new Error(`${fieldName} must be a number`);
+  if (n < min || n > max) throw new Error(`${fieldName} must be between ${min} and ${max}`);
+  return n;
+}
+
+/**
+ * Create a user-owned custom grass system. Use this directly for a brand-new
+ * custom system; for forking a shared seed see forkGrassSystem.
+ */
+export async function createGrassSystem(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const name = normaliseSystemName(formData.get('name'));
+  const shortLabel = String(formData.get('short_label') ?? '').trim() || name;
+  const description = String(formData.get('description') ?? '').trim() || null;
+  const nCap = parseSystemNumber(formData.get('n_cap_kg_per_ha'), 'N cap', 0, 1000);
+  const nMult = parseSystemNumber(formData.get('n_target_multiplier'), 'N target multiplier', 0.01, 2);
+  const kMult = parseSystemNumber(formData.get('k_multiplier'), 'K multiplier', 0.01, 2);
+  const isLegume = formData.get('is_legume_rich') === 'on' || formData.get('is_legume_rich') === 'true';
+
+  const { error } = await supabase.from('grass_systems').insert({
+    user_id: user.id,
+    seed_key: null,
+    name,
+    short_label: shortLabel,
+    description,
+    n_cap_kg_per_ha: nCap,
+    n_target_multiplier: nMult,
+    k_multiplier: kMult,
+    is_legume_rich: isLegume,
+    sort_order: 1000,  // user-owned sorts after shared seeds
+  });
+  if (error) {
+    if (error.code === '23505') throw new Error(`A grass system named "${name}" already exists.`);
+    throw new Error(`Could not create grass system: ${error.message}`);
+  }
+
+  revalidatePath('/settings/grass-systems');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Update a user-owned grass system. RLS blocks updates on shared rows so
+ * the user_id filter is belt+braces. Use forkGrassSystem to "edit" a
+ * shared row — it creates a custom copy the user owns.
+ */
+export async function updateGrassSystem(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('System id is required');
+  const name = normaliseSystemName(formData.get('name'));
+  const shortLabel = String(formData.get('short_label') ?? '').trim() || name;
+  const description = String(formData.get('description') ?? '').trim() || null;
+  const nCap = parseSystemNumber(formData.get('n_cap_kg_per_ha'), 'N cap', 0, 1000);
+  const nMult = parseSystemNumber(formData.get('n_target_multiplier'), 'N target multiplier', 0.01, 2);
+  const kMult = parseSystemNumber(formData.get('k_multiplier'), 'K multiplier', 0.01, 2);
+  const isLegume = formData.get('is_legume_rich') === 'on' || formData.get('is_legume_rich') === 'true';
+
+  const { error } = await supabase
+    .from('grass_systems')
+    .update({
+      name,
+      short_label: shortLabel,
+      description,
+      n_cap_kg_per_ha: nCap,
+      n_target_multiplier: nMult,
+      k_multiplier: kMult,
+      is_legume_rich: isLegume,
+    })
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) {
+    if (error.code === '23505') throw new Error(`A grass system named "${name}" already exists.`);
+    throw new Error(`Could not update grass system: ${error.message}`);
+  }
+
+  revalidatePath('/settings/grass-systems');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Delete a user-owned grass system. Fields referencing it get group_id set
+ * to NULL via the FK's ON DELETE SET NULL. Shared rows can't be deleted —
+ * RLS blocks it; the user_id filter here is belt+braces.
+ */
+export async function deleteGrassSystem(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('System id is required');
+
+  const { error } = await supabase
+    .from('grass_systems')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not delete grass system: ${error.message}`);
+
+  revalidatePath('/settings/grass-systems');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Fork a shared system into a user-owned copy. Copies the shared row's
+ * values into a new user-owned row, with " (custom)" appended to the
+ * name to avoid the unique constraint. The user can rename it afterwards.
+ */
+export async function forkGrassSystem(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const sourceId = String(formData.get('source_id') ?? '').trim();
+  if (!sourceId) throw new Error('Source system id is required');
+
+  // Load the source — RLS lets us read it whether it's shared or own.
+  const { data: source, error: loadErr } = await supabase
+    .from('grass_systems')
+    .select('*')
+    .eq('id', sourceId)
+    .maybeSingle();
+  if (loadErr || !source) throw new Error('Source system not found');
+
+  // Pick a unique name. Try " (custom)", then " (custom 2)" etc.
+  let attempt = 0;
+  let newName = `${source.name} (custom)`;
+  while (attempt < 20) {
+    const { data: clash } = await supabase
+      .from('grass_systems')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('name', newName)
+      .maybeSingle();
+    if (!clash) break;
+    attempt++;
+    newName = `${source.name} (custom ${attempt + 1})`;
+  }
+
+  const { data: created, error: insertErr } = await supabase.from('grass_systems').insert({
+    user_id: user.id,
+    seed_key: null,
+    name: newName,
+    short_label: source.short_label,
+    description: source.description,
+    n_cap_kg_per_ha: source.n_cap_kg_per_ha,
+    n_target_multiplier: source.n_target_multiplier,
+    k_multiplier: source.k_multiplier,
+    is_legume_rich: source.is_legume_rich,
+    sort_order: 1000,
+  }).select('id').single();
+  if (insertErr || !created) throw new Error(`Could not fork: ${insertErr?.message}`);
+
+  revalidatePath('/settings/grass-systems');
+  revalidatePath('/', 'layout');
+  return { id: created.id, name: newName };
+}
+
+/**
+ * Toggle visibility for a grass system in the user's dropdown. Stored in
+ * settings.hiddenGrassSystemIds (array of system IDs). hidden=true adds
+ * the id to the array; hidden=false removes it.
+ */
+export async function setGrassSystemHidden(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const systemId = String(formData.get('system_id') ?? '').trim();
+  if (!systemId) throw new Error('System id is required');
+  const hidden = formData.get('hidden') === 'true' || formData.get('hidden') === 'on';
+
+  // Load current settings, merge, write back.
+  const { data: row, error: loadErr } = await supabase
+    .from('settings')
+    .select('data')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (loadErr) throw new Error(`Could not load settings: ${loadErr.message}`);
+  const current = (row?.data ?? {}) as Record<string, unknown>;
+  const hidden_set = new Set<string>(
+    Array.isArray(current.hiddenGrassSystemIds) ? (current.hiddenGrassSystemIds as string[]) : [],
+  );
+  if (hidden) hidden_set.add(systemId);
+  else hidden_set.delete(systemId);
+  const nextData = { ...current, hiddenGrassSystemIds: Array.from(hidden_set) };
+
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ user_id: user.id, data: nextData, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Could not save visibility: ${error.message}`);
+
+  revalidatePath('/settings/grass-systems');
+  revalidatePath('/', 'layout');
+}
+
+/**
+ * Change a single field's grass system assignment. Used from the field
+ * detail page and the field forms. Empty string clears (sets to null).
+ */
+export async function setFieldGrassSystem(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field id is required');
+  const raw = String(formData.get('grass_system_id') ?? '').trim();
+  const grassSystemId: string | null = raw === '' ? null : raw;
+
+  const { error } = await supabase
+    .from('fields')
+    .update({ grass_system_id: grassSystemId, updated_at: new Date().toISOString() })
+    .eq('id', fieldId)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not update grass system: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  revalidatePath('/reports/spreading');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/snapshot');
 }

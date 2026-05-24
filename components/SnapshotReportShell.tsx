@@ -6,6 +6,7 @@ import {
   Application,
   Cut,
   Field,
+  GrassSystem,
   Group,
   Product,
   Settings,
@@ -23,6 +24,7 @@ import {
   isSampleStale,
   NEXT_CUT_LABELS,
   NextCutType,
+  resolveGrassSystem,
   sampleYear,
   SOIL_TYPE_SHORT_LABELS,
   soilMetricColor,
@@ -58,6 +60,7 @@ export function SnapshotReportShell({
   cuts,
   products,
   groups,
+  grassSystems,
   settings,
   seasonStart,
   todayIso,
@@ -67,6 +70,7 @@ export function SnapshotReportShell({
   cuts: Cut[];
   products: Product[];
   groups: Group[];
+  grassSystems: GrassSystem[];
   settings: Settings;
   seasonStart: string;
   todayIso: string;
@@ -107,6 +111,8 @@ export function SnapshotReportShell({
   // are cheap downstream.
   type FieldState = {
     field: Field;
+    /** Resolved grass system for this field, or undefined when not assigned. */
+    grassSystem: GrassSystem | undefined;
     groupName: string | null;
     cutsDoneThisSeason: number;
     lastCut: Cut | undefined;
@@ -129,6 +135,7 @@ export function SnapshotReportShell({
   const fieldStates: FieldState[] = useMemo(() => {
     const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
     return fields.map((f) => {
+      const system = resolveGrassSystem(f, grassSystems);
       const fApps = applications.filter((a) => a.field_id === f.id);
       const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
       const fCuts = cuts
@@ -146,10 +153,10 @@ export function SnapshotReportShell({
       const lastApp = [...seasonApps]
         .sort((a, b) => b.date_applied.localeCompare(a.date_applied))[0];
 
-      // Next cut target + available (carryover-aware)
+      // Next cut target + available (carryover-aware). System drives N/K multipliers.
       const nextCut = Math.min(cutsDoneThisSeason + 1, f.cut_profile);
       const nextCutTarget = cutsDoneThisSeason < f.cut_profile
-        ? getCutTargets(f, nextCut, settings)
+        ? getCutTargets(f, nextCut, settings, system)
         : null;
 
       let gap: FieldState['gap'] = null;
@@ -192,6 +199,7 @@ export function SnapshotReportShell({
 
       return {
         field: f,
+        grassSystem: system,
         groupName: f.group_id ? (groupNameById.get(f.group_id) ?? null) : null,
         cutsDoneThisSeason,
         lastCut,
@@ -202,10 +210,10 @@ export function SnapshotReportShell({
         nextCutTarget,
         gap,
         gapTotal,
-        nCap: getNCap(f, settings),
+        nCap: getNCap(f, settings, system),
       };
     });
-  }, [fields, applications, cuts, products, groups, settings, seasonStart, todayIso]);
+  }, [fields, applications, cuts, products, groups, grassSystems, settings, seasonStart, todayIso]);
 
   // ---- Apply filters + sort ----------------------------------------
 
@@ -435,6 +443,7 @@ function SnapshotRow({
 }: {
   state: {
     field: Field;
+    grassSystem: GrassSystem | undefined;
     groupName: string | null;
     cutsDoneThisSeason: number;
     lastCut: Cut | undefined;
@@ -465,6 +474,7 @@ function SnapshotRow({
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
             {fmt(area.value, 1)} {area.unit}
             {state.groupName && <> · {state.groupName}</>}
+            {state.grassSystem && <> · {state.grassSystem.short_label}</>}
             {' · '}{SOIL_TYPE_SHORT_LABELS[getSoilType(f)]}
           </div>
         </div>
@@ -552,6 +562,7 @@ function fmtFullDate(todayIso: string): string {
 function buildPlainText(
   states: {
     field: Field;
+    grassSystem: GrassSystem | undefined;
     groupName: string | null;
     cutsDoneThisSeason: number;
     lastCut: Cut | undefined;
@@ -569,18 +580,21 @@ function buildPlainText(
   lines.push('');
   states.forEach((s) => {
     const area = displayFieldArea(s.field, settings.unitSystem);
-    lines.push(`${s.field.name} (${fmt(area.value, 1)} ${area.unit})${s.groupName ? ` · ${s.groupName}` : ''}`);
+    const parts = [`${fmt(area.value, 1)} ${area.unit}`];
+    if (s.groupName) parts.push(s.groupName);
+    if (s.grassSystem) parts.push(s.grassSystem.short_label);
+    lines.push(`${s.field.name} (${parts.join(' · ')})`);
     lines.push(`  Next: ${NEXT_CUT_LABELS[s.nextCutType]} · cuts ${s.cutsDoneThisSeason}/${s.field.cut_profile}`);
     if (s.lastCut && s.daysSinceLastCut != null) {
       lines.push(`  Last cut: ${fmtDateShort(s.lastCut.cut_date)} (${s.daysSinceLastCut}d ago)`);
     }
     lines.push(`  Season: ${fmt(s.seasonApplied.n)} N, ${fmt(s.seasonApplied.p)} P, ${fmt(s.seasonApplied.k)} K kg/ha`);
     if (s.gap && (s.gap.n > 1 || s.gap.p > 1 || s.gap.k > 1)) {
-      const parts: string[] = [];
-      if (s.gap.n > 1) parts.push(`${fmt(s.gap.n)} N`);
-      if (s.gap.p > 1) parts.push(`${fmt(s.gap.p)} P`);
-      if (s.gap.k > 1) parts.push(`${fmt(s.gap.k)} K`);
-      lines.push(`  Gap to next cut: ${parts.join(', ')} kg/ha`);
+      const gapParts: string[] = [];
+      if (s.gap.n > 1) gapParts.push(`${fmt(s.gap.n)} N`);
+      if (s.gap.p > 1) gapParts.push(`${fmt(s.gap.p)} P`);
+      if (s.gap.k > 1) gapParts.push(`${fmt(s.gap.k)} K`);
+      lines.push(`  Gap to next cut: ${gapParts.join(', ')} kg/ha`);
     } else if (s.gap) {
       lines.push(`  Next cut covered`);
     }
@@ -592,6 +606,7 @@ function buildPlainText(
 function buildCsv(
   states: {
     field: Field;
+    grassSystem: GrassSystem | undefined;
     groupName: string | null;
     cutsDoneThisSeason: number;
     lastCut: Cut | undefined;
@@ -612,6 +627,7 @@ function buildCsv(
     'Group',
     `Area (${settings.unitSystem === 'acres' ? 'ac' : 'ha'})`,
     'Soil type',
+    'Grass system',
     'pH', 'P index', 'K index',
     'Sample year', 'Sample stale',
     'Cut profile', 'Cuts done', 'Cuts remaining',
@@ -640,6 +656,7 @@ function buildCsv(
       s.groupName ?? '',
       round1(areaVal),
       SOIL_TYPE_SHORT_LABELS[getSoilType(f)],
+      s.grassSystem?.short_label ?? '',
       f.ph ?? '',
       f.p_idx ?? '',
       f.k_idx ?? '',

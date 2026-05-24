@@ -1,15 +1,24 @@
 import { Header } from '@/components/Header';
 import { AddFieldForm } from '@/components/AddFieldForm';
-import { loadGroups, loadSettings } from '@/lib/data';
+import { loadGrassSystems, loadGroups, loadSettings } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewFieldPage() {
-  const [settings, groups] = await Promise.all([loadSettings(), loadGroups()]);
+  const [settings, groups, grassSystems] = await Promise.all([
+    loadSettings(),
+    loadGroups(),
+    loadGrassSystems(),
+  ]);
   return (
     <div>
       <Header title="Add field" subtitle="APP_NAME" backHref="/" />
-      <AddFieldForm unitSystem={settings.unitSystem} groups={groups} />
+      <AddFieldForm
+        unitSystem={settings.unitSystem}
+        groups={groups}
+        grassSystems={grassSystems}
+        hiddenGrassSystemIds={settings.hiddenGrassSystemIds ?? []}
+      />
     </div>
   );
 }

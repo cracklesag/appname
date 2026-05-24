@@ -3,13 +3,21 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Save } from 'lucide-react';
-import { Field, SoilType } from '@/lib/types';
+import { Field, GrassSystem, SoilType } from '@/lib/types';
 import { SOIL_TYPE_LABELS } from '@/lib/rules';
 import { saveSoil } from '@/lib/actions';
 import { validatePH, validateSoilIndex } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
-export function SoilForm({ field }: { field: Field }) {
+export function SoilForm({
+  field,
+  grassSystems,
+  hiddenGrassSystemIds,
+}: {
+  field: Field;
+  grassSystems: GrassSystem[];
+  hiddenGrassSystemIds: string[];
+}) {
   const today = new Date().toISOString().slice(0, 7);  // YYYY-MM
 
   // Existing sample_date may be a full date (legacy) or already YYYY-MM-01
@@ -20,6 +28,14 @@ export function SoilForm({ field }: { field: Field }) {
   const [pIdx, setPIdx] = useState(field.p_idx != null ? String(field.p_idx) : '');
   const [kIdx, setKIdx] = useState(field.k_idx != null ? String(field.k_idx) : '');
   const [soilType, setSoilType] = useState<SoilType>(field.soil_type || 'medium_loam');
+  // Grass system — include the currently-assigned system even if it's
+  // hidden, so the user can see what they have and switch away from a
+  // hidden custom they no longer want.
+  const visibleGrassSystems = useMemo(() => {
+    const hidden = new Set(hiddenGrassSystemIds);
+    return grassSystems.filter((s) => !hidden.has(s.id) || s.id === field.grass_system_id);
+  }, [grassSystems, hiddenGrassSystemIds, field.grass_system_id]);
+  const [grassSystemId, setGrassSystemId] = useState<string>(field.grass_system_id ?? '');
   const [lastPloughed, setLastPloughed] = useState(field.last_ploughed ?? '');
   const [lastReseeded, setLastReseeded] = useState(field.last_reseeded ?? '');
   const [notes, setNotes] = useState(field.notes ?? '');
@@ -121,6 +137,34 @@ export function SoilForm({ field }: { field: Field }) {
             {soilType === 'medium_loam' && 'Default — no special adjustments.'}
             {soilType === 'heavy_clay' && 'Cold-clay N timing nudge in early-spring reports.'}
             {soilType === 'deep_silt' && 'Treated as loam — no special adjustments.'}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+          <div className="label" style={{ marginBottom: 6 }}>Grass system</div>
+          <select
+            name="grass_system_id"
+            className="select"
+            value={grassSystemId}
+            onChange={(e) => setGrassSystemId(e.target.value)}
+          >
+            {visibleGrassSystems.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {(() => {
+            const selected = grassSystems.find((s) => s.id === grassSystemId);
+            if (!selected?.description) return null;
+            return (
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+                {selected.description}
+              </div>
+            );
+          })()}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+            <Link href="/settings/grass-systems" style={{ color: 'var(--forest-dark, #3d5b29)' }}>
+              Manage available systems
+            </Link>
           </div>
         </div>
 
