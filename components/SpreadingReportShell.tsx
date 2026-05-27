@@ -23,8 +23,12 @@ import {
   getNextCutType,
   getOfftakeForCut,
   getSplitTarget,
+  isHeadingForAnotherCut,
+  isMaintenanceGrazing,
   isSampleStale,
+  maintenanceDoseSatisfied,
   NEXT_CUT_LABELS,
+  resolveFieldNextAction,
   resolveGrassSystem,
   sampleAgeYears,
   sampleYear,
@@ -43,13 +47,15 @@ type ReportMode = 'post_cut' | 'spring' | 'mid_season';
 const MODE_LABELS: Record<ReportMode, string> = {
   post_cut: 'After-cut application',
   spring: 'Spring dressing',
-  mid_season: 'Mid-season top-up',
+  // URL ID kept as 'mid_season' to preserve old shareable links; the
+  // mode's meaning has changed (now Maintenance) and the label reflects that.
+  mid_season: 'Maintenance top-up',
 };
 
 const MODE_BLURBS: Record<ReportMode, string> = {
-  post_cut: 'Fields cut recently. Plan the next round of inputs to set up the next cut.',
+  post_cut: 'Fields heading for another cut. Plan the inputs that set up the next cut.',
   spring: 'No cuts yet this season. Plan the first dressing — prep for first silage or kick-off grazing.',
-  mid_season: 'Cut at least once this season. Top up between cuts with smaller N doses.',
+  mid_season: 'Fields flagged "maintenance — one fert top-up then leave" on their last cut. Drops out once the N threshold is crossed.',
 };
 
 const WINDOW_PRESETS: number[] = [7, 14, 30];
@@ -154,10 +160,17 @@ export function SpreadingReportShell({
     lastCut: Cut | undefined;
     daysSinceLastCut: number | null;
     nextCutType: ReturnType<typeof getNextCutType>;
+    /** Resolved "what's next" — most-recent-cut's next_action, or
+     *  pre-first-cut fallback derived from planned_cuts. */
+    resolvedNextAction: ReturnType<typeof resolveFieldNextAction>;
+    /** True if a maintenance-flagged field has already received enough
+     *  qualifying N (mineral fert + slurry + liquid digestate) since the
+     *  flag was set to cross the threshold. Always false unless the
+     *  field is currently flagged maintenance. */
+    maintenanceSatisfied: boolean;
   };
 
   const fieldStates: FieldState[] = useMemo(() => {
-    const cutoffPre = isoDaysAgo(todayIso, windowDays);
     return fields.map((f) => {
       const fCuts = cuts
         .filter((c) => c.field_id === f.id && c.cut_date >= seasonStart)
@@ -166,18 +179,23 @@ export function SpreadingReportShell({
       const daysSinceLastCut = lastCut
         ? daysBetween(lastCut.cut_date, todayIso)
         : null;
+      const resolved = resolveFieldNextAction(f, fCuts);
+      // Maintenance threshold check — only meaningful when the field is
+      // currently maintenance-flagged. Cheap when not.
+      const maintenanceSatisfied = resolved === 'maintenance_grazing'
+        ? maintenanceDoseSatisfied(f, applications, products, fCuts, settings)
+        : false;
       return {
         field: f,
         cutsDoneThisSeason: fCuts.length,
         lastCut,
         daysSinceLastCut,
         nextCutType: getNextCutType(f, fCuts.length),
+        resolvedNextAction: resolved,
+        maintenanceSatisfied,
       };
     });
-    // applications and products not used here yet; will be used in 3b
-    // for calibration + report rendering.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fields, cuts, seasonStart, todayIso, windowDays]);
+  }, [fields, cuts, applications, products, settings, seasonStart, todayIso]);
 
   // Filter to fields eligible for the chosen mode.
   const eligibleStates: FieldState[] = useMemo(() => {
@@ -208,18 +226,21 @@ export function SpreadingReportShell({
         return s.cutsDoneThisSeason === 0;
       }
       if (mode === 'post_cut') {
-        // At least one cut, within the window, AND further cuts to come.
+        // After-cut application: field has at least one cut and is heading
+        // for ANOTHER cut (silage or bales), per its most recent cut's
+        // next_action. Time window no longer gates — the field stays in
+        // the list until the next cut is logged. Window is still surfaced
+        // as info for sorting / recency.
         if (s.cutsDoneThisSeason === 0) return false;
-        if (s.daysSinceLastCut == null || s.daysSinceLastCut > windowDays) return false;
         if (s.cutsDoneThisSeason >= s.field.cut_profile) return false;
-        return true;
+        return isHeadingForAnotherCut(s.resolvedNextAction);
       }
-      // mid_season — cut at least once this season AND the last cut was
-      // longer ago than the post-cut window (i.e. into the "between cuts"
-      // territory, not the "just cut" territory).
-      if (s.cutsDoneThisSeason === 0) return false;
-      if (s.cutsDoneThisSeason >= s.field.cut_profile) return false;
-      if (s.daysSinceLastCut != null && s.daysSinceLastCut <= windowDays) return false;
+      // mid_season URL ID kept for share-link compatibility but the
+      // semantics are now Maintenance: field has the maintenance_grazing
+      // flag on its most recent cut AND hasn't yet received enough N to
+      // satisfy the threshold. Cut profile / window irrelevant.
+      if (!isMaintenanceGrazing(s.resolvedNextAction)) return false;
+      if (s.maintenanceSatisfied) return false;
       return true;
     });
   }, [fieldStates, mode, windowDays, groupFilter, cutTypeFilter]);
@@ -750,9 +771,9 @@ export function SpreadingReportShell({
 
 function EmptyState({ mode }: { mode: ReportMode }) {
   const suggestion =
-    mode === 'post_cut' ? 'Nothing cut in the window. Try widening to 30 days, or switch to Spring or Mid-season mode.' :
-    mode === 'spring'   ? 'Every field has already been cut this season. Try After-cut application or Mid-season top-up instead.' :
-                          'No fields between cuts. Try After-cut application if you just cut, or Spring dressing if no cuts yet.';
+    mode === 'post_cut' ? 'No fields are heading for another cut. Try Spring (if pre-season) or Maintenance (if fields are flagged for one-off top-up).' :
+    mode === 'spring'   ? 'Every field has already been cut this season. Try After-cut application or Maintenance top-up instead.' :
+                          'No fields flagged for maintenance. Flag one when logging a cut to see it here.';
   return (
     <div style={{ padding: 14, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
       {suggestion}

@@ -8,6 +8,7 @@ import {
   Field,
   GrassSystem,
   Group,
+  NextAction,
   Product,
   Settings,
 } from '@/lib/types';
@@ -24,7 +25,9 @@ import {
   isSampleStale,
   NEXT_CUT_LABELS,
   NextCutType,
+  resolveFieldNextAction,
   resolveGrassSystem,
+  ResolvedNextAction,
   sampleYear,
   SOIL_TYPE_SHORT_LABELS,
   soilMetricColor,
@@ -46,6 +49,17 @@ import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 // shareable.
 
 type SortKey = 'name' | 'next_cut_n' | 'shortfall_total' | 'area';
+
+const RESOLVED_NEXT_ACTION_LABELS: Record<ResolvedNextAction, string> = {
+  another_cut_silage:   'Another silage cut',
+  another_cut_bales:    'Another bales cut',
+  rotational_grazing:   'Rotational grazing',
+  maintenance_grazing:  'Maintenance top-up',
+  pre_first_cut_silage: 'Silage (planned)',
+  pre_first_cut_bales:  'Bales (planned)',
+  pre_first_cut_grazing:'Grazing (planned)',
+  complete:             'Complete',
+};
 
 const SORT_LABELS: Record<SortKey, string> = {
   name: 'Name (A-Z)',
@@ -118,6 +132,9 @@ export function SnapshotReportShell({
     lastCut: Cut | undefined;
     daysSinceLastCut: number | null;
     nextCutType: NextCutType;
+    /** Resolved per-cut next action (from most recent cut), with planned_cuts
+     *  fallback for fields with no cuts this season. */
+    resolvedNextAction: ResolvedNextAction;
     /** Season-to-date totals (any source). */
     seasonApplied: { n: number; p: number; k: number };
     /** Most recent application of any nutrient-bearing product this season. */
@@ -148,6 +165,7 @@ export function SnapshotReportShell({
 
       const seasonTotals = sumNutrients(seasonApps, products);
       const seasonApplied = { n: seasonTotals.n, p: seasonTotals.p, k: seasonTotals.k };
+      const resolvedNextAction = resolveFieldNextAction(f, fCuts);
 
       // Most recent application — useful for "when did you last touch this field"
       const lastApp = [...seasonApps]
@@ -205,6 +223,7 @@ export function SnapshotReportShell({
         lastCut,
         daysSinceLastCut,
         nextCutType,
+        resolvedNextAction,
         seasonApplied,
         lastApp,
         nextCutTarget,
@@ -568,6 +587,7 @@ function buildPlainText(
     lastCut: Cut | undefined;
     daysSinceLastCut: number | null;
     nextCutType: NextCutType;
+    resolvedNextAction: ResolvedNextAction;
     seasonApplied: { n: number; p: number; k: number };
     nextCutTarget: ReturnType<typeof getCutTargets>;
     gap: { n: number; p: number; k: number } | null;
@@ -584,7 +604,7 @@ function buildPlainText(
     if (s.groupName) parts.push(s.groupName);
     if (s.grassSystem) parts.push(s.grassSystem.short_label);
     lines.push(`${s.field.name} (${parts.join(' · ')})`);
-    lines.push(`  Next: ${NEXT_CUT_LABELS[s.nextCutType]} · cuts ${s.cutsDoneThisSeason}/${s.field.cut_profile}`);
+    lines.push(`  Next: ${RESOLVED_NEXT_ACTION_LABELS[s.resolvedNextAction]} · cuts ${s.cutsDoneThisSeason}/${s.field.cut_profile}`);
     if (s.lastCut && s.daysSinceLastCut != null) {
       lines.push(`  Last cut: ${fmtDateShort(s.lastCut.cut_date)} (${s.daysSinceLastCut}d ago)`);
     }
@@ -612,6 +632,7 @@ function buildCsv(
     lastCut: Cut | undefined;
     daysSinceLastCut: number | null;
     nextCutType: NextCutType;
+    resolvedNextAction: ResolvedNextAction;
     seasonApplied: { n: number; p: number; k: number };
     lastApp: Application | undefined;
     nextCutTarget: ReturnType<typeof getCutTargets>;
@@ -632,6 +653,7 @@ function buildCsv(
     'Sample year', 'Sample stale',
     'Cut profile', 'Cuts done', 'Cuts remaining',
     'Next cut type',
+    'Next action',
     'Last cut date', 'Days since last cut',
     'Last application date',
     'Season N applied (kg/ha)',
@@ -666,6 +688,7 @@ function buildCsv(
       s.cutsDoneThisSeason,
       Math.max(0, f.cut_profile - s.cutsDoneThisSeason),
       NEXT_CUT_LABELS[s.nextCutType],
+      RESOLVED_NEXT_ACTION_LABELS[s.resolvedNextAction],
       s.lastCut?.cut_date ?? '',
       s.daysSinceLastCut ?? '',
       s.lastApp?.date_applied ?? '',

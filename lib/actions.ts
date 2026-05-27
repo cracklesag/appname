@@ -108,6 +108,11 @@ export async function saveCut(formData: FormData) {
   const cutType = String(formData.get('cut_type')) as CutType;
   const yieldClass = String(formData.get('yield_class')) as YieldClass;
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  // What's next for this field. Stays nullable for legacy callers / older
+  // forms that don't post the field; defaults to null then.
+  const VALID_NEXT_ACTIONS = ['another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'];
+  const rawNextAction = String(formData.get('next_action') ?? '');
+  const nextAction: string | null = VALID_NEXT_ACTIONS.includes(rawNextAction) ? rawNextAction : null;
 
   if (!fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
 
@@ -118,6 +123,7 @@ export async function saveCut(formData: FormData) {
     cut_date: cutDate,
     cut_type: cutType,
     yield_class: yieldClass,
+    next_action: nextAction,
     notes,
   });
   if (error) throw new Error(error.message);
@@ -139,6 +145,10 @@ export async function updateCut(formData: FormData) {
   const cutType = String(formData.get('cut_type')) as CutType;
   const yieldClass = String(formData.get('yield_class')) as YieldClass;
   const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  // Same as saveCut — accept next_action, fall back to null when missing.
+  const VALID_NEXT_ACTIONS = ['another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'];
+  const rawNextAction = String(formData.get('next_action') ?? '');
+  const nextAction: string | null = VALID_NEXT_ACTIONS.includes(rawNextAction) ? rawNextAction : null;
 
   if (!id || !fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
 
@@ -149,6 +159,7 @@ export async function updateCut(formData: FormData) {
       cut_date: cutDate,
       cut_type: cutType,
       yield_class: yieldClass,
+      next_action: nextAction,
       notes,
     })
     .eq('id', id);
@@ -290,6 +301,11 @@ export async function saveSettings(formData: FormData) {
       )),
       grazingCadenceWeeks: Math.max(1, Math.min(12,
         parseInt(String(formData.get('report_grazing_weeks') || '4'), 10) || 4
+      )),
+      // Maintenance dose threshold — kg N/ha. Clamped 0-200 to match the
+      // settings input bounds and prevent unreachable / runaway values.
+      maintenanceDoseThresholdKgN: Math.max(0, Math.min(200,
+        parseFloat(String(formData.get('report_maintenance_threshold') || '30')) || 30
       )),
     },
     bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
@@ -1294,6 +1310,36 @@ export async function setFieldGrassSystem(formData: FormData) {
   if (error) throw new Error(`Could not update grass system: ${error.message}`);
 
   revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  revalidatePath('/reports/spreading');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/snapshot');
+}
+
+/**
+ * Update the `next_action` on a specific cut. Used by the field detail
+ * page's "what's next" dropdown so users can change their mind without
+ * having to log a new cut. RLS plus user_id filter prevent edits to
+ * other users' cuts.
+ */
+export async function setCutNextAction(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const cutId = String(formData.get('cut_id') ?? '').trim();
+  if (!cutId) throw new Error('Cut id is required');
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  const VALID_NEXT_ACTIONS = ['another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'];
+  const raw = String(formData.get('next_action') ?? '');
+  const nextAction: string | null = VALID_NEXT_ACTIONS.includes(raw) ? raw : null;
+
+  const { error } = await supabase
+    .from('cuts').update({ next_action: nextAction })
+    .eq('id', cutId).eq('user_id', user.id);
+  if (error) throw new Error(`Could not update next action: ${error.message}`);
+
+  if (fieldId) revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   revalidatePath('/reports/spreading');
   revalidatePath('/reports/grazing');

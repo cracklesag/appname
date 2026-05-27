@@ -147,6 +147,12 @@ create table public.cuts (
   cut_date      date not null,
   cut_type      text not null default 'silage' check (cut_type in ('silage','bales','grazing')),
   yield_class   text not null default 'average' check (yield_class in ('light','average','heavy')),
+  -- Per-cut "what's next" — drives spreading-report mode eligibility and
+  -- grazing-report inclusion. Nullable; resolver falls back to planned_cuts
+  -- when null. See lib/rules.ts → resolveFieldNextAction.
+  next_action   text check (next_action is null or next_action in (
+    'another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'
+  )),
   notes         text,
   created_at    timestamptz not null default now()
 );

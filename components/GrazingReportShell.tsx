@@ -19,6 +19,8 @@ import {
   getNCap,
   getNextCutType,
   getSoilType,
+  isHeadingForRotationalGrazing,
+  resolveFieldNextAction,
   resolveGrassSystem,
   SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
@@ -125,7 +127,13 @@ export function GrazingReportShell({
         const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
         const cutsDoneThisSeason = fCuts.length;
         const nextCutType = getNextCutType(f, cutsDoneThisSeason);
-        if (nextCutType !== 'grazing') return null;
+        // Eligibility — field is on rotational grazing per its most-recent
+        // cut's next_action (or planned_cuts[0] for fields with no cuts yet
+        // via the resolver's fallback). The legacy "nextCutType === grazing"
+        // check is still satisfied by the fallback path, so existing data
+        // without explicit next_action keeps showing up the same way.
+        const resolved = resolveFieldNextAction(f, fCuts);
+        if (!isHeadingForRotationalGrazing(resolved)) return null;
 
         // Filter to N-bearing season applications. Slurry/manure N is the
         // crop-available fraction (calcNutrients already applies the factor),

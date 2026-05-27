@@ -1,5 +1,5 @@
 import {
-  Application, Cut, CutType, Field, GrassSystem, Product, ProductCategory, ProductType, Settings,
+  Application, Cut, CutType, Field, GrassSystem, NextAction, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 
@@ -528,10 +528,168 @@ export function resolveGrassSystem(
 export function shouldFlagCloverSuppression(
   field: Field,
   system: GrassSystem | undefined,
-  mode: 'spring' | 'post_cut' | 'mid_season',
+  mode: 'spring' | 'post_cut' | 'mid_season' | 'maintenance',
 ): boolean {
   if (!system?.is_legume_rich) return false;
   return mode === 'spring';
+}
+
+// ---- Next-action resolution ---------------------------------------
+//
+// Each Cut row stores a `next_action` set when the user logged the cut:
+// another_cut_silage / another_cut_bales / rotational_grazing / maintenance_grazing.
+//
+// resolveFieldNextAction looks at the field's MOST RECENT cut this season
+// and returns that cut's next_action. If no cuts exist this season, or the
+// most recent cut has a NULL next_action (legacy row pre-feature), it falls
+// back to reading the field's planned_cuts array — same behaviour the app
+// had before the feature shipped. The fallback keeps existing data
+// behaviour identical until users start logging cuts with explicit
+// next_action values.
+
+/** Resolved next-action for a field. Either the per-cut state or, when
+ *  unavailable, a value inferred from planned_cuts (legacy behaviour). */
+export type ResolvedNextAction =
+  | NextAction
+  | 'pre_first_cut_silage'   // No cuts yet, planned_cuts[0] === 'silage'
+  | 'pre_first_cut_bales'    // No cuts yet, planned_cuts[0] === 'bales'
+  | 'pre_first_cut_grazing'  // No cuts yet, planned_cuts[0] === 'grazing'
+  | 'complete';              // All cuts in profile have been done
+
+/**
+ * Given a field and its season's cuts (any order), return the resolved
+ * "what's next" status for the field. Used by the spreading report
+ * (after-cut / maintenance mode eligibility), grazing report (rotational
+ * inclusion) and home dashboard (next-cut badge).
+ */
+export function resolveFieldNextAction(
+  field: Field,
+  fieldCuts: Cut[],
+): ResolvedNextAction {
+  // Sort by cut_date desc to find the most recent cut, then by cut_number
+  // as a tiebreaker (multiple cuts on the same date — pick the higher
+  // cut number = the later one in the season).
+  const seasonCuts = [...fieldCuts].sort((a, b) => {
+    if (a.cut_date !== b.cut_date) return b.cut_date.localeCompare(a.cut_date);
+    return b.cut_number - a.cut_number;
+  });
+  const latest = seasonCuts[0];
+  if (latest && latest.next_action) {
+    return latest.next_action;
+  }
+  // Fallback path — either no cuts yet or legacy cut with null next_action.
+  // Use planned_cuts to figure out the next slot.
+  const planned = getPlannedCuts(field);
+  const cutsDoneThisSeason = seasonCuts.length;
+  if (cutsDoneThisSeason >= field.cut_profile) return 'complete';
+  const nextSlotType = planned[cutsDoneThisSeason] ?? 'silage';
+  if (nextSlotType === 'silage') return 'pre_first_cut_silage';
+  if (nextSlotType === 'bales') return 'pre_first_cut_bales';
+  if (nextSlotType === 'grazing') return 'pre_first_cut_grazing';
+  return 'pre_first_cut_silage';
+}
+
+/** Is the field heading for another cut (silage or bales)? */
+export function isHeadingForAnotherCut(action: ResolvedNextAction): boolean {
+  return (
+    action === 'another_cut_silage' ||
+    action === 'another_cut_bales' ||
+    action === 'pre_first_cut_silage' ||
+    action === 'pre_first_cut_bales'
+  );
+}
+
+/** Is the field on the rotational grazing schedule? */
+export function isHeadingForRotationalGrazing(action: ResolvedNextAction): boolean {
+  return action === 'rotational_grazing' || action === 'pre_first_cut_grazing';
+}
+
+/** Is the field in maintenance-grazing state? Only true when explicitly
+ *  flagged on a cut — there's no pre-first-cut equivalent because
+ *  maintenance only makes sense AFTER a cut has been taken. */
+export function isMaintenanceGrazing(action: ResolvedNextAction): boolean {
+  return action === 'maintenance_grazing';
+}
+
+/**
+ * The date of the most recent cut on the field this season, or null if
+ * no cuts. Used as the start of the "since maintenance flag" window when
+ * checking whether the maintenance dose threshold has been crossed.
+ */
+export function mostRecentCutDate(fieldCuts: Cut[]): string | null {
+  if (fieldCuts.length === 0) return null;
+  const sorted = [...fieldCuts].sort((a, b) => b.cut_date.localeCompare(a.cut_date));
+  return sorted[0].cut_date;
+}
+
+/**
+ * Categories of nutrient input that DO count toward the maintenance N
+ * threshold. These are fast-acting N sources that behave like a top-up
+ * dose: mineral fertiliser (bag fert), slurry (dairy/pig/separated),
+ * digestate (treated as liquid; users with separated solid digestate
+ * should model it as FYM).
+ *
+ * Categories NOT in this list — FYM, poultry, biosolids, lime, custom —
+ * are slow-release / non-N sources and don't count.
+ */
+const MAINTENANCE_N_CATEGORIES = new Set<ProductCategory>([
+  'bag_fert',
+  'dairy_slurry',
+  'pig_slurry',
+  'separated_slurry',
+  'digestate',
+]);
+
+/**
+ * Does the application qualify as N toward the maintenance dose threshold?
+ * Looks up the application's product category and checks against the
+ * allow-list. Returns false for applications with no associated product
+ * (shouldn't happen in practice but defensive) or with a null category
+ * (custom products without category set).
+ */
+export function counts_toward_maintenance_threshold(
+  app: Application,
+  products: Product[],
+): boolean {
+  const product = products.find((p) => p.id === app.product_id);
+  if (!product || !product.category) return false;
+  return MAINTENANCE_N_CATEGORIES.has(product.category);
+}
+
+/**
+ * Sum of N applied to a field after a given date, restricted to product
+ * categories that count toward the maintenance dose. Used by the spreading
+ * report's Maintenance-mode eligibility check.
+ */
+export function maintenanceNAppliedSince(
+  applications: Application[],
+  products: Product[],
+  fromDateIso: string,
+): number {
+  const qualifying = applications
+    .filter((a) => a.date_applied >= fromDateIso)
+    .filter((a) => counts_toward_maintenance_threshold(a, products));
+  return sumNutrients(qualifying, products).n;
+}
+
+/**
+ * Has the field had enough qualifying N applied since its maintenance-
+ * flagged cut to satisfy the dose threshold? Used to drop a field from
+ * Maintenance mode once the threshold is crossed.
+ */
+export function maintenanceDoseSatisfied(
+  field: Field,
+  applications: Application[],
+  products: Product[],
+  fieldCuts: Cut[],
+  settings: Settings,
+): boolean {
+  const threshold = settings.reportDefaults?.maintenanceDoseThresholdKgN ?? 30;
+  const flagDate = mostRecentCutDate(fieldCuts);
+  if (!flagDate) return false;  // can't be satisfied if no cut anchor
+  const fieldApps = applications.filter((a) => a.field_id === field.id);
+  const nApplied = maintenanceNAppliedSince(fieldApps, products, flagDate);
+  return nApplied >= threshold;
 }
 
 /**

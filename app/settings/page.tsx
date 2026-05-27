@@ -246,6 +246,29 @@ export default async function SettingsPage() {
               />
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>weeks</span>
             </div>
+
+            {/* Maintenance dose threshold — the kg N/ha that has to be
+                applied to a maintenance-flagged field before it drops out
+                of the spreading report's Maintenance mode. Slurry, liquid
+                digestate and mineral fert all count toward this. FYM /
+                solid manures / poultry / biosolids do not (slow-release). */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Maintenance dose threshold</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  N total a maintenance-flagged field needs before dropping from the report.
+                  Slurry, liquid digestate and bag fert all count. FYM/solids/poultry do not.
+                </div>
+              </div>
+              <input
+                type="number" min="0" max="200" step="5"
+                name="report_maintenance_threshold"
+                className="input"
+                style={{ width: 70, textAlign: 'right' }}
+                defaultValue={s.reportDefaults.maintenanceDoseThresholdKgN}
+              />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg N/ha</span>
+            </div>
           </div>
         </div>
 

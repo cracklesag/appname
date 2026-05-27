@@ -3,13 +3,48 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Save, Scissors } from 'lucide-react';
-import { Cut, CutType, Field, Settings, YieldClass } from '@/lib/types';
+import { Cut, CutType, Field, NextAction, Settings, YieldClass } from '@/lib/types';
 import {
   CUT_TYPE_LABELS, displayBagAmount, fmt, getOfftakeForCut, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 import { saveCut, updateCut } from '@/lib/actions';
 import { validateDate } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
+
+/**
+ * Pick a smart default for "what's next" when first opening the form.
+ *  - If this is the final cut in the profile → default to maintenance.
+ *    Pattern: "I've taken my last silage, now one top-up and leave it."
+ *  - Otherwise → default to "another cut" matching the current cut type
+ *    (silage / bales). Most common workflow during peak season.
+ *  - If the cut is a grazing cut → default to rotational grazing,
+ *    consistent with how the user has just managed the field.
+ */
+function defaultNextAction(
+  cutType: CutType,
+  cutNumber: number,
+  cutProfile: number,
+): NextAction {
+  const isFinalCut = cutNumber >= cutProfile;
+  if (isFinalCut) return 'maintenance_grazing';
+  if (cutType === 'grazing') return 'rotational_grazing';
+  if (cutType === 'bales') return 'another_cut_bales';
+  return 'another_cut_silage';
+}
+
+const NEXT_ACTION_LABELS: Record<NextAction, string> = {
+  another_cut_silage:  'Another silage cut',
+  another_cut_bales:   'Another bales cut',
+  rotational_grazing:  'Rotational grazing',
+  maintenance_grazing: 'Maintenance — one fert top-up then leave',
+};
+
+const NEXT_ACTION_HINTS: Record<NextAction, string> = {
+  another_cut_silage:  'Field stays in the spreading report\'s After-cut application list. Targets the next planned cut.',
+  another_cut_bales:   'Field stays in the spreading report\'s After-cut application list. Targets the next planned cut.',
+  rotational_grazing:  'Field enters the Grazing report\'s rotation. Recurring N top-ups every few weeks.',
+  maintenance_grazing: 'Field appears in the spreading report\'s Maintenance mode until ~30 kg N/ha of qualifying fert/slurry is applied (configurable in settings).',
+};
 
 export function LogCutForm({
   field, settings, nextCutNumber, plannedType, existing,
@@ -28,6 +63,13 @@ export function LogCutForm({
   const [cutType, setCutType] = useState<CutType>(existing?.cut_type ?? plannedType);
   const [yieldClass, setYieldClass] = useState<YieldClass>(existing?.yield_class ?? 'average');
   const [notes, setNotes] = useState(existing?.notes ?? '');
+  // "What's next" — set when logging the cut. Smart default based on cut
+  // type and whether this is the final cut. If editing an existing cut,
+  // preserve its current next_action (or the default if the row was
+  // logged before the feature).
+  const [nextAction, setNextAction] = useState<NextAction>(
+    existing?.next_action ?? defaultNextAction(cutType, cutNumberForRules, field.cut_profile),
+  );
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,6 +105,7 @@ export function LogCutForm({
       <input type="hidden" name="cut_number" value={cutNumberForRules} />
       <input type="hidden" name="cut_type" value={cutType} />
       <input type="hidden" name="yield_class" value={yieldClass} />
+      <input type="hidden" name="next_action" value={nextAction} />
 
       <div style={{ padding: 16 }}>
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
@@ -154,6 +197,42 @@ export function LogCutForm({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div className="label">What&apos;s next for this field?</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontStyle: 'italic' }}>
+            Sets where the field shows up in the spreading and grazing reports until the next cut.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {(['another_cut_silage', 'another_cut_bales', 'rotational_grazing', 'maintenance_grazing'] as NextAction[]).map((key) => {
+              const isActive = key === nextAction;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setNextAction(key)}
+                  style={{
+                    padding: '10px 8px',
+                    border: `1px solid ${isActive ? 'var(--forest)' : 'var(--line)'}`,
+                    borderRadius: 4,
+                    background: isActive ? 'var(--forest-soft)' : 'var(--card)',
+                    color: isActive ? 'var(--forest-dark)' : 'var(--ink-soft)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {NEXT_ACTION_LABELS[key]}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+            {NEXT_ACTION_HINTS[nextAction]}
           </div>
         </div>
 

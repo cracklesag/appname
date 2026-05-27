@@ -7,6 +7,7 @@ import {
   ApplicationCard, CutEntry, NAvailabilityStrip,
 } from '@/components/FieldDetailCards';
 import { FieldGroupPicker } from '@/components/FieldGroupPicker';
+import { NextActionPicker } from '@/components/NextActionPicker';
 import {
   loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups,
 } from '@/lib/data';
@@ -132,6 +133,22 @@ export default async function FieldDetailPage({
                 currentGroupId={field.group_id}
                 groups={groups}
               />
+            </div>
+          </div>
+
+          {/* What's next — editable per-cut state. Updates the most recent
+              cut's next_action so users can change their mind without
+              logging a new cut. When no cuts exist this season, picker is
+              replaced with a "log your first cut" hint. */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>What&apos;s next for this field</div>
+            <NextActionPicker
+              cutId={lastCut?.id ?? null}
+              fieldId={field.id}
+              current={lastCut?.next_action ?? null}
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>
+              Drives where this field appears in the spreading and grazing reports until the next cut is logged.
             </div>
           </div>
 

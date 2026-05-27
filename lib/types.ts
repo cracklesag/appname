@@ -1,5 +1,24 @@
 export type ProductType = 'bag_fert' | 'slurry' | 'solid_manure' | 'lime';
 export type CutType = 'silage' | 'bales' | 'grazing';
+/**
+ * Per-cut "what's next" — set when the user logs a cut. Drives spreading-
+ * report mode eligibility and grazing-report inclusion. Nullable on the DB
+ * column so existing rows pre-feature stay valid; resolver falls back to
+ * the field's planned_cuts array when next_action is null.
+ *
+ *   another_cut_silage  — field's heading for another silage cut
+ *   another_cut_bales   — field's heading for another bales cut
+ *   rotational_grazing  — field enters the grazing report rotation
+ *   maintenance_grazing — one maintenance fertiliser dose then leave it;
+ *                         field appears in spreading-report Maintenance
+ *                         mode until any mineral fert is logged after
+ *                         the maintenance-flagged cut.
+ */
+export type NextAction =
+  | 'another_cut_silage'
+  | 'another_cut_bales'
+  | 'rotational_grazing'
+  | 'maintenance_grazing';
 export type YieldClass = 'light' | 'average' | 'heavy';
 export type SlurryMethod = 'splash_plate' | 'dribble_bar' | 'trail_shoe';
 export type SolidMethod  = 'surface' | 'soil_incorporated';
@@ -146,6 +165,9 @@ export interface Cut {
   cut_date: string;
   cut_type: CutType;
   yield_class: YieldClass;
+  /** What's next for this field, set when the cut was logged. Nullable for
+   *  legacy rows; resolver falls back to planned_cuts when null. */
+  next_action: NextAction | null;
   notes: string | null;
   created_at: string;
 }
@@ -180,6 +202,16 @@ export interface Settings {
      */
     grazingCadenceKgN: number;
     grazingCadenceWeeks: number;
+    /**
+     * Maintenance dose threshold (kg N/ha). A field flagged for maintenance
+     * (next_action = 'maintenance_grazing' on its most recent cut) shows in
+     * the spreading report's Maintenance mode until the cumulative N applied
+     * since that cut crosses this threshold. Slurry, liquid digestate and
+     * mineral fertiliser ALL count toward the threshold. Solid manures (FYM,
+     * compost, solid digestate, poultry litter) do not — they're slow-release
+     * and don't behave like a top-up dose.
+     */
+    maintenanceDoseThresholdKgN: number;
   };
   /**
    * Grass system IDs the user has hidden from their dropdown. Shared seeds
@@ -206,6 +238,7 @@ export const DEFAULT_SETTINGS: Settings = {
     annualNCapKgPerHa: 320,
     grazingCadenceKgN: 40,
     grazingCadenceWeeks: 4,
+    maintenanceDoseThresholdKgN: 30,
   },
   hiddenGrassSystemIds: [],
   onboarded: false,
