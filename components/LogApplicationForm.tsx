@@ -300,7 +300,11 @@ export function LogApplicationForm({
   const dateWarning = useMemo(() => validateDate(date), [date]);
 
   const hasBlockingError = !!(rateWarning?.kind === 'error' || dateWarning?.kind === 'error');
-  const canSave = product && date && numericRate > 0 && !hasBlockingError && !submitting;
+  // Block save when no product of the current type is selected — happens
+  // when the user switches to a type that has no products yet. Stops the
+  // form silently submitting with a stale product from the previous type.
+  const productMatchesType = !!product && product.type === type;
+  const canSave = productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting;
 
   // Method to write into FormData (empty string omitted server-side).
   const methodForForm: string =
@@ -354,27 +358,83 @@ export function LogApplicationForm({
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <div className="label">Product</div>
               <Link
-                href={`/products/new?return=${encodeURIComponent(pathname)}`}
+                href={`/products/new?type=${type}&return=${encodeURIComponent(pathname)}`}
                 style={{ fontSize: 12, color: 'var(--forest-dark)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                 title="Add a custom product"
               >
                 + New
               </Link>
             </div>
-            <select
-              className="select"
-              value={currentCategory ?? ''}
-              onChange={(e) => selectCategory(e.target.value)}
-              disabled={isEdit}
-              title={isEdit ? 'Product locked when editing — delete and re-log to change' : undefined}
-            >
-              {categoryList.map((cat) => {
-                const label = (CATEGORY_LABELS as any)[cat] ?? cat;
-                return <option key={cat} value={cat}>{label}</option>;
-              })}
-            </select>
+            {/* Category select shown only when there's a meaningful choice
+                to make. Bag fert + Lime typically resolve to a single
+                category so the redundant "Bag fertiliser" header in the
+                dropdown is hidden. Slurry / solid manure usually have
+                multiple categories (dairy / pig / FYM / poultry / etc.)
+                and the picker is genuinely useful there. */}
+            {categoryList.length > 1 && (
+              <select
+                className="select"
+                value={currentCategory ?? ''}
+                onChange={(e) => selectCategory(e.target.value)}
+                disabled={isEdit}
+                title={isEdit ? 'Product locked when editing — delete and re-log to change' : undefined}
+              >
+                {categoryList.map((cat) => {
+                  const label = (CATEGORY_LABELS as any)[cat] ?? cat;
+                  return <option key={cat} value={cat}>{label}</option>;
+                })}
+              </select>
+            )}
           </div>
         )}
+
+        {/* Empty state — no products of this type exist yet. Encourages
+            the user to add one rather than silently rendering nothing or
+            (worse) leaving a stale product from another type selected. */}
+        {type !== 'lime' && siblings.length === 0 && (
+          <div style={{
+            padding: 12,
+            marginBottom: 14,
+            border: '1px solid var(--line)',
+            borderRadius: 4,
+            background: 'var(--card)',
+            fontSize: 12,
+            color: 'var(--muted)',
+          }}>
+            No {type === 'bag_fert' ? 'bag fertilisers' : type === 'slurry' ? 'slurries' : 'solid manures'} yet.
+            Tap <strong>+ New</strong> above to add one.
+          </div>
+        )}
+
+        {/* Product-level selector — shown when the category has multiple
+            products AND there's no specialised sub-picker for that category
+            (DM bands for dairy/pig slurry; feedstock/form for digestate;
+            source for poultry). Used by bag fert, lime, FYM, separated,
+            biosolids, and any user-created custom products. Without this,
+            users with multiple bag-fert products (typical) couldn't pick
+            between them. */}
+        {type !== 'lime' && siblings.length > 1 && (() => {
+          const handledByDmPicker = currentCategory === 'dairy_slurry' || currentCategory === 'pig_slurry';
+          const handledByDigestatePicker = currentCategory === 'digestate';
+          const handledByPoultryPicker = currentCategory === 'poultry' && type === 'solid_manure';
+          if (handledByDmPicker || handledByDigestatePicker || handledByPoultryPicker) return null;
+          return (
+            <div style={{ marginBottom: 14 }}>
+              <div className="label">Choose product</div>
+              <select
+                className="select"
+                value={productId}
+                onChange={(e) => setProductId(parseInt(e.target.value, 10))}
+                disabled={isEdit}
+                title={isEdit ? 'Product locked when editing — delete and re-log to change' : undefined}
+              >
+                {siblings.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          );
+        })()}
 
         {/* Sub-picker: Dairy/Pig slurry — DM band quick-pick. */}
         {dmSiblings.length > 1 && (

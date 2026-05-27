@@ -9,9 +9,19 @@ import { createCustomProduct } from '@/lib/actions';
 /**
  * Form for creating a user-owned product. Submits to the createCustomProduct
  * server action which redirects to `return_to` on success.
+ *
+ * `initialType` lets the caller pre-select the right tab so the user lands
+ * where they came from (e.g. came from the Bag fert picker → form opens on
+ * Bag fert). The user can still switch tabs if needed.
  */
-export function CustomProductForm({ returnTo }: { returnTo: string }) {
-  const [type, setType] = useState<ProductType>('slurry');
+export function CustomProductForm({
+  returnTo,
+  initialType = 'slurry',
+}: {
+  returnTo: string;
+  initialType?: ProductType;
+}) {
+  const [type, setType] = useState<ProductType>(initialType);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
