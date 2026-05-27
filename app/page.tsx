@@ -18,6 +18,7 @@ import {
   getCutTargets,
   getOfftakeForCut,
   getNextCutType,
+  getResolvedNextCutType,
   getSeasonLabel,
   getSeasonStart,
   isSampleStale,
@@ -88,8 +89,10 @@ export default async function HomePage({
     const sinceCutApps = seasonApps.filter((a) => a.date_applied >= windowStart);
     const sinceTotals = sumNutrients(sinceCutApps, products);
     const nextCut = Math.min(cutsDone + 1, f.cut_profile);
-    const nextCutType = getNextCutType(f, cutsDone);
-    const targets = cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings, system) : null;
+    // Resolved next-cut type drives display + filtering. Per-cut next_action
+    // (e.g. maintenance, rotational grazing) trumps the static planned_cuts.
+    const nextCutType = getResolvedNextCutType(f, fCuts);
+    const targets = cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings, system, fCuts) : null;
 
     // P/K carryover from applications before the last cut, minus offtake already
     // taken by cuts done this season. N has no carryover (mobile in soil).
@@ -266,11 +269,12 @@ export default async function HomePage({
               paramName="next"
               ariaLabel="Filter by next cut type"
               options={[
-                { value: 'active',   label: 'Active' },
-                { value: 'silage',   label: 'Silage' },
-                { value: 'bales',    label: 'Bales' },
-                { value: 'grazing',  label: 'Grazing' },
-                { value: 'complete', label: 'Cuts done' },
+                { value: 'active',      label: 'Active' },
+                { value: 'silage',      label: 'Silage' },
+                { value: 'bales',       label: 'Bales' },
+                { value: 'grazing',     label: 'Grazing' },
+                { value: 'maintenance', label: 'Maintenance' },
+                { value: 'complete',    label: 'Cuts done' },
               ]}
             />
             {/* Filter chips — shortfall. URL param: ?short= */}

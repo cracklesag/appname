@@ -22,6 +22,7 @@ import {
   getNCap,
   getNextCutType,
   getOfftakeForCut,
+  getResolvedNextCutType,
   getSplitTarget,
   isHeadingForAnotherCut,
   isMaintenanceGrazing,
@@ -156,6 +157,9 @@ export function SpreadingReportShell({
   // field appears or disappears from the picker depending on the mode.
   type FieldState = {
     field: Field;
+    /** Cuts for this field this season (most recent first). Passed through
+     *  to getCutTargets so the cut-type calc reflects next_action overrides. */
+    seasonCuts: Cut[];
     cutsDoneThisSeason: number;
     lastCut: Cut | undefined;
     daysSinceLastCut: number | null;
@@ -187,10 +191,13 @@ export function SpreadingReportShell({
         : false;
       return {
         field: f,
+        seasonCuts: fCuts,
         cutsDoneThisSeason: fCuts.length,
         lastCut,
         daysSinceLastCut,
-        nextCutType: getNextCutType(f, fCuts.length),
+        // Resolved next-cut type drives display + filtering. Respects
+        // per-cut next_action when set; falls back to planned_cuts.
+        nextCutType: getResolvedNextCutType(f, fCuts),
         resolvedNextAction: resolved,
         maintenanceSatisfied,
       };
@@ -897,6 +904,9 @@ function isoDaysAgo(todayIso: string, days: number): string {
 
 type FieldStateLite = {
   field: Field;
+  /** Field's cuts this season (most recent first). Passed to getCutTargets
+   *  so target maths reflects per-cut next_action overrides. */
+  seasonCuts: Cut[];
   cutsDoneThisSeason: number;
   lastCut: Cut | undefined;
   daysSinceLastCut: number | null;
@@ -973,7 +983,7 @@ function ReportSection(props: {
       const cutNumber = mode === 'spring'
         ? 1
         : Math.min(s.cutsDoneThisSeason + 1, f.cut_profile);
-      const baseTarget = getCutTargets(f, cutNumber, settings, system);
+      const baseTarget = getCutTargets(f, cutNumber, settings, system, s.seasonCuts);
       const fullTarget: Triple = baseTarget
         ? { n: baseTarget.n, p: baseTarget.p2o5, k: baseTarget.k2o }
         : { n: 0, p: 0, k: 0 };

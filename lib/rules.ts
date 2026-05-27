@@ -28,19 +28,83 @@ export const CUT_TYPE_LABELS: Record<CutType, string> = {
  * Used by the home dashboard and activity filters so users can group fields
  * by "what's next" without storing a separate allocation column.
  */
-export type NextCutType = CutType | 'complete';
+/**
+ * What the field is heading for next, for display purposes.
+ *
+ *   silage / bales / grazing — standard cut types
+ *   maintenance              — most recent cut said "maintenance_grazing"
+ *                              (one fert top-up then leave)
+ *   complete                 — all planned cuts taken AND no maintenance /
+ *                              grazing follow-up flagged
+ *
+ * Drives the home dashboard's filter chips, field detail subtitle,
+ * spreading-report card subtitles, snapshot rows, etc.
+ */
+export type NextCutType = CutType | 'maintenance' | 'complete';
 
+/**
+ * Cut-profile-position view: ignores next_action; returns the next
+ * planned cut type from the planned_cuts array, or 'complete' when the
+ * field has used all its planned cuts. Useful only for the few callers
+ * that need to know "what was originally planned" rather than "what the
+ * user wants next." For display and filtering, prefer
+ * getResolvedNextCutType which honours the per-cut next_action overrides.
+ */
 export function getNextCutType(field: Field, cutsDoneThisSeason: number): NextCutType {
   if (cutsDoneThisSeason >= field.cut_profile) return 'complete';
-  // planned_cuts is parallel to cut numbers; cutsDoneThisSeason is the index
-  // into planned_cuts that the NEXT cut occupies (0-indexed: 0 cuts done → cut 1 → planned_cuts[0]).
   return field.planned_cuts[cutsDoneThisSeason] ?? 'silage';
+}
+
+/**
+ * Resolved next-cut type with next_action overrides applied.
+ *
+ * Reads the field's most recent cut (if any) and lets its next_action
+ * trump the static planned_cuts array. Mapping:
+ *   - another_cut_silage    → 'silage'
+ *   - another_cut_bales     → 'bales'
+ *   - rotational_grazing    → 'grazing'
+ *   - maintenance_grazing   → 'maintenance'
+ *   - null next_action      → fallback to planned_cuts (pre-feature data)
+ *
+ * If cuts done >= cut_profile AND the most-recent cut's next_action is
+ * one of the "another cut" values, that's an inconsistency — we return
+ * 'complete' (the profile is the cap). Maintenance + rotational grazing
+ * are valid post-profile states though, so those override 'complete'.
+ */
+export function getResolvedNextCutType(
+  field: Field,
+  fieldCuts: Cut[],
+): NextCutType {
+  // Find the most recent cut by date, ties broken by cut_number.
+  const seasonCuts = [...fieldCuts].sort((a, b) => {
+    if (a.cut_date !== b.cut_date) return b.cut_date.localeCompare(a.cut_date);
+    return b.cut_number - a.cut_number;
+  });
+  const latest = seasonCuts[0];
+  const cutsDone = seasonCuts.length;
+
+  if (latest && latest.next_action) {
+    // Explicit per-cut decision wins.
+    if (latest.next_action === 'rotational_grazing')  return 'grazing';
+    if (latest.next_action === 'maintenance_grazing') return 'maintenance';
+    if (latest.next_action === 'another_cut_silage' || latest.next_action === 'another_cut_bales') {
+      // Honour the user's intent UNLESS the cut profile says we're done.
+      // If they want more cuts than the profile, they need to bump the
+      // profile (rare edge case, not handled here).
+      if (cutsDone >= field.cut_profile) return 'complete';
+      return latest.next_action === 'another_cut_silage' ? 'silage' : 'bales';
+    }
+  }
+  // Legacy path / no override: planned_cuts driven.
+  if (cutsDone >= field.cut_profile) return 'complete';
+  return field.planned_cuts[cutsDone] ?? 'silage';
 }
 
 export const NEXT_CUT_LABELS: Record<NextCutType, string> = {
   silage: 'Silage',
   bales: 'Bales',
   grazing: 'Grazing',
+  maintenance: 'Maintenance',
   // "Cuts done" rather than "Complete" — a grass field still has grazing
   // potential after its planned cuts are taken. Only truly inactive when
   // overwintered or non-grass crops are harvested (chunk for later).
@@ -704,18 +768,52 @@ export function maintenanceDoseSatisfied(
  *   5. Light-sand K bump (soil type)
  *
  * `system` is optional: when undefined, multipliers default to 1.00 — that
- * matches PRG-default behaviour and keeps existing fields with no system
- * FK producing identical numbers to before the grass-system feature.
+ * matches PRG-default behaviour.
+ *
+ * `fieldCuts` is optional: when provided, the cut type for THIS calculation
+ * is read from the resolver (so per-cut next_action overrides drive the
+ * targets — e.g. user switched to rotational_grazing mid-season, the next
+ * cut's target is now grazing economics not silage). When absent, falls
+ * back to planned_cuts[cutNumber-1] — legacy / pre-next-action behaviour.
+ *
+ * Maintenance fields ("maintenance" resolved type) get grazing-style
+ * targets at the next-cut position — the maintenance dose itself isn't
+ * really targeted at "the next cut", but for consistency with the
+ * resolved-display layer it produces grazing-equivalent recommendations
+ * (low N, normal P/K). The spreading report's Maintenance mode uses a
+ * different threshold-driven logic anyway.
  */
 export function getCutTargets(
   field: Field,
   cutNumber: number,
   settings: Settings,
   system?: GrassSystem,
+  fieldCuts?: Cut[],
 ): { n: number; p2o5: number; k2o: number; yieldDM: number; cutType: CutType } | null {
   if (!cutNumber) return null;
-  const planned = getPlannedCuts(field);
-  const cutType: CutType = planned[cutNumber - 1] || 'silage';
+  // Resolve the next cut's type. Prefer the resolver when cuts are
+  // supplied; fall back to planned_cuts otherwise.
+  let cutType: CutType;
+  if (fieldCuts) {
+    const resolved = getResolvedNextCutType(field, fieldCuts);
+    if (resolved === 'silage' || resolved === 'bales' || resolved === 'grazing') {
+      cutType = resolved;
+    } else if (resolved === 'maintenance') {
+      // Maintenance behaves agronomically like grazing for the purposes
+      // of nutrient targets — modest N + P/K offtake.
+      cutType = 'grazing';
+    } else {
+      // 'complete' shouldn't reach getCutTargets normally (cuts remaining
+      // is checked upstream) but if it does, just use planned_cuts as a
+      // safe default.
+      const planned = getPlannedCuts(field);
+      cutType = planned[cutNumber - 1] || 'silage';
+    }
+  } else {
+    // Legacy path — caller didn't supply cuts. Read from planned_cuts.
+    const planned = getPlannedCuts(field);
+    cutType = planned[cutNumber - 1] || 'silage';
+  }
   const offtake = getOfftakeForCut(field.cut_profile, cutNumber, 'average', settings, cutType);
   const baseN = settings.nTargets[cutNumber as 1|2|3|4] ?? offtake.n;
   // Apply grass-system N multiplier. Default 1.00 when no system.

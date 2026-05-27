@@ -21,6 +21,7 @@ import {
   getNCap,
   getNextCutType,
   getOfftakeForCut,
+  getResolvedNextCutType,
   getSoilType,
   isSampleStale,
   NEXT_CUT_LABELS,
@@ -51,8 +52,8 @@ import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 type SortKey = 'name' | 'next_cut_n' | 'shortfall_total' | 'area';
 
 const RESOLVED_NEXT_ACTION_LABELS: Record<ResolvedNextAction, string> = {
-  another_cut_silage:   'Another silage cut',
-  another_cut_bales:    'Another bales cut',
+  another_cut_silage:   'Next cut: silage',
+  another_cut_bales:    'Next cut: bales',
   rotational_grazing:   'Rotational grazing',
   maintenance_grazing:  'Maintenance top-up',
   pre_first_cut_silage: 'Silage (planned)',
@@ -161,7 +162,9 @@ export function SnapshotReportShell({
       const cutsDoneThisSeason = fCuts.length;
       const lastCut = fCuts[0];
       const daysSinceLastCut = lastCut ? daysBetween(lastCut.cut_date, todayIso) : null;
-      const nextCutType = getNextCutType(f, cutsDoneThisSeason);
+      // Resolved next-cut type — drives row subtitle + chip filtering so
+      // maintenance-flagged fields don't misleadingly show as "Silage" etc.
+      const nextCutType = getResolvedNextCutType(f, fCuts);
 
       const seasonTotals = sumNutrients(seasonApps, products);
       const seasonApplied = { n: seasonTotals.n, p: seasonTotals.p, k: seasonTotals.k };
@@ -174,7 +177,7 @@ export function SnapshotReportShell({
       // Next cut target + available (carryover-aware). System drives N/K multipliers.
       const nextCut = Math.min(cutsDoneThisSeason + 1, f.cut_profile);
       const nextCutTarget = cutsDoneThisSeason < f.cut_profile
-        ? getCutTargets(f, nextCut, settings, system)
+        ? getCutTargets(f, nextCut, settings, system, fCuts)
         : null;
 
       let gap: FieldState['gap'] = null;

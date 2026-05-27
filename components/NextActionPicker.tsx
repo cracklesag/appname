@@ -5,8 +5,8 @@ import { NextAction } from '@/lib/types';
 import { setCutNextAction } from '@/lib/actions';
 
 const LABELS: Record<NextAction, string> = {
-  another_cut_silage:  'Another silage cut',
-  another_cut_bales:   'Another bales cut',
+  another_cut_silage:  'Next cut: silage',
+  another_cut_bales:   'Next cut: bales',
   rotational_grazing:  'Rotational grazing',
   maintenance_grazing: 'Maintenance — one fert top-up then leave',
 };

@@ -3,7 +3,63 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { CutType, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+
+/**
+ * UK grass season starts 1st Jan effectively — getSeasonStart() in
+ * lib/rules returns this. We inline the same logic here so server actions
+ * don't have to import the rules module (which pulls product types etc.).
+ */
+function getSeasonStartIso(): string {
+  return `${new Date().getFullYear()}-01-01`;
+}
+
+/**
+ * Renumber all cuts on a field in chronological order. Called after every
+ * cut save / update / delete / batch save so that cut_number always
+ * reflects "Nth cut by date" rather than "Nth cut by log order".
+ *
+ * Backdating a cut now correctly bumps every later cut's number up by one.
+ * Deleting a middle cut closes the gap.
+ *
+ * Uses cut_date asc + created_at asc as tiebreakers (multiple cuts on the
+ * same date: whichever was logged first comes first).
+ *
+ * Idempotent — calling it twice gives the same result.
+ */
+async function renumberCutsForField(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  fieldId: string,
+): Promise<void> {
+  const seasonStart = getSeasonStartIso();
+  // Fetch cuts in correct chronological order.
+  const { data: cuts, error } = await supabase
+    .from('cuts')
+    .select('id, cut_number, cut_date, created_at')
+    .eq('user_id', userId)
+    .eq('field_id', fieldId)
+    .gte('cut_date', seasonStart)
+    .order('cut_date', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Could not renumber cuts: ${error.message}`);
+  if (!cuts || cuts.length === 0) return;
+
+  // Only rewrite rows whose cut_number doesn't already match position.
+  // Spares DB writes and avoids churning updated_at unnecessarily.
+  const updates = cuts
+    .map((c, idx) => ({ id: c.id, expectedNumber: idx + 1, currentNumber: c.cut_number }))
+    .filter((u) => u.expectedNumber !== u.currentNumber);
+
+  for (const u of updates) {
+    const { error: upErr } = await supabase
+      .from('cuts')
+      .update({ cut_number: u.expectedNumber })
+      .eq('id', u.id)
+      .eq('user_id', userId);
+    if (upErr) throw new Error(`Could not renumber cut ${u.id}: ${upErr.message}`);
+  }
+}
 
 export async function saveApplication(formData: FormData) {
   const supabase = createClient();
@@ -128,6 +184,10 @@ export async function saveCut(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
+  // Renumber so cut_number reflects chronological order — handles
+  // backdated cuts being inserted between existing ones.
+  await renumberCutsForField(supabase, user.id, fieldId);
+
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   redirect(`/fields/${fieldId}`);
@@ -165,6 +225,9 @@ export async function updateCut(formData: FormData) {
     .eq('id', id);
   if (error) throw new Error(error.message);
 
+  // Date may have moved — renumber so chronological order holds.
+  await renumberCutsForField(supabase, user.id, fieldId);
+
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   redirect(`/fields/${fieldId}`);
@@ -181,6 +244,9 @@ export async function deleteCut(formData: FormData) {
 
   const { error } = await supabase.from('cuts').delete().eq('id', id);
   if (error) throw new Error(error.message);
+
+  // Close the gap left by the deleted cut so cut numbers stay 1..N.
+  if (fieldId) await renumberCutsForField(supabase, user.id, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -734,11 +800,22 @@ export async function createCustomProduct(formData: FormData) {
 
   // Build the row from the relevant nutrient columns only. Other branches'
   // columns stay null so the storage convention is preserved.
+  //
+  // Category default: bag_fert + lime have a single obvious category that
+  // matches their type, so they auto-categorise correctly (instead of
+  // landing in a separate "Custom" bucket in the picker). Slurry and
+  // solid manure have multiple plausible categories (dairy/pig/separated,
+  // fym/poultry/biosolids) so we default to 'custom' — user can re-tag
+  // later if needed.
+  const defaultCategory: ProductCategory =
+    type === 'bag_fert' ? 'bag_fert' :
+    type === 'lime'     ? 'lime' :
+    'custom';
   const row: Record<string, unknown> = {
     user_id: user.id,
     name,
     type,
-    category: 'custom',
+    category: defaultCategory,
     sort_order: 999,  // sort after RB209 rows in the picker
     dm_pct: optionalNonNegative(formData, 'dm_pct'),
   };
@@ -1344,4 +1421,126 @@ export async function setCutNextAction(formData: FormData) {
   revalidatePath('/reports/spreading');
   revalidatePath('/reports/grazing');
   revalidatePath('/reports/snapshot');
+}
+
+/**
+ * Batch-create cuts across multiple fields in one transaction.
+ *
+ * Form data shape:
+ *   - cut_date: single ISO date for all rows
+ *   - rows: JSON-encoded array of per-field row state:
+ *       [{ field_id, cut_number, cut_type, yield_class, next_action }, ...]
+ *
+ * cut_number is supplied by the client (computed from field's existing
+ * season cut count + 1). Validated server-side against an upper bound of
+ * the field's cut_profile to prevent over-cut.
+ *
+ * Behaviour:
+ *   - Empty rows array → throw (form should prevent this)
+ *   - On any validation failure → throw, nothing written (atomic via
+ *     Supabase batch insert)
+ *   - On success → revalidate paths, redirect to /activity
+ */
+export async function saveBatchCuts(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const cutDate = String(formData.get('cut_date') ?? '').trim();
+  if (!cutDate || !/^\d{4}-\d{2}-\d{2}$/.test(cutDate)) {
+    throw new Error('Cut date is required and must be a valid date');
+  }
+
+  const rowsJson = String(formData.get('rows') ?? '');
+  let rows: Array<{
+    field_id: string;
+    cut_number: number;
+    cut_type: string;
+    yield_class: string;
+    next_action: string | null;
+  }>;
+  try {
+    rows = JSON.parse(rowsJson);
+  } catch {
+    throw new Error('Could not parse batch rows — try again');
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('Pick at least one field before saving');
+  }
+
+  // Validate every row before any insert. Cheaper than a Supabase round
+  // trip and gives one clear error message instead of a DB constraint
+  // failure.
+  const VALID_CUT_TYPES = new Set(['silage', 'bales', 'grazing']);
+  const VALID_YIELD_CLASSES = new Set(['light', 'average', 'heavy']);
+  const VALID_NEXT_ACTIONS = new Set([
+    'another_cut_silage', 'another_cut_bales', 'rotational_grazing', 'maintenance_grazing',
+  ]);
+
+  // Load fields once so we can validate field ownership + cut_profile limits
+  // and supply user_id on each row.
+  const { data: userFields, error: fieldsErr } = await supabase
+    .from('fields')
+    .select('id, cut_profile')
+    .eq('user_id', user.id);
+  if (fieldsErr) throw new Error(`Could not load fields: ${fieldsErr.message}`);
+  const userFieldById = new Map<string, { id: string; cut_profile: number }>(
+    (userFields ?? []).map((f) => [f.id, f as { id: string; cut_profile: number }]),
+  );
+
+  const inserts: Array<Record<string, unknown>> = [];
+  for (const r of rows) {
+    if (!r.field_id || typeof r.field_id !== 'string') {
+      throw new Error('Row missing field id');
+    }
+    const f = userFieldById.get(r.field_id);
+    if (!f) {
+      throw new Error(`Field ${r.field_id} not found or not owned`);
+    }
+    if (!VALID_CUT_TYPES.has(r.cut_type)) {
+      throw new Error(`Invalid cut type: ${r.cut_type}`);
+    }
+    if (!VALID_YIELD_CLASSES.has(r.yield_class)) {
+      throw new Error(`Invalid yield class: ${r.yield_class}`);
+    }
+    if (r.next_action !== null && !VALID_NEXT_ACTIONS.has(r.next_action)) {
+      throw new Error(`Invalid next action: ${r.next_action}`);
+    }
+    const cutNumber = Number(r.cut_number);
+    if (!Number.isInteger(cutNumber) || cutNumber < 1 || cutNumber > f.cut_profile) {
+      throw new Error(`Cut number ${cutNumber} out of range for field ${r.field_id} (profile ${f.cut_profile})`);
+    }
+    inserts.push({
+      user_id: user.id,
+      field_id: r.field_id,
+      cut_number: cutNumber,
+      cut_date: cutDate,
+      cut_type: r.cut_type,
+      yield_class: r.yield_class,
+      next_action: r.next_action,
+      // Notes intentionally omitted — batch entry skips per-row notes for
+      // speed; the user can add them later via the cut edit page.
+    });
+  }
+
+  const { error: insertErr } = await supabase.from('cuts').insert(inserts);
+  if (insertErr) throw new Error(`Could not save batch: ${insertErr.message}`);
+
+  // Renumber every affected field so cut_number reflects chronological order.
+  // Each field gets renumbered once, even if multiple rows hit the same field
+  // (rare — typically batch has one row per field, but handle the case).
+  const affectedFieldIds = Array.from(new Set(rows.map((r) => r.field_id)));
+  for (const fId of affectedFieldIds) {
+    await renumberCutsForField(supabase, user.id, fId);
+  }
+
+  revalidatePath('/activity');
+  revalidatePath('/');
+  revalidatePath('/reports/spreading');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/snapshot');
+  // Each affected field's detail page may show a different last cut.
+  for (const r of rows) revalidatePath(`/fields/${r.field_id}`);
+
+  redirect(`/activity?flash=cuts_logged&count=${rows.length}`);
 }

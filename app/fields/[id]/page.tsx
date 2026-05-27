@@ -15,7 +15,8 @@ import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
   getSoilType, SOIL_TYPE_SHORT_LABELS,
-  getCutTargets, getOfftakeForCut, getSeasonLabel, getSeasonStart, methodLabel,
+  getCutTargets, getOfftakeForCut, getResolvedNextCutType, getSeasonLabel, getSeasonStart, methodLabel,
+  NEXT_CUT_LABELS,
   resolveGrassSystem,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
@@ -59,7 +60,11 @@ export default async function FieldDetailPage({
   const cutsDone = fCuts.length;
   const nextCutNumber = Math.min(cutsDone + 1, field.cut_profile);
   const cutsRemaining = Math.max(0, field.cut_profile - cutsDone);
-  const targets = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem) : null;
+  // Resolved next-cut type — respects per-cut next_action so the subtitle
+  // shows "Maintenance" / "Grazing" when the user has flagged the field
+  // accordingly, not the static planned_cuts entry.
+  const resolvedNextCutType = getResolvedNextCutType(field, fCuts);
+  const targets = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem, fCuts) : null;
 
   const appsSinceCut = seasonApps.filter((a) => a.date_applied >= windowStart);
   const sinceCutTotals = sumNutrients(appsSinceCut, products);
@@ -246,13 +251,19 @@ export default async function FieldDetailPage({
             </Link>
           </div>
 
-          {/* Status of next cut */}
+          {/* Status of next cut. Uses resolved next-cut type so that
+              maintenance / rotational-grazing fields don't misleadingly
+              show "Building toward silage" when the user has flagged
+              the field for something else. */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <div className="label" style={{ margin: 0 }}>
-                {targets
-                  ? <>Building toward cut {nextCutNumber} of {field.cut_profile} · {CUT_TYPE_LABELS[targets.cutType]}</>
-                  : <>All {field.cut_profile} cuts taken</>}
+                {(() => {
+                  if (resolvedNextCutType === 'complete') return <>All {field.cut_profile} cuts taken</>;
+                  if (resolvedNextCutType === 'maintenance') return <>After cut {cutsDone} of {field.cut_profile} · Maintenance top-up</>;
+                  if (!targets) return <>All {field.cut_profile} cuts taken</>;
+                  return <>Building toward cut {nextCutNumber} of {field.cut_profile} · {NEXT_CUT_LABELS[resolvedNextCutType]}</>;
+                })()}
               </div>
               <Link
                 href={`/fields/${field.id}/plan`}
