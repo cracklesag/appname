@@ -3,7 +3,63 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { CutType, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+
+/**
+ * UK grass season starts 1st Jan effectively — getSeasonStart() in
+ * lib/rules returns this. We inline the same logic here so server actions
+ * don't have to import the rules module (which pulls product types etc.).
+ */
+function getSeasonStartIso(): string {
+  return `${new Date().getFullYear()}-01-01`;
+}
+
+/**
+ * Renumber all cuts on a field in chronological order. Called after every
+ * cut save / update / delete / batch save so that cut_number always
+ * reflects "Nth cut by date" rather than "Nth cut by log order".
+ *
+ * Backdating a cut now correctly bumps every later cut's number up by one.
+ * Deleting a middle cut closes the gap.
+ *
+ * Uses cut_date asc + created_at asc as tiebreakers (multiple cuts on the
+ * same date: whichever was logged first comes first).
+ *
+ * Idempotent — calling it twice gives the same result.
+ */
+async function renumberCutsForField(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  fieldId: string,
+): Promise<void> {
+  const seasonStart = getSeasonStartIso();
+  // Fetch cuts in correct chronological order.
+  const { data: cuts, error } = await supabase
+    .from('cuts')
+    .select('id, cut_number, cut_date, created_at')
+    .eq('user_id', userId)
+    .eq('field_id', fieldId)
+    .gte('cut_date', seasonStart)
+    .order('cut_date', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Could not renumber cuts: ${error.message}`);
+  if (!cuts || cuts.length === 0) return;
+
+  // Only rewrite rows whose cut_number doesn't already match position.
+  // Spares DB writes and avoids churning updated_at unnecessarily.
+  const updates = cuts
+    .map((c, idx) => ({ id: c.id, expectedNumber: idx + 1, currentNumber: c.cut_number }))
+    .filter((u) => u.expectedNumber !== u.currentNumber);
+
+  for (const u of updates) {
+    const { error: upErr } = await supabase
+      .from('cuts')
+      .update({ cut_number: u.expectedNumber })
+      .eq('id', u.id)
+      .eq('user_id', userId);
+    if (upErr) throw new Error(`Could not renumber cut ${u.id}: ${upErr.message}`);
+  }
+}
 
 export async function saveApplication(formData: FormData) {
   const supabase = createClient();
@@ -128,6 +184,10 @@ export async function saveCut(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
+  // Renumber so cut_number reflects chronological order — handles
+  // backdated cuts being inserted between existing ones.
+  await renumberCutsForField(supabase, user.id, fieldId);
+
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   redirect(`/fields/${fieldId}`);
@@ -165,6 +225,9 @@ export async function updateCut(formData: FormData) {
     .eq('id', id);
   if (error) throw new Error(error.message);
 
+  // Date may have moved — renumber so chronological order holds.
+  await renumberCutsForField(supabase, user.id, fieldId);
+
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   redirect(`/fields/${fieldId}`);
@@ -181,6 +244,9 @@ export async function deleteCut(formData: FormData) {
 
   const { error } = await supabase.from('cuts').delete().eq('id', id);
   if (error) throw new Error(error.message);
+
+  // Close the gap left by the deleted cut so cut numbers stay 1..N.
+  if (fieldId) await renumberCutsForField(supabase, user.id, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -734,11 +800,22 @@ export async function createCustomProduct(formData: FormData) {
 
   // Build the row from the relevant nutrient columns only. Other branches'
   // columns stay null so the storage convention is preserved.
+  //
+  // Category default: bag_fert + lime have a single obvious category that
+  // matches their type, so they auto-categorise correctly (instead of
+  // landing in a separate "Custom" bucket in the picker). Slurry and
+  // solid manure have multiple plausible categories (dairy/pig/separated,
+  // fym/poultry/biosolids) so we default to 'custom' — user can re-tag
+  // later if needed.
+  const defaultCategory: ProductCategory =
+    type === 'bag_fert' ? 'bag_fert' :
+    type === 'lime'     ? 'lime' :
+    'custom';
   const row: Record<string, unknown> = {
     user_id: user.id,
     name,
     type,
-    category: 'custom',
+    category: defaultCategory,
     sort_order: 999,  // sort after RB209 rows in the picker
     dm_pct: optionalNonNegative(formData, 'dm_pct'),
   };
@@ -1448,6 +1525,14 @@ export async function saveBatchCuts(formData: FormData) {
 
   const { error: insertErr } = await supabase.from('cuts').insert(inserts);
   if (insertErr) throw new Error(`Could not save batch: ${insertErr.message}`);
+
+  // Renumber every affected field so cut_number reflects chronological order.
+  // Each field gets renumbered once, even if multiple rows hit the same field
+  // (rare — typically batch has one row per field, but handle the case).
+  const affectedFieldIds = Array.from(new Set(rows.map((r) => r.field_id)));
+  for (const fId of affectedFieldIds) {
+    await renumberCutsForField(supabase, user.id, fId);
+  }
 
   revalidatePath('/activity');
   revalidatePath('/');
