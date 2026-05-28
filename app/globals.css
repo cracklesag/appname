@@ -20,6 +20,14 @@
   --red-soft: #F2DCDC;
   --stone: #8C8378;
   --stone-soft: #E5DFD5;
+
+  /* Swardly brand aliases — semantic names mapping onto the palette above.
+     Use these for brand surfaces (splash, icon, marketing) so the brand
+     intent is explicit and a future rebrand only touches these lines. */
+  --brand-green: var(--forest-dark);     /* #2B4129 — icon bg, theme color */
+  --brand-leaf: #7DA64A;                 /* sprout/field rows on the mark */
+  --brand-cream: #EFE7D6;                /* mark strokes on green */
+  --brand-gold: var(--amber);            /* sunset accent */
 }
 
 * { box-sizing: border-box; }

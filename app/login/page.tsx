@@ -122,7 +122,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div>
-      <Header title="Sign in" subtitle="APP_NAME" />
+      <Header title="Sign in" subtitle="Swardly" />
       <Suspense fallback={<div style={{ padding: 16 }} />}>
         <LoginForm />
       </Suspense>

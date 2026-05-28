@@ -49,7 +49,7 @@ export default function SignupPage() {
   if (sentTo) {
     return (
       <div>
-        <Header title="Check your email" subtitle="APP_NAME" />
+        <Header title="Check your email" subtitle="Swardly" />
         <div style={{ padding: 16 }}>
           <div
             className="card"
@@ -86,7 +86,7 @@ export default function SignupPage() {
 
   return (
     <div>
-      <Header title="Create account" subtitle="APP_NAME" />
+      <Header title="Create account" subtitle="Swardly" />
       <form onSubmit={handleSignup} style={{ padding: 16 }}>
         <div style={{ marginBottom: 14 }}>
           <div className="label">Email</div>

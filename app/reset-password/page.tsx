@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
 
   return (
     <div>
-      <Header title="Set new password" subtitle="APP_NAME" />
+      <Header title="Set new password" subtitle="Swardly" />
       <form onSubmit={handleSubmit} style={{ padding: 16 }}>
         <div style={{ fontSize: 14, color: 'var(--ink)', marginBottom: 18, lineHeight: 1.5 }}>
           Choose a new password for your account. You&apos;ll be asked to sign in

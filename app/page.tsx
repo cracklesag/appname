@@ -191,7 +191,7 @@ export default async function HomePage({
     <div style={{ paddingBottom: 80 }}>
       <Header
         title="Fields"
-        subtitle={`APP_NAME · ${seasonLabel}`}
+        subtitle={`Swardly · ${seasonLabel}`}
         right={
           <div style={{ display: 'inline-flex', gap: 6 }}>
             <Link

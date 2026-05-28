@@ -12,7 +12,7 @@ export default async function NewFieldPage() {
   ]);
   return (
     <div>
-      <Header title="Add field" subtitle="APP_NAME" backHref="/" />
+      <Header title="Add field" subtitle="Swardly" backHref="/" />
       <AddFieldForm
         unitSystem={settings.unitSystem}
         groups={groups}

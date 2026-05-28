@@ -54,7 +54,7 @@ export default function ImportPage() {
 
   return (
     <div>
-      <Header title="Import a document" subtitle="APP_NAME" backHref="/" />
+      <Header title="Import a document" subtitle="Swardly" backHref="/" />
 
       <form onSubmit={handleSubmit} style={{ padding: 16, paddingBottom: 100 }}>
         {/* Privacy notice — the design call is that we do NOT store the PDF long-term */}

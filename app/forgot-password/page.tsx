@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
   if (sentTo) {
     return (
       <div>
-        <Header title="Check your email" subtitle="APP_NAME" />
+        <Header title="Check your email" subtitle="Swardly" />
         <div style={{ padding: 16 }}>
           <div
             className="card"
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div>
-      <Header title="Reset password" subtitle="APP_NAME" />
+      <Header title="Reset password" subtitle="Swardly" />
       <form onSubmit={handleSubmit} style={{ padding: 16 }}>
         <div style={{ fontSize: 14, color: 'var(--ink)', marginBottom: 18, lineHeight: 1.5 }}>
           Enter the email address you signed up with and we&apos;ll send you a link

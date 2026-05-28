@@ -37,17 +37,28 @@ export function WelcomeForm() {
       }}
     >
       <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icons/swardly-mark.svg" alt="" width={40} height={40} style={{ display: 'block' }} />
+          <span style={{
+            fontFamily: '"Fraunces", serif',
+            fontSize: 26,
+            fontWeight: 600,
+            color: 'var(--forest-dark)',
+            letterSpacing: '-0.5px',
+          }}>swardly</span>
+        </div>
         <div
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: 'var(--ink-soft)',
+            color: 'var(--muted)',
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
             marginBottom: 8,
           }}
         >
-          APP_NAME
+          Know your fields. Plan your future.
         </div>
         <h1 style={{ margin: 0, fontSize: 28, color: 'var(--ink)', fontFamily: '"Fraunces", serif' }}>
           Welcome
