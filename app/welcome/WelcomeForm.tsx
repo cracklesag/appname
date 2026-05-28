@@ -39,7 +39,7 @@ export function WelcomeForm() {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icons/swardly-mark.svg" alt="" width={40} height={40} style={{ display: 'block' }} />
+          <img src="/icons/swardly-mark.png" alt="" width={54} height={40} style={{ display: 'block', objectFit: 'contain' }} />
           <span style={{
             fontFamily: '"Fraunces", serif',
             fontSize: 26,
