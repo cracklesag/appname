@@ -406,18 +406,43 @@ export function LogApplicationForm({
           </div>
         )}
 
-        {/* Product-level selector — shown when the category has multiple
-            products AND there's no specialised sub-picker for that category
-            (DM bands for dairy/pig slurry; feedstock/form for digestate;
-            source for poultry). Used by bag fert, lime, FYM, separated,
-            biosolids, and any user-created custom products. Without this,
-            users with multiple bag-fert products (typical) couldn't pick
-            between them. */}
-        {type !== 'lime' && siblings.length > 1 && (() => {
+        {/* Product-level selector / name display.
+            - Lime IS included here (earlier bug: it was excluded, so users
+              with multiple lime products couldn't choose between them).
+            - When the category has a specialised sub-picker (DM bands for
+              dairy/pig slurry; feedstock/form for digestate; source for
+              poultry), selection happens there, so this is skipped.
+            - When >1 product: a dropdown to choose.
+            - When exactly 1 product: a read-only name line so the user can
+              see WHAT is selected (previously a lone custom slurry/solid
+              manure showed only the category "Custom" with no name). */}
+        {(() => {
           const handledByDmPicker = currentCategory === 'dairy_slurry' || currentCategory === 'pig_slurry';
           const handledByDigestatePicker = currentCategory === 'digestate';
           const handledByPoultryPicker = currentCategory === 'poultry' && type === 'solid_manure';
           if (handledByDmPicker || handledByDigestatePicker || handledByPoultryPicker) return null;
+          if (siblings.length === 0) return null;
+          if (siblings.length === 1) {
+            // Single product — show its name read-only so it's never a
+            // mystery what's selected.
+            const only = siblings[0];
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <div className="label">Product</div>
+                <div style={{
+                  padding: '10px 12px',
+                  border: '1px solid var(--line)',
+                  borderRadius: 4,
+                  background: 'var(--card)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                }}>
+                  {only.name}
+                </div>
+              </div>
+            );
+          }
           return (
             <div style={{ marginBottom: 14 }}>
               <div className="label">Choose product</div>
