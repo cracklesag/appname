@@ -15,7 +15,6 @@ import {
   fmt,
   fmtDate,
   getNextCutType,
-  getResolvedNextCutType,
   getSeasonStart,
   methodLabel,
   NextCutType,
@@ -69,9 +68,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const nextCutTypeByField: Record<string, NextCutType> = {};
   fields.forEach((f) => {
     const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
-    // Resolved next-cut type respects per-cut next_action overrides so the
-    // activity "next cut" filter matches the rest of the app.
-    nextCutTypeByField[f.id] = getResolvedNextCutType(f, fCuts);
+    nextCutTypeByField[f.id] = getNextCutType(f, fCuts.length);
   });
 
   // Period window
@@ -279,12 +276,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
           paramName="next"
           ariaLabel="Filter by next cut type"
           options={[
-            { value: 'active',      label: 'Active' },
-            { value: 'silage',      label: 'Silage' },
-            { value: 'bales',       label: 'Bales' },
-            { value: 'grazing',     label: 'Grazing' },
-            { value: 'maintenance', label: 'Maintenance' },
-            { value: 'complete',    label: 'Cuts done' },
+            { value: 'active',   label: 'Active' },
+            { value: 'silage',   label: 'Silage' },
+            { value: 'bales',    label: 'Bales' },
+            { value: 'grazing',  label: 'Grazing' },
+            { value: 'complete', label: 'Cuts done' },
           ]}
         />
       </div>
