@@ -18,15 +18,18 @@ import {
   getResolvedNextCutType,
   getSeasonStart,
   methodLabel,
+  CUT_TYPE_LABELS,
   NextCutType,
 } from '@/lib/rules';
+import { getFarmContext } from '@/lib/farm';
+import { CutEntry } from '@/components/FieldDetailCards';
 
 export const dynamic = 'force-dynamic';
 
 type SortKey = 'date_desc' | 'date_asc' | 'field' | 'qty_desc';
 
 type Search = {
-  type?: 'all' | 'slurry' | 'bag_fert' | 'lime' | 'solid_manure';
+  type?: 'all' | 'slurry' | 'bag_fert' | 'lime' | 'solid_manure' | 'cuts';
   product?: string;
   period?: 'this_year' | 'last_12m' | 'all' | string;
   /** Filter by the field's next-planned cut type. Default 'active' excludes complete fields. */
@@ -57,6 +60,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
     loadSettings(),
     loadGroups(),
   ]);
+
+  const farmCtx = await getFarmContext();
+  const isAdmin = farmCtx?.isAdmin ?? true;
+  const myUserId = farmCtx?.userId ?? null;
+  const canEditEntry = (createdBy: string | null) => isAdmin || (createdBy != null && createdBy === myUserId);
 
   const fieldById = Object.fromEntries(fields.map((f) => [f.id, f]));
   const productById = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -215,6 +223,20 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
 
   const bagProducts = products.filter((p) => p.type === 'bag_fert');
 
+  // Cuts tab: filter cuts by the same period + group filters, newest first.
+  const cutsFiltered = cuts
+    .filter((c) => {
+      if (c.cut_date < startDate || c.cut_date > endDate) return false;
+      if (groupFilter !== 'all') {
+        const f = fieldById[c.field_id];
+        if (!f) return false;
+        if (groupFilter === 'unassigned') { if (f.group_id) return false; }
+        else if (f.group_id !== groupFilter) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
+
   const baseHref = (overrides: Partial<Search>) => {
     const merged = { type, product: productId, period, next: nextFilter, group: groupFilter, sort: sortKey, ...overrides };
     const sp = new URLSearchParams();
@@ -264,7 +286,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
 
       <div style={{ padding: '12px 16px 0' }}>
         <Link
-          href="/cuts/batch"
+          href="/cuts/batch?from=/activity"
           className="btn-ghost"
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -305,7 +327,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
       </div>
 
       <div className="tabs">
-        {(['all', 'slurry', 'solid_manure', 'bag_fert', 'lime'] as const).map((t) => (
+        {(['all', 'slurry', 'solid_manure', 'bag_fert', 'lime', 'cuts'] as const).map((t) => (
           <Link
             key={t}
             href={baseHref({ type: t, product: 'all' })}
@@ -316,11 +338,34 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
               : t === 'bag_fert' ? 'Fert'
               : t === 'slurry' ? 'Slurry'
               : t === 'solid_manure' ? 'Solid'
+              : t === 'cuts' ? 'Cuts'
               : 'Lime'}
           </Link>
         ))}
       </div>
 
+      {type === 'cuts' ? (
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+            {cutsFiltered.length} cut{cutsFiltered.length === 1 ? '' : 's'} · {periodLabel}
+          </div>
+          {cutsFiltered.length === 0 && (
+            <div className="card" style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+              No cuts in this period.
+            </div>
+          )}
+          {cutsFiltered.map((c) => {
+            const f = fieldById[c.field_id];
+            if (!f) return null;
+            return (
+              <div key={c.id} style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, margin: '0 2px 2px' }}>{f.name}</div>
+                <CutEntry cut={c} field={f} settings={settings} canEdit={canEditEntry(c.created_by)} />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
       <div style={{ padding: 16 }}>
         {/* Filters — period and (for fert) product */}
         <form
@@ -493,6 +538,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
           );
         })}
       </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
@@ -492,7 +493,7 @@ function SnapshotRow({
       {/* Header line: name + group + area */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{f.name}</div>
+          <Link href={`/fields/${f.id}?from=/reports/snapshot`} style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', textDecoration: 'none' }}>{f.name} ›</Link>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
             {fmt(area.value, 1)} {area.unit}
             {state.groupName && <> · {state.groupName}</>}

@@ -159,6 +159,37 @@ export function BatchCutForm({
     });
   }
 
+  // Select / clear all currently-visible (filtered) fields. "All shown"
+  // respects the active group filter so you can build a selection one block
+  // at a time. Clear only removes the visible ones, leaving picks in other
+  // groups intact.
+  function selectAllVisible() {
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const e of visibleFields) {
+        const f = e.field;
+        if (next[f.id]) continue;
+        const cutNumber = e.cutsDoneThisSeason + 1;
+        const isFinalCut = cutNumber >= f.cut_profile;
+        next[f.id] = {
+          field_id: f.id,
+          cut_number: cutNumber,
+          cut_type: defaultCutType,
+          yield_class: defaultYieldClass,
+          next_action: isFinalCut ? 'maintenance_grazing' : defaultNextAction,
+        };
+      }
+      return next;
+    });
+  }
+  function clearAllVisible() {
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const e of visibleFields) delete next[e.field.id];
+      return next;
+    });
+  }
+
   // ---- Save flow ---------------------------------------------------
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -339,10 +370,22 @@ export function BatchCutForm({
             padding: '12px 14px', borderBottom: '1px solid var(--line)',
           }}>
             <div className="label" style={{ margin: 0 }}>Fields</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {visibleFields.length === 0
-                ? 'No fields available'
-                : `${selectedCount} of ${visibleFields.length} selected`}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {visibleFields.length > 0 && (
+                <div style={{ display: 'inline-flex', gap: 10 }}>
+                  <button type="button" onClick={selectAllVisible} style={{ background: 'none', border: 'none', color: 'var(--forest-dark)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                    All{groupFilter !== 'all' ? ' shown' : ''}
+                  </button>
+                  <button type="button" onClick={clearAllVisible} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                    None
+                  </button>
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {visibleFields.length === 0
+                  ? 'No fields available'
+                  : `${selectedCount} of ${visibleFields.length} selected`}
+              </div>
             </div>
           </div>
           {visibleFields.length === 0 ? (
