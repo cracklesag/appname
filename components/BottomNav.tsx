@@ -2,17 +2,22 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Layers, FileText, Settings as SettingsIcon } from 'lucide-react';
+import { Home, Layers, FileText, Settings as SettingsIcon } from 'lucide-react';
 
 export function BottomNav() {
   const pathname = usePathname();
 
   // Show only on top-level pages
-  const onTopLevel = pathname === '/' || pathname === '/activity' || pathname === '/settings';
+  const onTopLevel =
+    pathname === '/' ||
+    pathname === '/fields' ||
+    pathname === '/activity' ||
+    pathname === '/settings';
   if (!onTopLevel) return null;
 
   const items = [
-    { id: 'list',     label: 'Fields',   icon: Layers,       href: '/' },
+    { id: 'home',     label: 'Home',     icon: Home,         href: '/' },
+    { id: 'fields',   label: 'Fields',   icon: Layers,       href: '/fields' },
     { id: 'activity', label: 'Activity', icon: FileText,     href: '/activity' },
     { id: 'settings', label: 'Settings', icon: SettingsIcon, href: '/settings' },
   ];
@@ -23,7 +28,7 @@ export function BottomNav() {
         const Icon = item.icon;
         const isActive =
           (item.href === '/' && pathname === '/') ||
-          (item.href !== '/' && pathname.startsWith(item.href));
+          (item.href !== '/' && pathname === item.href);
         return (
           <Link
             key={item.id}
