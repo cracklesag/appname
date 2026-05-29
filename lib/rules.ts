@@ -2,6 +2,7 @@ import {
   Application, Cut, CutType, Field, GrassSystem, NextAction, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
+import * as rb209 from './rb209';
 
 // ---- Constants ----------------------------------------------------
 
@@ -857,6 +858,110 @@ export function getCutTargets(
     k2o: k2oAdjusted,
     yieldDM: offtake.yieldDM,
     cutType,
+  };
+}
+
+// =====================================================================
+// RB209 index-adjusted P/K "to apply" engine
+// =====================================================================
+//
+// Unlike getCutTargets (which returns pure offtake and uses the index only for
+// colour-coding), this returns the actual RB209 RECOMMENDATION for the field's
+// soil index — i.e. how much P2O5 / K2O to apply, which builds reserves below
+// target and tapers to zero above it. This is the figure the fertiliser-plan
+// and P/K-status views are built on.
+//
+// Reads the field's decimal p_idx/k_idx (the app's existing model) and maps it
+// onto the RB209 bands, including the K 2-/2+ split. cutNumber is 1-based.
+
+export interface FieldPKRec {
+  cutType: CutType;
+  cutNumber: number;
+  /** RB209 recommendation, kg/ha. */
+  p2o5: number;
+  k2o: number;
+  /** First silage cut only: how K splits across the previous autumn + spring. */
+  kSplit?: { previousAutumn: number; spring: number; springCapped: boolean };
+  /** Catch-up K to apply after cutting (silage systems, K index ≤ 2+). */
+  extraKAfterCut: number;
+  /** The resolved RB209 bands used, for display ("P index 2", "K 2+"). */
+  pBand: number;
+  kBand: string;
+  /** True when both nutrients are at/above their maintenance target. */
+  atMaintenance: boolean;
+}
+
+/**
+ * RB209 P/K recommendation for a field's given cut. Pure lookup against the
+ * verified tables; does NOT deduct organic-material nutrients (the caller does
+ * that, since it depends on what's already been applied this season).
+ */
+export function getFieldPKRecommendation(
+  field: Field,
+  cutNumber: number,
+  fieldCuts?: Cut[],
+): FieldPKRec {
+  // Resolve the cut type the same way getCutTargets does.
+  let cutType: CutType;
+  if (fieldCuts) {
+    const resolved = getResolvedNextCutType(field, fieldCuts);
+    cutType = (resolved === 'silage' || resolved === 'bales' || resolved === 'grazing')
+      ? resolved
+      : resolved === 'maintenance' ? 'grazing'
+      : (getPlannedCuts(field)[cutNumber - 1] || 'silage');
+  } else {
+    cutType = getPlannedCuts(field)[cutNumber - 1] || 'silage';
+  }
+
+  const pBand = rb209.pBandFromDecimal(field.p_idx);
+  const kBand = rb209.kBandFromDecimal(field.k_idx);
+
+  let rec: rb209.PKRecommendation;
+  if (cutType === 'grazing') {
+    rec = rb209.grazingRecommendation(pBand, kBand);
+  } else if (cutType === 'bales') {
+    // Baled silage uses the silage table (it's still a cut removal).
+    rec = rb209.silageRecommendation(cutNumber, pBand, kBand);
+  } else {
+    rec = rb209.silageRecommendation(cutNumber, pBand, kBand);
+  }
+
+  // Catch-up K only applies to cut (silage/bales) systems, not grazing-only.
+  const extraK = (cutType === 'silage' || cutType === 'bales')
+    ? rb209.extraKAfterCutting(field.cut_profile, kBand)
+    : 0;
+
+  return {
+    cutType,
+    cutNumber,
+    p2o5: rec.p2o5,
+    k2o: rec.k2o,
+    kSplit: rec.kSplit,
+    extraKAfterCut: extraK,
+    pBand,
+    kBand: String(kBand),
+    atMaintenance: rec.atMaintenance,
+  };
+}
+
+/**
+ * Net RB209 P/K still to apply for a field this season, after deducting what's
+ * already gone on (from applications) — the figure the heat-map sorts by.
+ * appliedP2O5 / appliedK2O are the season-to-date kg/ha already applied.
+ */
+export function getFieldPKShortfall(
+  field: Field,
+  cutNumber: number,
+  appliedP2O5: number,
+  appliedK2O: number,
+  fieldCuts?: Cut[],
+): { rec: FieldPKRec; p2o5ToApply: number; k2oToApply: number } {
+  const rec = getFieldPKRecommendation(field, cutNumber, fieldCuts);
+  const totalK = rec.k2o + rec.extraKAfterCut;
+  return {
+    rec,
+    p2o5ToApply: Math.max(0, Math.round(rec.p2o5 - appliedP2O5)),
+    k2oToApply: Math.max(0, Math.round(totalK - appliedK2O)),
   };
 }
 

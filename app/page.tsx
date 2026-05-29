@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight } from 'lucide-react';
+import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -143,14 +143,18 @@ export default async function HomePage() {
             )}
 
             {/* Quick-access cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-              <Link href="/reports/spreading?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <FileText size={21} style={{ color: 'var(--forest)' }} />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>Spread report</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 9 }}>
+              <Link href="/reports/pk?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Sprout size={21} style={{ color: 'var(--forest)' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>P &amp; K status</span>
               </Link>
-              <Link href="/reports/snapshot?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+              <Link href="/reports/spreading?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <FileText size={21} style={{ color: 'var(--forest)' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spread report</span>
+              </Link>
+              <Link href="/reports/snapshot?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Flame size={21} style={{ color: 'var(--amber)' }} />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>Field snapshot</span>
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Field snapshot</span>
               </Link>
             </div>
           </>
