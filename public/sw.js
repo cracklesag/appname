@@ -2,9 +2,8 @@
 // MVP1: cache static assets so the app launches when offline.
 // Data sync (queue writes when offline) is MVP2.
 
-const CACHE_NAME = 'app-shell-v1';
+const CACHE_NAME = 'app-shell-v2';
 const STATIC_ASSETS = [
-  '/',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
