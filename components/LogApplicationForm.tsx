@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Droplets, Sprout, Mountain, Save, Tractor } from 'lucide-react';
@@ -138,8 +138,13 @@ export function LogApplicationForm({
   const [productId, setProductId] = useState<number>(() => {
     if (existing) return existing.product_id;
     // If a type was preselected (from the Log action menu), default to that
-    // type's first sensible product rather than the slurry default.
+    // type's first sensible product. For slurry specifically, prefer dairy
+    // 6% DM rather than the first-by-sort-order band (which is 2% DM).
     if (initialTypeProp) {
+      if (initialTypeProp === 'slurry') {
+        const dairy6 = products.find((p) => p.category === 'dairy_slurry' && p.dm_pct === 6);
+        if (dairy6) return dairy6.id;
+      }
       return defaultProductIdFor(products, initialTypeProp) ?? 4;
     }
     // Prefer dairy slurry 6% DM (id 4) as the historical Mill Farm default.
@@ -182,6 +187,14 @@ export function LogApplicationForm({
   const [showPerField, setShowPerField] = useState(false);
   // Group filter for the batch field list. 'all' = no filter.
   const [groupFilter, setGroupFilter] = useState<string>('all');
+  // Bag fert: which form (granular/liquid) the product list is filtered to.
+  const [bagFormFilter, setBagFormFilter] = useState<'granular' | 'liquid'>(() => {
+    if (existing) {
+      const p = products.find((pr) => pr.id === existing.product_id);
+      if (p?.form === 'liquid') return 'liquid';
+    }
+    return 'granular';
+  });
 
   const product = products.find((p) => p.id === productId);
   const currentCategory = product?.category ?? null;
@@ -192,7 +205,15 @@ export function LogApplicationForm({
   // Products that share the current category (used by sub-pickers).
   const siblings = useMemo(() => {
     if (!currentCategory) return [] as Product[];
-    const list = productsInCategory(products, type, currentCategory);
+    let list = productsInCategory(products, type, currentCategory);
+    // Bag fert splits by form: show only granular OR liquid products to match
+    // the form toggle. Treat a null form as granular (legacy rows pre-migration).
+    if (type === 'bag_fert') {
+      list = list.filter((p) => {
+        const f = p.form === 'liquid' ? 'liquid' : 'granular';
+        return f === bagFormFilter;
+      });
+    }
     // Bag fert has no sub-pickers, so order the dropdown most-used-first
     // (then alphabetical for ties / unused). Other types keep sort_order so
     // their DM/feedstock sub-pickers stay in their natural order.
@@ -205,7 +226,19 @@ export function LogApplicationForm({
       });
     }
     return list;
-  }, [products, type, currentCategory, usage]);
+  }, [products, type, currentCategory, usage, bagFormFilter]);
+
+  // Keep the selected product consistent with the bag-fert form filter: if the
+  // current selection isn't in the filtered list (e.g. on first load the
+  // default product was liquid but the filter is granular), snap to the first
+  // visible product. Only for new entries (editing locks the product).
+  useEffect(() => {
+    if (isEdit || type !== 'bag_fert' || siblings.length === 0) return;
+    if (!siblings.some((p) => p.id === productId)) {
+      setProductId(siblings[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bagFormFilter, type, siblings]);
 
   /** Select a category and default to the first product in it. */
   function selectCategory(category: string) {
@@ -299,6 +332,28 @@ export function LogApplicationForm({
       if (fallback != null) setProductId(fallback);
     }
     if (newType !== 'lime') setRateValue('');
+  }
+
+  /** Switch the bag-fert form (granular/liquid) and select the first product
+   *  of that form (most-used if usage known), so the picker isn't left on a
+   *  product from the other form. */
+  function switchBagForm(form: 'granular' | 'liquid') {
+    if (isEdit) return;
+    setBagFormFilter(form);
+    const inForm = products.filter((p) => {
+      if (p.type !== 'bag_fert') return false;
+      const f = p.form === 'liquid' ? 'liquid' : 'granular';
+      return f === form;
+    });
+    if (inForm.length > 0) {
+      // Prefer most-used if we have usage data, else first by sort_order.
+      let chosen = inForm[0];
+      if (usage) {
+        chosen = [...inForm].sort((a, b) => (usage[b.id] ?? 0) - (usage[a.id] ?? 0))[0];
+      }
+      setProductId(chosen.id);
+    }
+    setRateValue('');
   }
 
   // Convert lime rate (t/ac) to the right field for the calc engine.
@@ -409,7 +464,7 @@ export function LogApplicationForm({
           <div className="toggle-group" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
             <button type="button" className={`toggle-btn ${type === 'slurry' ? 'active' : ''}`} onClick={() => changeType('slurry')}><Droplets size={16} /> Slurry</button>
             <button type="button" className={`toggle-btn ${type === 'solid_manure' ? 'active' : ''}`} onClick={() => changeType('solid_manure')}><Tractor size={16} /> Solid manure</button>
-            <button type="button" className={`toggle-btn ${type === 'bag_fert' ? 'active' : ''}`} onClick={() => changeType('bag_fert')}><Sprout size={16} /> Bag fert</button>
+            <button type="button" className={`toggle-btn ${type === 'bag_fert' ? 'active' : ''}`} onClick={() => changeType('bag_fert')}><Sprout size={16} /> Fertiliser</button>
             <button type="button" className={`toggle-btn ${type === 'lime' ? 'active' : ''}`} onClick={() => changeType('lime')}><Mountain size={16} /> Lime</button>
           </div>
         )}
@@ -449,6 +504,34 @@ export function LogApplicationForm({
           </div>
         )}
 
+        {/* Bag fert form toggle: Granular vs Liquid. Splits the product list
+            so the user picks the form first, then the product within it. */}
+        {type === 'bag_fert' && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 6 }}>Fertiliser form</div>
+            <div className="toggle-group" role="group" aria-label="Fertiliser form">
+              <button
+                type="button"
+                className={`toggle-btn ${bagFormFilter === 'granular' ? 'active' : ''}`}
+                onClick={() => switchBagForm('granular')}
+                disabled={isEdit}
+                title={isEdit ? 'Locked when editing — delete and re-log to change' : undefined}
+              >
+                Granular
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${bagFormFilter === 'liquid' ? 'active' : ''}`}
+                onClick={() => switchBagForm('liquid')}
+                disabled={isEdit}
+                title={isEdit ? 'Locked when editing — delete and re-log to change' : undefined}
+              >
+                Liquid
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty state — no products of this type exist yet. Encourages
             the user to add one rather than silently rendering nothing or
             (worse) leaving a stale product from another type selected. */}
@@ -462,8 +545,9 @@ export function LogApplicationForm({
             fontSize: 12,
             color: 'var(--muted)',
           }}>
-            No {type === 'bag_fert' ? 'bag fertilisers' : type === 'slurry' ? 'slurries' : 'solid manures'} yet.
-            Tap <strong>+ New</strong> above to add one.
+            {type === 'bag_fert'
+              ? `No ${bagFormFilter} fertilisers yet. Tap + New above to add one.`
+              : <>No {type === 'slurry' ? 'slurries' : 'solid manures'} yet. Tap <strong>+ New</strong> above to add one.</>}
           </div>
         )}
 
