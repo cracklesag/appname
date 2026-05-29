@@ -32,12 +32,12 @@ export async function getFarmContext(): Promise<FarmContext | null> {
     .select('owner_id, role')
     .eq('member_id', user.id);
 
-  if (error) throw error;
-
-  if (!memberships || memberships.length === 0) {
-    // No membership yet (e.g. a brand-new account before the backfill applies,
-    // or an edge case). Treat them as admin of their own farm — matches the
-    // single-user default and the migration's backfill intent.
+  // Don't hard-crash the whole app if the membership query fails — most
+  // commonly because the farm_roles migration hasn't been run yet (table
+  // missing). Degrade gracefully to single-user (admin of own farm) so every
+  // page still renders. The roles feature stays inactive until the migration
+  // is applied.
+  if (error || !memberships || memberships.length === 0) {
     return { userId: user.id, ownerId: user.id, role: 'admin', isAdmin: true };
   }
 

@@ -160,7 +160,7 @@ export async function loadFarmMembers(): Promise<FarmMemberRow[]> {
     .from('farm_members')
     .select('*')
     .order('created_at', { ascending: true });
-  if (error) throw error;
+  if (error) return [];
   return (data || []) as FarmMemberRow[];
 }
 
@@ -171,7 +171,7 @@ export async function loadFarmInvites(): Promise<FarmInviteRow[]> {
     .from('farm_invites')
     .select('*')
     .order('created_at', { ascending: false });
-  if (error) throw error;
+  if (error) return [];
   return (data || []) as FarmInviteRow[];
 }
 
