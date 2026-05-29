@@ -461,9 +461,17 @@ export function LogApplicationForm({
       }
       // Server action will redirect on success
     } catch (err) {
-      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) {
-        setSubmitError(err.message);
+      const msg = err instanceof Error ? err.message : '';
+      // A Next.js redirect throws NEXT_REDIRECT by design — the save
+      // succeeded and navigation is happening, so don't treat it as an error.
+      // We still schedule a submitting reset as a safety net: if the
+      // navigation stalls (slow revalidation), the button won't stay frozen
+      // on "Saving…" — the user can retry or navigate without restarting.
+      if (msg.includes('NEXT_REDIRECT')) {
+        setTimeout(() => setSubmitting(false), 1500);
+        return;
       }
+      setSubmitError(msg || 'Could not save — please try again');
       setSubmitting(false);
     }
   }

@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function EditApplicationPage({
   params,
+  searchParams,
 }: {
   params: { id: string; appId: string };
+  searchParams: { from?: string };
 }) {
   const supabase = createClient();
   const [field, products, settings, appRes] = await Promise.all([
@@ -23,10 +25,11 @@ export default async function EditApplicationPage({
   if (appRes.error || !appRes.data) notFound();
 
   const existing = appRes.data as Application;
+  const backHref = searchParams.from || `/fields/${field.id}`;
 
   return (
     <div>
-      <Header title="Edit application" subtitle={field.name} backHref={`/fields/${field.id}`} />
+      <Header title="Edit application" subtitle={field.name} backHref={backHref} />
       <LogApplicationForm
         field={field}
         products={products}

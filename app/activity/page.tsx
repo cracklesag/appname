@@ -529,10 +529,15 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             product.type === 'lime'         ? 'var(--stone)' :
             'var(--forest)';
 
+          const editable = canEditEntry(a.created_by);
+          const rowHref = editable
+            ? `/fields/${f.id}/applications/${a.id}/edit?from=/activity`
+            : `/fields/${f.id}`;
+
           return (
             <Link
               key={a.id}
-              href={`/fields/${f.id}`}
+              href={rowHref}
               className="card field-row"
               style={{ padding: 12, marginBottom: 8 }}
             >

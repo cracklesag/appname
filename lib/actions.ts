@@ -172,12 +172,12 @@ export async function saveBatchApplications(formData: FormData) {
   for (const fId of fieldIds) revalidatePath(`/fields/${fId}`);
   revalidatePath('/');
   revalidatePath('/activity');
-  revalidatePath('/log');
 
   // Return to the log screen ready for the next entry, rather than bouncing
   // to the activity page — keeps the flow going when logging several in a row.
-  // Preserve the type tab so the user stays on e.g. Slurry if that's what they
-  // were logging.
+  // (We deliberately do NOT revalidatePath('/log') here: revalidating the same
+  // route we're redirecting to can stall the navigation, leaving the Save
+  // button stuck. /log is force-dynamic so it always renders fresh anyway.)
   const logType = String(formData.get('log_type') || '');
   const typeParam = ['bag_fert', 'slurry', 'solid_manure', 'lime'].includes(logType)
     ? `&type=${logType}` : '';
