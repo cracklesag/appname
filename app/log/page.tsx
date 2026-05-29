@@ -27,7 +27,7 @@ const TYPE_LABEL: Record<string, string> = {
 export default async function LogPage({
   searchParams,
 }: {
-  searchParams: { type?: string; flash?: string; count?: string };
+  searchParams: { type?: string; flash?: string; count?: string; t?: string };
 }) {
   const type: ProductType = (VALID_TYPES.includes(searchParams.type ?? '')
     ? searchParams.type
@@ -89,6 +89,7 @@ export default async function LogPage({
       )}
 
       <LogApplicationForm
+        key={`${searchParams.t ?? 'init'}-${type}`}
         field={refField}
         batchFields={fields}
         groups={groups}

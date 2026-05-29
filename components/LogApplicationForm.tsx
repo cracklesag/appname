@@ -394,7 +394,12 @@ export function LogApplicationForm({
   );
   const dateWarning = useMemo(() => validateDate(date), [date]);
 
-  const hasBlockingError = !!(rateWarning?.kind === 'error' || dateWarning?.kind === 'error');
+  // In per-field batch mode the shared rate box is optional, so an empty/zero
+  // shared rate must NOT count as a blocking error — each field carries its
+  // own rate. Only treat the shared-rate error as blocking outside that mode.
+  const inPerFieldMode = isBatch && showPerField;
+  const sharedRateError = rateWarning?.kind === 'error' && !inPerFieldMode;
+  const hasBlockingError = !!(sharedRateError || dateWarning?.kind === 'error');
   // Block save when no product of the current type is selected — happens
   // when the user switches to a type that has no products yet. Stops the
   // form silently submitting with a stale product from the previous type.
@@ -905,7 +910,7 @@ export function LogApplicationForm({
                   : 'Applied to each ticked field. You can adjust individual fields below.'}
               </div>
             )}
-            <InlineWarning warning={rateWarning} />
+            {!inPerFieldMode && <InlineWarning warning={rateWarning} />}
           </div>
         )}
 

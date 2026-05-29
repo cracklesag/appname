@@ -181,7 +181,11 @@ export async function saveBatchApplications(formData: FormData) {
   const logType = String(formData.get('log_type') || '');
   const typeParam = ['bag_fert', 'slurry', 'solid_manure', 'lime'].includes(logType)
     ? `&type=${logType}` : '';
-  redirect(`/log?flash=apps_logged&count=${rows.length}${typeParam}`);
+  // A unique token per save so the log page can remount the form fresh each
+  // time (clears the Saving… state and the inputs ready for the next entry),
+  // even when two consecutive saves have the same field count.
+  const token = Date.now().toString(36);
+  redirect(`/log?flash=apps_logged&count=${rows.length}${typeParam}&t=${token}`);
 }
 
 export async function updateApplication(formData: FormData) {
