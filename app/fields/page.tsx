@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ChevronRight, Plus, FileUp } from 'lucide-react';
-import { MiniBar } from '@/components/NutrientBar';
+import { Plus, FileUp } from 'lucide-react';
 import { FilterChips } from '@/components/FilterChips';
+import { FieldsListClient, FieldRow, FieldGroup } from '@/components/FieldsListClient';
 import {
   loadAllProducts,
   loadFields,
@@ -16,7 +16,6 @@ import {
   fmtDateShort,
   getCutTargets,
   getOfftakeForCut,
-  getNextCutType,
   getResolvedNextCutType,
   getSeasonLabel,
   getSeasonStart,
@@ -176,16 +175,6 @@ export default async function FieldsPage({
   const anyFilterActive =
     nextFilter !== 'active' || shortFilter !== null || groupFilter !== 'all';
 
-  // Group chip options — only show ungrouped pill when at least one
-  // ungrouped field exists. Drop the whole row if the user hasn't made
-  // any groups yet (then the section is just clutter).
-  const anyUngrouped = fieldStates.some((s) => !s.field.group_id);
-  const groupChipOptions = groups.length === 0 ? null : [
-    { value: 'all', label: 'All groups' },
-    ...groups.map((g) => ({ value: g.id, label: g.name })),
-    ...(anyUngrouped ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
-  ];
-
   return (
     <div style={{ paddingBottom: 80 }}>
       {/* Branded hero — matches home, with a back arrow to the dashboard */}
@@ -215,14 +204,6 @@ export default async function FieldsPage({
         {/* Filter chips — next cut type. URL param: ?next= */}
         {fields.length > 0 && (
           <>
-            {/* Filter chips — group. URL param: ?group= */}
-            {groupChipOptions && (
-              <FilterChips
-                paramName="group"
-                ariaLabel="Filter by group"
-                options={groupChipOptions}
-              />
-            )}
             <FilterChips
               paramName="next"
               ariaLabel="Filter by next cut type"
@@ -258,29 +239,56 @@ export default async function FieldsPage({
         )}
 
         <div style={{ marginTop: 4 }}>
-          {/* Decide whether to render group headings.
-              - Active group filter: skip headings (section already says
-                "Top Farm", repeating it is noise).
-              - When sorted by shortfall: skip headings (sort is the point,
-                grouping would fight it).
-              - No groups created: skip headings (nothing to label).
-              Otherwise: bucket visibleFields by group_id, render headings
-              in the user-defined group sort_order, ungrouped at the end.
-              Within each bucket, field cards stay alphabetised. */}
-          {(() => {
-            const showHeadings =
-              groupFilter === 'all' && shortFilter === null && groups.length > 0;
+          {/* Build grouped, serialisable data for the collapsible client list.
+              When a shortfall sort is active, fold everything into one
+              "results" group so the sort isn't fought by grouping. */}
+          {fields.length > 0 && visibleFields.length > 0 && (() => {
+            const tgt = settings.soilTargets;
 
-            // Build the ordered list of "things to render" — alternating
-            // heading markers and field-state items. We keep the card JSX
-            // unchanged by reusing a small renderer below.
-            const orderedItems: Array<
-              | { kind: 'heading'; key: string; label: string }
-              | { kind: 'field'; state: typeof visibleFields[number] }
-            > = [];
+            const rowFor = (s: typeof visibleFields[number]): FieldRow => {
+              const f = s.field;
+              const a = displayFieldArea(f, settings.unitSystem);
+              const cutLine = s.targets
+                ? `Building toward cut ${s.nextCut}${s.lastCut ? ` · since cut ${s.lastCut.cut_number} on ${fmtDateShort(s.lastCut.cut_date)}` : ' · since season start'}`
+                : `All ${f.cut_profile} cuts taken`;
+              const bars = s.targets
+                ? {
+                    n: { applied: displayBagAmount(s.available.n, settings.bagFertUnit).value, target: displayBagAmount(s.targets.n, settings.bagFertUnit).value, unit: displayBagAmount(s.available.n, settings.bagFertUnit).unit },
+                    p: { applied: displayBagAmount(s.available.p, settings.bagFertUnit).value, target: displayBagAmount(s.targets.p2o5, settings.bagFertUnit).value, unit: displayBagAmount(s.available.p, settings.bagFertUnit).unit },
+                    k: { applied: displayBagAmount(s.available.k, settings.bagFertUnit).value, target: displayBagAmount(s.targets.k2o, settings.bagFertUnit).value, unit: displayBagAmount(s.available.k, settings.bagFertUnit).unit },
+                  }
+                : null;
+              return {
+                id: f.id,
+                name: f.name,
+                meta: `${fmt(a.value, 1)} ${a.unit} · ${f.cut_profile} cut`,
+                sampled: !!f.sampled,
+                ph: f.ph ?? null,
+                pIdx: f.p_idx ?? null,
+                kIdx: f.k_idx ?? null,
+                phColor: soilMetricColor(f.ph, tgt.pH),
+                pColor: soilMetricColor(f.p_idx, tgt.pIdx),
+                kColor: soilMetricColor(f.k_idx, tgt.kIdx),
+                staleYear: isSampleStale(f) ? sampleYear(f) : null,
+                cutLine,
+                bars,
+              };
+            };
 
-            if (!showHeadings) {
-              visibleFields.forEach((s) => orderedItems.push({ kind: 'field', state: s }));
+            const isShort = (s: typeof visibleFields[number]) =>
+              (s.field.p_idx != null && s.field.p_idx < tgt.pIdx) ||
+              (s.field.k_idx != null && s.field.k_idx < tgt.kIdx);
+
+            const fieldGroups: FieldGroup[] = [];
+            const groupFieldsView = groupFilter === 'all' && shortFilter === null;
+
+            if (!groupFieldsView || groups.length === 0) {
+              // Single flat group (filtered or sorted view, or no groups defined)
+              fieldGroups.push({
+                key: 'all', label: null,
+                rows: visibleFields.map(rowFor),
+                hasShort: visibleFields.some(isShort),
+              });
             } else {
               const buckets = new Map<string | null, typeof visibleFields>();
               for (const s of visibleFields) {
@@ -292,114 +300,25 @@ export default async function FieldsPage({
               for (const g of groups) {
                 const b = buckets.get(g.id);
                 if (!b || b.length === 0) continue;
-                orderedItems.push({ kind: 'heading', key: `h-${g.id}`, label: g.name });
-                b.slice()
-                  .sort((a, b) => a.field.name.localeCompare(b.field.name))
-                  .forEach((s) => orderedItems.push({ kind: 'field', state: s }));
+                const sorted = b.slice().sort((a, c) => a.field.name.localeCompare(c.field.name));
+                fieldGroups.push({
+                  key: g.id, label: g.name,
+                  rows: sorted.map(rowFor),
+                  hasShort: sorted.some(isShort),
+                });
               }
               const ungrouped = buckets.get(null);
               if (ungrouped && ungrouped.length > 0) {
-                orderedItems.push({ kind: 'heading', key: 'h-ungrouped', label: 'Ungrouped' });
-                ungrouped.slice()
-                  .sort((a, b) => a.field.name.localeCompare(b.field.name))
-                  .forEach((s) => orderedItems.push({ kind: 'field', state: s }));
+                const sorted = ungrouped.slice().sort((a, c) => a.field.name.localeCompare(c.field.name));
+                fieldGroups.push({
+                  key: 'ungrouped', label: 'Ungrouped',
+                  rows: sorted.map(rowFor),
+                  hasShort: sorted.some(isShort),
+                });
               }
             }
 
-            return orderedItems.map((item, idx) => {
-              if (item.kind === 'heading') {
-                return (
-                  <div
-                    key={item.key}
-                    style={{
-                      marginTop: idx === 0 ? 0 : 14,
-                      marginBottom: 6,
-                      paddingLeft: 2,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--muted)',
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                );
-              }
-              const s = item.state;
-              const f = s.field;
-              const tgt = settings.soilTargets;
-              const phColor = soilMetricColor(f.ph, tgt.pH);
-              const pColor = soilMetricColor(f.p_idx, tgt.pIdx);
-              const kColor = soilMetricColor(f.k_idx, tgt.kIdx);
-
-              return (
-                <Link
-                  key={f.id}
-                  href={`/fields/${f.id}`}
-                  className="card field-row"
-                  style={{ padding: '14px 16px', marginBottom: 10 }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="display" style={{ fontSize: 19, fontWeight: 500, color: 'var(--ink)', marginBottom: 2 }}>
-                        {f.name}
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                        {(() => {
-                          const a = displayFieldArea(f, settings.unitSystem);
-                          return `${fmt(a.value, 1)} ${a.unit} · ${f.cut_profile} cut`;
-                        })()}
-                      </div>
-                      {f.sampled && (
-                        <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 12, flexWrap: 'wrap' }}>
-                          <span><span style={{ color: 'var(--muted)' }}>pH </span><span style={{ color: phColor, fontWeight: 700 }}>{f.ph ?? '—'}</span></span>
-                          <span><span style={{ color: 'var(--muted)' }}>P </span><span style={{ color: pColor, fontWeight: 700 }}>{f.p_idx ?? '—'}</span></span>
-                          <span><span style={{ color: 'var(--muted)' }}>K </span><span style={{ color: kColor, fontWeight: 700 }}>{f.k_idx ?? '—'}</span></span>
-                          {isSampleStale(f) && (() => {
-                            const yr = sampleYear(f);
-                            return yr != null ? (
-                              <span style={{ color: 'var(--red, #b85b3a)' }}>· {yr} (stale)</span>
-                            ) : null;
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                    <ChevronRight size={18} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: 2 }} />
-                  </div>
-
-                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-                    {s.targets ? (
-                      <>
-                        Building toward <strong style={{ color: 'var(--forest-dark)' }}>cut {s.nextCut}</strong>
-                        {' · '}
-                        {s.lastCut ? `since cut ${s.lastCut.cut_number} on ${fmtDateShort(s.lastCut.cut_date)}` : 'since season start'}
-                      </>
-                    ) : (
-                      <>All {f.cut_profile} cuts taken</>
-                    )}
-                  </div>
-
-                  {s.targets && (() => {
-                    // Use carryover-aware "available" totals so the bars match
-                    // the field detail page (P/K carry over between cuts; N doesn't).
-                    const nView = displayBagAmount(s.available.n, settings.bagFertUnit);
-                    const pView = displayBagAmount(s.available.p, settings.bagFertUnit);
-                    const kView = displayBagAmount(s.available.k, settings.bagFertUnit);
-                    const nTgt  = displayBagAmount(s.targets.n,    settings.bagFertUnit).value;
-                    const pTgt  = displayBagAmount(s.targets.p2o5, settings.bagFertUnit).value;
-                    const kTgt  = displayBagAmount(s.targets.k2o,  settings.bagFertUnit).value;
-                    return (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-soft)' }}>
-                        <MiniBar label="N" applied={nView.value} target={nTgt} unit={nView.unit} />
-                        <MiniBar label="P" applied={pView.value} target={pTgt} unit={pView.unit} />
-                        <MiniBar label="K" applied={kView.value} target={kTgt} unit={kView.unit} />
-                      </div>
-                    );
-                  })()}
-                </Link>
-              );
-            });
+            return <FieldsListClient groups={fieldGroups} />;
           })()}
 
           {visibleFields.length === 0 && fields.length > 0 && (
