@@ -6,6 +6,7 @@ import { completeOnboarding } from '@/lib/actions';
 
 export function WelcomeForm() {
   const [unit, setUnit] = useState<'acres' | 'ha' | null>(null);
+  const [farmName, setFarmName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,7 +15,7 @@ export function WelcomeForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await completeOnboarding(unit);
+      await completeOnboarding(unit, farmName);
     } catch (err) {
       if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) {
         setError(err.message);
@@ -73,6 +74,24 @@ export function WelcomeForm() {
         >
           One quick question before we get started.
         </p>
+      </div>
+
+      <div className="card" style={{ padding: 18 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>
+          What&apos;s your farm called?
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.5, marginBottom: 14 }}>
+          Shown at the top of the app. You can change it later in Settings.
+        </div>
+        <input
+          type="text"
+          className="input"
+          placeholder="e.g. Mill Farm"
+          value={farmName}
+          onChange={(e) => setFarmName(e.target.value)}
+          maxLength={60}
+          autoComplete="off"
+        />
       </div>
 
       <div className="card" style={{ padding: 18 }}>

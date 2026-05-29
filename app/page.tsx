@@ -95,6 +95,12 @@ export default async function HomePage() {
           </div>
         </div>
 
+        {settings.farmName && (
+          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: 'var(--brand-cream)', opacity: 0.85, letterSpacing: '0.01em' }}>
+            {settings.farmName}
+          </div>
+        )}
+
         {hasFields ? (
           <div style={{ marginTop: 16 }}>
             <HomeTiles nNow={nNow} grazingDue={grazingDue} />

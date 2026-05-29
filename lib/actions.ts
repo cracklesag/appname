@@ -410,6 +410,7 @@ export async function saveSettings(formData: FormData) {
   const user = { id: ctx.ownerId };
 
   const data = {
+    farmName: (String(formData.get('farm_name') || '').trim()) || null,
     yieldMultipliers: {
       light: parseFloat(String(formData.get('yield_light'))),
       average: parseFloat(String(formData.get('yield_average'))),
@@ -828,7 +829,7 @@ export async function retryExtraction(documentId: string) {
  * preference is mixed (e.g. acres for field size, gal/ac for slurry, kg/ha for
  * fert). This is just the sensible default pair-up.
  */
-export async function completeOnboarding(unit: 'acres' | 'ha') {
+export async function completeOnboarding(unit: 'acres' | 'ha', farmName?: string) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
@@ -861,6 +862,7 @@ export async function completeOnboarding(unit: 'acres' | 'ha') {
   const next = {
     ...current,
     ...unitDefaults,
+    ...(farmName && farmName.trim() ? { farmName: farmName.trim() } : {}),
     onboarded: true,
   };
 

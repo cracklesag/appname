@@ -105,6 +105,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <SplashController />
 
+        <div
+          role="note"
+          style={{
+            background: 'var(--forest-dark, #2B4129)',
+            color: 'var(--brand-cream, #efe7d6)',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            padding: '4px 12px',
+          }}
+        >
+          Closed beta · in testing
+        </div>
+
         <div className="app-shell">{children}</div>
         <BottomNav />
         <ServiceWorkerRegister />

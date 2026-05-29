@@ -85,6 +85,23 @@ export default async function SettingsPage() {
       </div>
       <form action={saveSettings}>
         <div style={{ padding: 16 }}>
+          {/* Farm name */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 8 }}>Farm name</div>
+            <input
+              type="text"
+              name="farm_name"
+              className="input"
+              placeholder="e.g. Mill Farm"
+              defaultValue={s.farmName ?? ''}
+              maxLength={60}
+              autoComplete="off"
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              Shown at the top of the app.
+            </div>
+          </div>
+
           {/* Units */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label" style={{ marginBottom: 10 }}>Units</div>
