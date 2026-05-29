@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Save, LogOut, ChevronRight, Users } from 'lucide-react';
+import { Save, LogOut, ChevronRight, Users, UserPlus } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { loadSettings } from '@/lib/data';
@@ -68,6 +68,16 @@ export default async function SettingsPage() {
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Team</div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Add staff who can log spreading and cuts</div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+        <Link href="/join" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <UserPlus size={18} style={{ color: 'var(--forest)' }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Join a farm</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Got an invite code? Join as staff</div>
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />

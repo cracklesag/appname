@@ -155,6 +155,13 @@ export function WelcomeForm() {
           </>
         )}
       </button>
+
+      <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+        Joining someone else&apos;s farm?{' '}
+        <a href="/join" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline' }}>
+          Enter your invite code
+        </a>
+      </div>
     </div>
   );
 }
