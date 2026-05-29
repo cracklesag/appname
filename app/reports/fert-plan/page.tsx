@@ -5,7 +5,7 @@ import {
 } from '@/lib/data';
 import {
   getSeasonStart, sumNutrients, getFieldPKShortfall, planFieldFertiliser, displayFieldArea,
-  getFieldNRecommendation, calcNutrients,
+  getFieldNRecommendation,
 } from '@/lib/rules';
 import { FertPlanShell, FertPlanRow } from '@/components/FertPlanShell';
 
@@ -48,22 +48,19 @@ export default async function FertPlanPage({
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
       const nToApply = Math.max(0, Math.round(nRec.n - applied.n));
 
-      const plan = planFieldFertiliser(p2o5ToApply, k2oToApply, products);
+      const plan = planFieldFertiliser(p2o5ToApply, k2oToApply, products, nToApply);
       const area = displayFieldArea(f, settings.unitSystem);
       const haActual = f.ha || 0;
       const groupName = groups.find((g) => g.id === f.group_id)?.name ?? null;
 
-      // What the planned products actually deliver in N, P and K (kg/ha) — so
-      // the bars can show supply vs need across all three nutrients, including
-      // incidental N/P/K from a compound chosen for a different nutrient.
+      // What the planned products deliver in N, P and K (kg/ha) — taken from
+      // the plan itself, which already computed per-product delivery.
       let suppliedN = 0, suppliedP = 0, suppliedK = 0;
       if (plan) {
         for (const pp of plan.products) {
-          const prod = products.find((pr) => pr.id === pp.productId);
-          const nut = calcNutrients(prod, pp.rateKgPerHa, 'kg/ha', new Date().toISOString().slice(0, 10), null);
-          suppliedN += nut.nPerHa;
-          suppliedP += nut.p2o5PerHa;
-          suppliedK += nut.k2oPerHa;
+          suppliedN += pp.deliversN;
+          suppliedP += pp.deliversP2O5;
+          suppliedK += pp.deliversK2O;
         }
       }
 

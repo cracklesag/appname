@@ -5,7 +5,7 @@ import {
 } from '@/lib/data';
 import {
   getSeasonStart, sumNutrients, getResolvedNextCutType, getPlannedCuts,
-  getFieldPKShortfall, displayFieldArea,
+  getFieldPKShortfall, getFieldNRecommendation, displayFieldArea,
 } from '@/lib/rules';
 import * as rb209 from '@/lib/rb209';
 import { PKStatusShell, PKFieldRow } from '@/components/PKStatusShell';
@@ -46,6 +46,7 @@ export default async function PKStatusPage({
       const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
         f, cutNumber, applied.p, applied.k, fieldCuts,
       );
+      const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
 
       const area = displayFieldArea(f, settings.unitSystem);
       const groupName = groups.find((g) => g.id === f.group_id)?.name ?? null;
@@ -69,8 +70,10 @@ export default async function PKStatusPage({
         cutNumber: rec.cutNumber,
         p2o5ToApply,
         k2oToApply,
+        recN: Math.round(nRec.n),
         recP2o5: rec.p2o5,
         recK2o: rec.k2o + rec.extraKAfterCut,
+        appliedN: Math.round(applied.n),
         appliedP: Math.round(applied.p),
         appliedK: Math.round(applied.k),
         atMaintenance: rec.atMaintenance,

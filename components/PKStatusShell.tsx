@@ -21,8 +21,10 @@ export interface PKFieldRow {
   cutNumber: number;
   p2o5ToApply: number;
   k2oToApply: number;
+  recN: number;
   recP2o5: number;
   recK2o: number;
+  appliedN: number;
   appliedP: number;
   appliedK: number;
   atMaintenance: boolean;
@@ -185,6 +187,7 @@ export function PKStatusShell({
             )}
 
             {/* Need-vs-supply bars: applied this season vs RB209 need. */}
+            <SupplyBar label="N" need={row.recN} supply={row.appliedN} />
             <SupplyBar label={`P₂O₅ · index ${row.pBand}`} need={row.recP2o5} supply={row.appliedP} />
             <SupplyBar label={`K₂O · index ${row.kBandLabel}`} need={row.recK2o} supply={row.appliedK} />
 

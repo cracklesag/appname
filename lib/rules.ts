@@ -1059,14 +1059,16 @@ export interface PlannedProduct {
   /** Rate in kg/ha. */
   rateKgPerHa: number;
   /** What this product delivers at that rate, kg/ha. */
+  deliversN: number;
   deliversP2O5: number;
   deliversK2O: number;
 }
 
 export interface FieldFertPlan {
-  /** Up to two products (e.g. a P source + a K source), or one compound. */
+  /** Up to three products (P source + K source + N source), or fewer. */
   products: PlannedProduct[];
   /** Net delivered vs needed, after the plan, kg/ha. Positive = surplus. */
+  nBalance: number;
   p2o5Balance: number;
   k2oBalance: number;
   /** Human note on the strategy chosen. */
@@ -1089,18 +1091,39 @@ export function planFieldFertiliser(
   p2o5ToApply: number,
   k2oToApply: number,
   products: Product[],
+  nToApply: number = 0,
 ): FieldFertPlan | null {
-  if (p2o5ToApply <= 0 && k2oToApply <= 0) return null;
+  if (p2o5ToApply <= 0 && k2oToApply <= 0 && nToApply <= 0) return null;
 
-  // Candidate granular bag-fert products with any P or K content.
-  const granular = products.filter(
-    (p) => p.type === 'bag_fert' && (p.form === 'granular' || p.form == null)
-      && ((p.p2o5_pct ?? 0) > 0 || (p.k2o_pct ?? 0) > 0),
+  // All granular bag-fert products (any nutrient). N topup may use an N-only
+  // straight (e.g. CAN) that has no P or K.
+  const granularAll = products.filter(
+    (p) => p.type === 'bag_fert' && (p.form === 'granular' || p.form == null),
   );
-  if (granular.length === 0) {
-    return { products: [], p2o5Balance: -p2o5ToApply, k2oBalance: -k2oToApply,
+  // Subset carrying P or K — used for the P/K strategies.
+  const granular = granularAll.filter(
+    (p) => (p.p2o5_pct ?? 0) > 0 || (p.k2o_pct ?? 0) > 0,
+  );
+
+  if (granular.length === 0 && nToApply <= 0) {
+    return { products: [], nBalance: 0, p2o5Balance: -p2o5ToApply, k2oBalance: -k2oToApply,
       note: 'No granular P/K fertiliser set up — add one to plan rates.' };
   }
+
+  const plan: PlannedProduct[] = [];
+  let dN = 0, dP = 0, dK = 0;
+  let usedCompound = false;
+
+  const pushProduct = (p: Product, rate: number) => {
+    const gN = rate * (p.n_pct ?? 0) / 100;
+    const gP = rate * (p.p2o5_pct ?? 0) / 100;
+    const gK = rate * (p.k2o_pct ?? 0) / 100;
+    plan.push({
+      productId: p.id, productName: p.name, rateKgPerHa: Math.round(rate),
+      deliversN: Math.round(gN), deliversP2O5: Math.round(gP), deliversK2O: Math.round(gK),
+    });
+    dN += gN; dP += gP; dK += gK;
+  };
 
   // Strategy 1: a single compound whose P:K ratio matches the shortfall well.
   if (p2o5ToApply > 0 && k2oToApply > 0) {
@@ -1110,66 +1133,60 @@ export function planFieldFertiliser(
       const s = ratioMatch(p.p2o5_pct ?? 0, p.k2o_pct ?? 0, p2o5ToApply, k2oToApply);
       if (!best || s > best.score) best = { prod: p, score: s };
     }
-    // Use the compound only if it's a good ratio match (>0.97 ≈ within ~14°).
     if (best && best.score > 0.97) {
       const p = best.prod;
-      // Rate to meet the limiting nutrient (whichever needs the higher rate).
       const rateForP = (p.p2o5_pct ?? 0) > 0 ? (p2o5ToApply / (p.p2o5_pct! / 100)) : 0;
       const rateForK = (p.k2o_pct ?? 0) > 0 ? (k2oToApply / (p.k2o_pct! / 100)) : 0;
-      const rate = Math.max(rateForP, rateForK);
-      const dP = rate * (p.p2o5_pct ?? 0) / 100;
-      const dK = rate * (p.k2o_pct ?? 0) / 100;
-      return {
-        products: [{ productId: p.id, productName: p.name, rateKgPerHa: Math.round(rate),
-          deliversP2O5: Math.round(dP), deliversK2O: Math.round(dK) }],
-        p2o5Balance: Math.round(dP - p2o5ToApply),
-        k2oBalance: Math.round(dK - k2oToApply),
-        note: `${p.name} matches the P:K ratio — one pass.`,
-      };
+      pushProduct(p, Math.max(rateForP, rateForK));
+      usedCompound = true;
     }
   }
 
-  // Strategy 2: straight products. Pick the highest-analysis P source and K
-  // source available, rate each to its own shortfall.
-  const plan: PlannedProduct[] = [];
-  let dP = 0, dK = 0;
-
-  if (p2o5ToApply > 0) {
-    // Prefer a high-P, low-K straight (e.g. TSP 0-46-0); fall back to best P%.
-    const pSource = [...granular]
-      .filter((p) => (p.p2o5_pct ?? 0) > 0)
-      .sort((a, b) => (b.p2o5_pct ?? 0) - (a.p2o5_pct ?? 0))[0];
-    if (pSource) {
-      const rate = p2o5ToApply / (pSource.p2o5_pct! / 100);
-      const give = rate * (pSource.p2o5_pct ?? 0) / 100;
-      const giveK = rate * (pSource.k2o_pct ?? 0) / 100;
-      plan.push({ productId: pSource.id, productName: pSource.name, rateKgPerHa: Math.round(rate),
-        deliversP2O5: Math.round(give), deliversK2O: Math.round(giveK) });
-      dP += give; dK += giveK;
+  // Strategy 2: straight P and K sources (only if the compound wasn't used).
+  if (!usedCompound) {
+    if (p2o5ToApply > 0) {
+      const pSource = [...granular]
+        .filter((p) => (p.p2o5_pct ?? 0) > 0)
+        .sort((a, b) => (b.p2o5_pct ?? 0) - (a.p2o5_pct ?? 0))[0];
+      if (pSource) pushProduct(pSource, p2o5ToApply / (pSource.p2o5_pct! / 100));
+    }
+    if (k2oToApply - dK > 0) {
+      const kSource = [...granular]
+        .filter((p) => (p.k2o_pct ?? 0) > 0)
+        .sort((a, b) => (b.k2o_pct ?? 0) - (a.k2o_pct ?? 0))[0];
+      if (kSource) pushProduct(kSource, (k2oToApply - dK) / (kSource.k2o_pct! / 100));
     }
   }
 
-  if (k2oToApply - dK > 0) {
-    // Prefer a high-K straight (MOP 0-0-60); fall back to best K%.
-    const kSource = [...granular]
-      .filter((p) => (p.k2o_pct ?? 0) > 0)
-      .sort((a, b) => (b.k2o_pct ?? 0) - (a.k2o_pct ?? 0))[0];
-    if (kSource) {
-      const remainingK = k2oToApply - dK;
-      const rate = remainingK / (kSource.k2o_pct! / 100);
-      const give = rate * (kSource.k2o_pct ?? 0) / 100;
-      const giveP = rate * (kSource.p2o5_pct ?? 0) / 100;
-      plan.push({ productId: kSource.id, productName: kSource.name, rateKgPerHa: Math.round(rate),
-        deliversP2O5: Math.round(giveP), deliversK2O: Math.round(give) });
-      dP += giveP; dK += give;
+  // Strategy 3: N top-up. After P/K products' incidental N, cover the rest
+  // with a straight N source (highest N%, lowest P/K — e.g. CAN, urea).
+  const nRemaining = nToApply - dN;
+  if (nRemaining > 1) {
+    const nSource = [...granularAll]
+      .filter((p) => (p.n_pct ?? 0) > 0)
+      // Prefer high N, and low P+K (a true N straight over a compound).
+      .sort((a, b) => {
+        const an = (a.n_pct ?? 0) - ((a.p2o5_pct ?? 0) + (a.k2o_pct ?? 0)) * 0.5;
+        const bn = (b.n_pct ?? 0) - ((b.p2o5_pct ?? 0) + (b.k2o_pct ?? 0)) * 0.5;
+        return bn - an;
+      })[0];
+    if (nSource && (nSource.n_pct ?? 0) > 0) {
+      pushProduct(nSource, nRemaining / (nSource.n_pct! / 100));
     }
   }
+
+  let note: string;
+  if (plan.length === 0) note = 'Nothing to apply.';
+  else if (usedCompound && plan.length === 1) note = `${plan[0].productName} matches the P:K ratio — one pass.`;
+  else if (plan.length === 1) note = 'Single product.';
+  else note = `${plan.length} products — ` + plan.map((p) => p.productName).join(' + ');
 
   return {
     products: plan,
+    nBalance: Math.round(dN - nToApply),
     p2o5Balance: Math.round(dP - p2o5ToApply),
     k2oBalance: Math.round(dK - k2oToApply),
-    note: plan.length > 1 ? 'Straight P + K — two products.' : 'Straight fertiliser.',
+    note,
   };
 }
 
