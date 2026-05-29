@@ -272,6 +272,54 @@ export default async function SettingsPage() {
           </div>
         </div>
 
+        {/* Timing prompts — drive the home screen "Coming up" section */}
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>
+            Timing prompts
+          </div>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              Controls the home screen&apos;s &ldquo;Act now&rdquo; and &ldquo;Plan ahead&rdquo; prompts. Nitrogen after a cut is the time-critical one.
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Nitrogen due after cut</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Days after a cut before N shows as due. 0 = same day.</div>
+              </div>
+              <input type="number" min="0" max="30" step="1" name="timing_n_due" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.nDueAfterCutDays} />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Nitrogen overdue after cut</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Days after a cut before N is flagged overdue (amber).</div>
+              </div>
+              <input type="number" min="1" max="60" step="1" name="timing_n_overdue" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.nOverdueAfterCutDays} />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Grazing dressing interval</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Days between topping dressings on grazing ground.</div>
+              </div>
+              <input type="number" min="7" max="120" step="1" name="timing_grazing_interval" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.grazingDressingIntervalDays} />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Planning lead time</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>How many days ahead a dressing shows in &ldquo;Plan ahead&rdquo;.</div>
+              </div>
+              <input type="number" min="1" max="30" step="1" name="timing_lead" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.planLeadTimeDays} />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
+            </div>
+          </div>
+        </div>
+
         <div className="sticky-footer">
           <button type="submit" className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <Save size={18} /> Save settings

@@ -214,6 +214,22 @@ export interface Settings {
     maintenanceDoseThresholdKgN: number;
   };
   /**
+   * Timing parameters for the home-screen "Coming up" prompts. All in days
+   * unless noted. User-adjustable in Settings so each farm can tune to its
+   * own system. Nitrogen after a cut is the time-critical one; grazing
+   * dressings and lead-time are planning prompts.
+   */
+  timingDefaults: {
+    /** Days after a cut before its after-cut N shows as "due" on home. 0 = day of cut. */
+    nDueAfterCutDays: number;
+    /** Days after a cut before the after-cut N is flagged "overdue" (amber). */
+    nOverdueAfterCutDays: number;
+    /** Grazing topping-dressing interval, in days, from the last dressing/cut. */
+    grazingDressingIntervalDays: number;
+    /** How many days ahead to start showing a "dressing due soon" planning prompt. */
+    planLeadTimeDays: number;
+  };
+  /**
    * Grass system IDs the user has hidden from their dropdown. Shared seeds
    * appear by default; users tick visibility checkboxes in Settings →
    * Grass systems. Stored as IDs because seed_key isn't unique across
@@ -239,6 +255,12 @@ export const DEFAULT_SETTINGS: Settings = {
     grazingCadenceKgN: 40,
     grazingCadenceWeeks: 4,
     maintenanceDoseThresholdKgN: 30,
+  },
+  timingDefaults: {
+    nDueAfterCutDays: 0,
+    nOverdueAfterCutDays: 7,
+    grazingDressingIntervalDays: 28,
+    planLeadTimeDays: 7,
   },
   hiddenGrassSystemIds: [],
   onboarded: false,

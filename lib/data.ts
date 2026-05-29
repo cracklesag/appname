@@ -101,6 +101,10 @@ export async function loadSettings(): Promise<Settings> {
       ...DEFAULT_SETTINGS.reportDefaults,
       ...(saved.reportDefaults || {}),
     },
+    timingDefaults: {
+      ...DEFAULT_SETTINGS.timingDefaults,
+      ...(saved.timingDefaults || {}),
+    },
   };
   // For users whose settings predate the unitSystem field: infer from slurryUnit
   // (gal/ac is acres-style, m3/ha is hectares-style). Saved on first explicit

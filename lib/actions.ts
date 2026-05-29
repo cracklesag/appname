@@ -374,6 +374,20 @@ export async function saveSettings(formData: FormData) {
         parseFloat(String(formData.get('report_maintenance_threshold') || '30')) || 30
       )),
     },
+    timingDefaults: {
+      nDueAfterCutDays: Math.max(0, Math.min(30,
+        parseInt(String(formData.get('timing_n_due') || '0'), 10) || 0
+      )),
+      nOverdueAfterCutDays: Math.max(1, Math.min(60,
+        parseInt(String(formData.get('timing_n_overdue') || '7'), 10) || 7
+      )),
+      grazingDressingIntervalDays: Math.max(7, Math.min(120,
+        parseInt(String(formData.get('timing_grazing_interval') || '28'), 10) || 28
+      )),
+      planLeadTimeDays: Math.max(1, Math.min(30,
+        parseInt(String(formData.get('timing_lead') || '7'), 10) || 7
+      )),
+    },
     bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
     slurryUnit: String(formData.get('slurry_unit')) as 'gal/ac' | 'm3/ha',
     limeUnit: String(formData.get('lime_unit')) as 't/ac' | 't/ha',

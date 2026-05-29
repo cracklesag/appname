@@ -919,6 +919,133 @@ export function getSeasonLabel(date: Date = new Date()): string {
   return `${cropYear} season`;
 }
 
+// ---- Home "Coming up" timing prompts -------------------------------
+//
+// Nitrogen after a cut is time-critical: once a field is cut, it wants its
+// after-cut N to drive regrowth, and that window is short. P/K is NOT a
+// timing prompt — it's a planning decision handled in the fertiliser plan.
+//
+// This helper derives, for a single field, what (if anything) should appear
+// in the home screen's "Coming up" section. It's pure timing logic on data
+// already loaded (cut dates, applications), so it has no RB209 dependency.
+
+export type ComingUpKind =
+  | 'n_due'        // cut recently, after-cut N not yet applied, within due window
+  | 'n_overdue'    // cut a while ago, after-cut N still not applied
+  | 'grazing_due'; // grazing field approaching its topping-dressing interval
+
+export interface ComingUpItem {
+  fieldId: string;
+  fieldName: string;
+  kind: ComingUpKind;
+  /** Days since the triggering cut (n_*) or since last dressing (grazing). */
+  days: number;
+  /** For grazing_due: days until the dressing is due (negative = overdue). */
+  daysUntil?: number;
+}
+
+function daysBetween(fromIso: string, to: Date): number {
+  const from = new Date(fromIso + (fromIso.length <= 10 ? 'T00:00:00' : ''));
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / 86_400_000);
+}
+
+/**
+ * Has nitrogen been applied to this field since the given date? Checks
+ * applications whose product carries N (bag fert, slurry, manure). Lime and
+ * zero-N products don't count.
+ */
+function nitrogenAppliedSince(
+  fieldId: string,
+  sinceIso: string,
+  applications: Application[],
+  products: Product[],
+): boolean {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  return applications.some((a) => {
+    if (a.field_id !== fieldId) return false;
+    if (a.date_applied < sinceIso) return false;
+    const p = byId.get(a.product_id);
+    if (!p) return false;
+    const n =
+      (p.n_pct ?? 0) || (p.n_kg_per_m3 ?? 0) || (p.n_kg_per_t ?? 0);
+    return n > 0;
+  });
+}
+
+/**
+ * Compute the "Coming up" item for one field, or null if nothing's due.
+ *
+ * Logic:
+ *  - If the field's most recent cut (this season) has had NO nitrogen applied
+ *    since the cut date, it's a nitrogen prompt: 'n_due' until
+ *    nOverdueAfterCutDays, then 'n_overdue'. Only applies to fields whose
+ *    most recent cut expects regrowth (i.e. another cut or grazing follows —
+ *    not a field that's been put to maintenance/finished). We surface it for
+ *    any recent cut; the user can dismiss by logging the N.
+ *  - Grazing fields (most recent action is rotational grazing, or a grazing
+ *    cut) get a 'grazing_due' prompt as they approach the dressing interval.
+ */
+export function getComingUpForField(
+  field: Field,
+  fieldCuts: Cut[],
+  applications: Application[],
+  products: Product[],
+  settings: Settings,
+  now: Date = new Date(),
+): ComingUpItem | null {
+  const timing = settings.timingDefaults ?? DEFAULT_SETTINGS.timingDefaults;
+  const seasonStart = getSeasonStart(now);
+  const cuts = fieldCuts
+    .filter((c) => c.cut_date >= seasonStart)
+    .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
+  const lastCut = cuts[0];
+  if (!lastCut) return null;
+
+  const sinceCut = lastCut.cut_date;
+  const daysSinceCut = daysBetween(sinceCut, now);
+
+  // Grazing path: if the most recent action points to grazing, treat this as
+  // a grazing field on a dressing interval.
+  const isGrazing =
+    lastCut.next_action === 'rotational_grazing' ||
+    lastCut.cut_type === 'grazing';
+
+  if (isGrazing) {
+    const due = timing.grazingDressingIntervalDays;
+    const daysUntil = due - daysSinceCut;
+    // Show when within the lead-time window (or already past due).
+    if (daysUntil <= timing.planLeadTimeDays) {
+      return {
+        fieldId: field.id,
+        fieldName: field.name,
+        kind: 'grazing_due',
+        days: daysSinceCut,
+        daysUntil,
+      };
+    }
+    return null;
+  }
+
+  // Nitrogen-after-cut path. Skip if N already applied since the cut.
+  if (nitrogenAppliedSince(field.id, sinceCut, applications, products)) {
+    return null;
+  }
+  // Skip if the field is finished for the season (maintenance with no further
+  // cut expected is still worth an N top-up, so we keep it; only truly nothing
+  // -follows would skip, which we don't model yet).
+  if (daysSinceCut < timing.nDueAfterCutDays) return null;
+
+  const overdue = daysSinceCut >= timing.nOverdueAfterCutDays;
+  return {
+    fieldId: field.id,
+    fieldName: field.name,
+    kind: overdue ? 'n_overdue' : 'n_due',
+    days: daysSinceCut,
+  };
+}
+
+
 // ---- Formatting --------------------------------------------------
 
 export function fmt(n: number | null | undefined, dp = 0): string {

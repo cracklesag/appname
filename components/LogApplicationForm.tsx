@@ -106,12 +106,13 @@ function findPoultry(products: Product[], source: PoultrySource): Product | null
 }
 
 export function LogApplicationForm({
-  field, products, settings, existing,
+  field, products, settings, existing, initialType: initialTypeProp,
 }: {
   field: Field;
   products: Product[];
   settings: Settings;
   existing?: Application;
+  initialType?: ProductType;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const isEdit = !!existing;
@@ -119,14 +120,22 @@ export function LogApplicationForm({
 
   // Determine initial type from existing application's product
   const initialType = useMemo<ProductType>(() => {
-    if (!existing) return 'slurry';
-    const p = products.find((p) => p.id === existing.product_id);
-    return (p?.type as ProductType) ?? 'slurry';
-  }, [existing, products]);
+    if (existing) {
+      const p = products.find((p) => p.id === existing.product_id);
+      return (p?.type as ProductType) ?? 'slurry';
+    }
+    if (initialTypeProp) return initialTypeProp;
+    return 'slurry';
+  }, [existing, products, initialTypeProp]);
 
   const [type, setType] = useState<ProductType>(initialType);
   const [productId, setProductId] = useState<number>(() => {
     if (existing) return existing.product_id;
+    // If a type was preselected (from the Log action menu), default to that
+    // type's first sensible product rather than the slurry default.
+    if (initialTypeProp) {
+      return defaultProductIdFor(products, initialTypeProp) ?? 4;
+    }
     // Prefer dairy slurry 6% DM (id 4) as the historical Mill Farm default.
     const dairy6 = products.find((p) => p.category === 'dairy_slurry' && p.dm_pct === 6);
     if (dairy6) return dairy6.id;

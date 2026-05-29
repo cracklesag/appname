@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ChevronRight, Plus, FileUp, FileText } from 'lucide-react';
-import { Header } from '@/components/Header';
+import { ChevronRight, Plus, FileUp, Bolt, Calendar } from 'lucide-react';
 import { MiniBar } from '@/components/NutrientBar';
 import { FilterChips } from '@/components/FilterChips';
+import { LogActionButton } from '@/components/LogActionButton';
 import {
   loadAllProducts,
   loadFields,
@@ -21,6 +21,7 @@ import {
   getResolvedNextCutType,
   getSeasonLabel,
   getSeasonStart,
+  getComingUpForField,
   isSampleStale,
   resolveGrassSystem,
   sampleYear,
@@ -126,6 +127,34 @@ export default async function HomePage({
     return { field: f, cutsDone, lastCut, nextCut, nextCutType, targets, sinceTotals, available, gap };
   });
 
+  // ---- "Coming up" timing prompts (N after cut, grazing dressings) ----
+  // Pure timing logic — no RB209 dependency. Drives the home Act now /
+  // Plan ahead sections.
+  const comingUp = fields
+    .map((f) => {
+      const fCuts = cuts.filter((c) => c.field_id === f.id);
+      const fApps = applications.filter((a) => a.field_id === f.id);
+      return getComingUpForField(f, fCuts, fApps, products, settings);
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+
+  const nNow = comingUp.filter((c) => c.kind === 'n_due' || c.kind === 'n_overdue');
+  // Most urgent first: overdue before due, then longest-waiting.
+  nNow.sort((a, b) => {
+    const rank = (k: string) => (k === 'n_overdue' ? 0 : 1);
+    if (rank(a.kind) !== rank(b.kind)) return rank(a.kind) - rank(b.kind);
+    return b.days - a.days;
+  });
+  const grazingDue = comingUp
+    .filter((c) => c.kind === 'grazing_due')
+    .sort((a, b) => (a.daysUntil ?? 0) - (b.daysUntil ?? 0));
+
+  // Count of fields worth a P/K review (have a positive P or K gap). Used as
+  // the gentle planning nudge — NOT an alarm. Amounts live in the fert plan.
+  const pkReviewCount = fieldStates.filter(
+    (s) => s.gap && (s.gap.p > 0 || s.gap.k > 0),
+  ).length;
+
   // ---- Apply filters from URL ---------------------------------------
   //
   // `next` = active (default, complete fields excluded) | silage | bales | grazing | complete
@@ -189,71 +218,103 @@ export default async function HomePage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header
-        title="Fields"
-        subtitle={`Swardly · ${seasonLabel}`}
-        right={
+      {/* Branded hero with at-a-glance summary */}
+      <div style={{ background: 'var(--forest-dark)', padding: '16px 18px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/swardly-mark.png" alt="" width={30} height={22} style={{ objectFit: 'contain', filter: 'brightness(0) invert(0.92) sepia(0.15)' }} />
+            <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
+          </div>
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <Link
-              href="/import"
-              aria-label="Import a document"
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: 4,
-                padding: '6px 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                color: 'var(--ink-soft)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                textDecoration: 'none',
-              }}
-            >
-              <FileUp size={14} /> Import
+            <Link href="/import" aria-label="Import a document" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+              <FileUp size={15} />
             </Link>
-            <Link
-              href="/reports/spreading"
-              className="icon-btn"
-              aria-label="Spreading report"
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: 4,
-                padding: '6px 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                color: 'var(--ink-soft)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                textDecoration: 'none',
-              }}
-            >
-              <FileText size={14} /> Report
-            </Link>
-            <Link
-              href="/fields/new"
-              className="icon-btn"
-              aria-label="Add field"
-              style={{
-                border: '1px solid var(--line)',
-                borderRadius: 4,
-                padding: '6px 10px',
-                fontSize: 12,
-                fontWeight: 700,
-                color: 'var(--ink-soft)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                textDecoration: 'none',
-              }}
-            >
-              <Plus size={14} /> Add
+            <Link href="/fields/new" aria-label="Add field" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+              <Plus size={16} />
             </Link>
           </div>
-        }
-      />
-      <div style={{ padding: '12px 16px' }}>
+        </div>
+
+        {fields.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 16 }}>
+            <div style={{ background: 'rgba(239,231,214,0.1)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 23, fontWeight: 700, color: nNow.length > 0 ? '#FAC775' : 'var(--brand-cream)' }}>{nNow.length}</div>
+              <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Need nitrogen</div>
+            </div>
+            <div style={{ background: 'rgba(239,231,214,0.1)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 23, fontWeight: 700, color: 'var(--brand-cream)' }}>{grazingDue.length}</div>
+              <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Dressing due soon</div>
+            </div>
+          </div>
+        )}
+        {fields.length === 0 && (
+          <div style={{ fontSize: 13, color: 'rgba(239,231,214,0.8)', marginTop: 12 }}>{seasonLabel}</div>
+        )}
+      </div>
+
+      <div style={{ padding: '14px 16px' }}>
+        {/* Log action — the primary task */}
+        {fields.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <LogActionButton />
+          </div>
+        )}
+
+        {/* Act now · nitrogen — time-critical N after cutting */}
+        {nNow.length > 0 && (
+          <div style={{ background: 'var(--amber-soft)', borderRadius: 10, padding: '12px 13px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+              <Bolt size={15} style={{ color: '#854F0B' }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#854F0B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Act now · nitrogen</span>
+            </div>
+            {nNow.map((c) => (
+              <Link
+                key={c.fieldId}
+                href={`/fields/${c.fieldId}/log?type=bag_fert&from=/`}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.65)', borderRadius: 7, padding: '9px 11px', marginBottom: 6, textDecoration: 'none' }}
+              >
+                <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{c.fieldName}</span>
+                <span style={{ fontSize: 11, color: c.kind === 'n_overdue' ? '#854F0B' : 'var(--muted)' }}>
+                  {c.kind === 'n_overdue' ? `overdue ${c.days} days` : (c.days === 0 ? 'cut today' : `cut ${c.days} day${c.days === 1 ? '' : 's'} ago`)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Plan ahead — grazing dressings + gentle P/K review nudge */}
+        {(grazingDue.length > 0 || pkReviewCount > 0) && (
+          <Link href="/reports/spreading" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 16, textDecoration: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Calendar size={15} style={{ color: 'var(--forest)' }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Plan ahead</span>
+              </div>
+              <ChevronRight size={15} style={{ color: 'var(--stone)' }} />
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+              {grazingDue.length > 0 && (
+                <>
+                  {grazingDue.slice(0, 1).map((c) => (
+                    <span key={c.fieldId}>
+                      {c.fieldName} grazing — dressing {(c.daysUntil ?? 0) <= 0 ? 'due now' : `in ~${c.daysUntil} days`}.{' '}
+                    </span>
+                  ))}
+                </>
+              )}
+              {pkReviewCount > 0 && <>{pkReviewCount} field{pkReviewCount === 1 ? '' : 's'} worth reviewing for P/K.</>}
+            </div>
+          </Link>
+        )}
+
+        {/* All fields heading */}
+        {fields.length > 0 && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 2px 10px' }}>
+            All fields
+          </div>
+        )}
+
         {/* Filter chips — next cut type. URL param: ?next= */}
         {fields.length > 0 && (
           <>
