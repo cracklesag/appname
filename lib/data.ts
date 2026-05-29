@@ -90,7 +90,21 @@ export async function loadSettings(): Promise<Settings> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return DEFAULT_SETTINGS;
-  const { data, error } = await supabase.from('settings').select('data').eq('user_id', user.id).maybeSingle();
+
+  // Resolve to the farm owner's settings: staff inherit their admin's farm
+  // settings (units, targets, timing) rather than their own empty row. Falls
+  // back to the user's own id if no membership (admin of their own farm).
+  let ownerId = user.id;
+  const { data: memberships } = await supabase
+    .from('farm_members')
+    .select('owner_id, role')
+    .eq('member_id', user.id);
+  if (memberships && memberships.length > 0) {
+    const admin = memberships.find((m) => m.role === 'admin');
+    ownerId = (admin ?? memberships[0]).owner_id as string;
+  }
+
+  const { data, error } = await supabase.from('settings').select('data').eq('user_id', ownerId).maybeSingle();
   if (error || !data) return DEFAULT_SETTINGS;
   const saved = (data.data || {}) as Partial<Settings>;
   const merged: Settings = {
@@ -159,4 +173,25 @@ export async function loadFarmInvites(): Promise<FarmInviteRow[]> {
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []) as FarmInviteRow[];
+}
+
+// ---------------------------------------------------------------------
+// Product usage ranking (for the "most used first" product picker)
+// ---------------------------------------------------------------------
+
+/**
+ * Returns a map of product_id -> times used (count of applications across the
+ * farm). RLS scopes to the farm's applications. Used to rank the product
+ * picker most-used-first.
+ */
+export async function loadProductUsage(): Promise<Record<number, number>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('applications').select('product_id');
+  if (error || !data) return {};
+  const counts: Record<number, number> = {};
+  for (const row of data) {
+    const pid = (row as { product_id: number }).product_id;
+    counts[pid] = (counts[pid] ?? 0) + 1;
+  }
+  return counts;
 }

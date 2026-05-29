@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { LogApplicationForm } from '@/components/LogApplicationForm';
-import { loadField, loadAllProducts, loadSettings } from '@/lib/data';
+import { loadField, loadAllProducts, loadSettings, loadProductUsage } from '@/lib/data';
 import type { ProductType } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +15,8 @@ export default async function LogApplicationPage({
   params: { id: string };
   searchParams: { type?: string; from?: string };
 }) {
-  const [field, products, settings] = await Promise.all([
-    loadField(params.id), loadAllProducts(), loadSettings(),
+  const [field, products, settings, usage] = await Promise.all([
+    loadField(params.id), loadAllProducts(), loadSettings(), loadProductUsage(),
   ]);
   if (!field) notFound();
 
@@ -28,7 +28,7 @@ export default async function LogApplicationPage({
   return (
     <div>
       <Header title="Log application" subtitle={field.name} backHref={backHref} />
-      <LogApplicationForm field={field} products={products} settings={settings} initialType={initialType} />
+      <LogApplicationForm field={field} products={products} settings={settings} initialType={initialType} usage={usage} />
     </div>
   );
 }

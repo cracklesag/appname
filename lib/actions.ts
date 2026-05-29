@@ -139,7 +139,7 @@ export async function saveBatchApplications(formData: FormData) {
   if (fErr) throw new Error(`Could not load fields: ${fErr.message}`);
   const ownFieldIds = new Set((farmFields ?? []).map((f) => f.id as string));
 
-  const VALID_UNITS = new Set(['kg/ha', 'kg/ac', 'lb/ac', 'gal/ac', 'm3/ha', 't/ac', 't/ha']);
+  const VALID_UNITS = new Set(['kg/ha', 'kg/ac', 'lb/ac', 'gal/ac', 'm3/ha', 't/ac', 't/ha', 'l/ha', 'l/ac']);
   const inserts = rows.map((r) => {
     if (!r.field_id || !ownFieldIds.has(r.field_id)) {
       throw new Error('A selected field was not found on your farm');
@@ -916,10 +916,19 @@ export async function createCustomProduct(formData: FormData) {
   };
 
   if (type === 'bag_fert') {
+    const bagForm = String(formData.get('form') ?? 'granular') === 'liquid' ? 'liquid' : 'granular';
+    row.form = bagForm;
     row.n_pct    = optionalNonNegative(formData, 'n_pct');
     row.p2o5_pct = optionalNonNegative(formData, 'p2o5_pct');
     row.k2o_pct  = optionalNonNegative(formData, 'k2o_pct');
     row.s_pct    = optionalNonNegative(formData, 's_pct');
+    if (bagForm === 'liquid') {
+      const density = optionalNonNegative(formData, 'density_kg_per_l');
+      if (!density || density <= 0) {
+        throw new Error('Liquid fertiliser needs a density in kg/L (from the product label)');
+      }
+      row.density_kg_per_l = density;
+    }
   } else if (type === 'slurry') {
     row.n_kg_per_m3    = optionalNonNegative(formData, 'n_kg_per_m3');
     row.p2o5_kg_per_m3 = optionalNonNegative(formData, 'p2o5_kg_per_m3');

@@ -222,6 +222,16 @@ export function displayBagAmount(kgPerHa: number, unit: Settings['bagFertUnit'])
 
 export function displayRate(app: Application, settings: Settings, productType: ProductType): { value: number; unit: string } {
   if (productType === 'bag_fert') {
+    // Liquid fert is dosed and displayed in litres — show the stored litre
+    // rate directly (convert l/ac↔l/ha to the user's area preference).
+    if (app.rate_unit === 'l/ha' || app.rate_unit === 'l/ac') {
+      let lPerHa = app.rate_value;
+      if (app.rate_unit === 'l/ac') lPerHa = app.rate_value * KG_HA_PER_KG_AC;
+      if (settings.unitSystem === 'acres') {
+        return { value: lPerHa / KG_HA_PER_KG_AC, unit: 'l/ac' };
+      }
+      return { value: lPerHa, unit: 'l/ha' };
+    }
     let kgPerHa = app.rate_value;
     if (app.rate_unit === 'kg/ac')      kgPerHa = app.rate_value * KG_HA_PER_KG_AC;
     else if (app.rate_unit === 'lb/ac') kgPerHa = app.rate_value * KG_HA_PER_LB_AC;
@@ -383,7 +393,23 @@ export function calcNutrients(
   }
 
   if (product.type === 'bag_fert') {
-    // Normalise to kg/ha
+    // Liquid bag fert: rate is in litres/ha (or L/ac → L/ha), converted to
+    // kg of product via density, then to nutrient via % w/w.
+    if (product.form === 'liquid') {
+      let lPerHa = rateValue;
+      if (rateUnit === 'l/ac') lPerHa = rateValue * KG_HA_PER_KG_AC; // L/ac → L/ha (same areal factor)
+      const density = product.density_kg_per_l ?? 1.0;
+      const kgProductPerHa = lPerHa * density;
+      return {
+        nPerHa: kgProductPerHa * (product.n_pct ?? 0) / 100,
+        p2o5PerHa: kgProductPerHa * (product.p2o5_pct ?? 0) / 100,
+        k2oPerHa: kgProductPerHa * (product.k2o_pct ?? 0) / 100,
+        so3PerHa: kgProductPerHa * (product.s_pct ?? 0) / 100,
+        mgoPerHa: 0,
+        nNote: 'liquid fertiliser N',
+      };
+    }
+    // Granular: normalise to kg/ha
     let kgPerHa = rateValue;
     if (rateUnit === 'kg/ac')      kgPerHa = rateValue * KG_HA_PER_KG_AC;
     else if (rateUnit === 'lb/ac') kgPerHa = rateValue * KG_HA_PER_LB_AC;

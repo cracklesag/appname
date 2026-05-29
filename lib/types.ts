@@ -23,7 +23,7 @@ export type YieldClass = 'light' | 'average' | 'heavy';
 export type SlurryMethod = 'splash_plate' | 'dribble_bar' | 'trail_shoe';
 export type SolidMethod  = 'surface' | 'soil_incorporated';
 export type ApplicationMethod = SlurryMethod | SolidMethod;
-export type RateUnit = 'kg/ha' | 'kg/ac' | 'lb/ac' | 'gal/ac' | 'm3/ha' | 't/ac' | 't/ha';
+export type RateUnit = 'kg/ha' | 'kg/ac' | 'lb/ac' | 'gal/ac' | 'm3/ha' | 't/ac' | 't/ha' | 'l/ha' | 'l/ac';
 
 /**
  * Product categories used to group the picker menu. Aligned with
@@ -124,6 +124,10 @@ export interface Product {
   category: ProductCategory | null;
   sort_order: number;
   dm_pct: number | null;
+  /** Bag fert only: 'granular' (rate kg/ha) or 'liquid' (rate L/ha + density). */
+  form: 'granular' | 'liquid' | null;
+  /** Liquid bag fert: product density in kg per litre, for L→kg conversion. */
+  density_kg_per_l: number | null;
   // bag fert (% w/w)
   n_pct: number | null;
   p2o5_pct: number | null;

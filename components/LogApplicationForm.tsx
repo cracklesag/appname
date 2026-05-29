@@ -106,19 +106,18 @@ function findPoultry(products: Product[], source: PoultrySource): Product | null
 }
 
 export function LogApplicationForm({
-  field, products, settings, existing, initialType: initialTypeProp, batchFields,
+  field, products, settings, existing, initialType: initialTypeProp, batchFields, groups, usage,
 }: {
   field: Field;
   products: Product[];
   settings: Settings;
   existing?: Application;
   initialType?: ProductType;
-  /** When provided, the form runs in BATCH mode: instead of logging to the
-   *  single `field`, the user ticks any number of these fields and the same
-   *  product/rate/date is applied across them (with optional per-field rate
-   *  override). `field` is still passed (used as the reference field for unit
-   *  defaults and nutrient maths); pass any field, e.g. the first one. */
   batchFields?: Field[];
+  /** Field groups, for the batch field-list group filter. */
+  groups?: { id: string; name: string }[];
+  /** product_id -> times used, for most-used-first ordering of bag fert. */
+  usage?: Record<number, number>;
 }) {
   const isBatch = Array.isArray(batchFields) && batchFields.length > 0;
   const today = new Date().toISOString().slice(0, 10);
@@ -181,6 +180,8 @@ export function LogApplicationForm({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [showPerField, setShowPerField] = useState(false);
+  // Group filter for the batch field list. 'all' = no filter.
+  const [groupFilter, setGroupFilter] = useState<string>('all');
 
   const product = products.find((p) => p.id === productId);
   const currentCategory = product?.category ?? null;
@@ -191,8 +192,20 @@ export function LogApplicationForm({
   // Products that share the current category (used by sub-pickers).
   const siblings = useMemo(() => {
     if (!currentCategory) return [] as Product[];
-    return productsInCategory(products, type, currentCategory);
-  }, [products, type, currentCategory]);
+    const list = productsInCategory(products, type, currentCategory);
+    // Bag fert has no sub-pickers, so order the dropdown most-used-first
+    // (then alphabetical for ties / unused). Other types keep sort_order so
+    // their DM/feedstock sub-pickers stay in their natural order.
+    if (type === 'bag_fert' && usage) {
+      return [...list].sort((a, b) => {
+        const ua = usage[a.id] ?? 0;
+        const ub = usage[b.id] ?? 0;
+        if (ub !== ua) return ub - ua;
+        return a.name.localeCompare(b.name);
+      });
+    }
+    return list;
+  }, [products, type, currentCategory, usage]);
 
   /** Select a category and default to the first product in it. */
   function selectCategory(category: string) {
@@ -255,10 +268,14 @@ export function LogApplicationForm({
       // No dedicated setting for solid manure — follow the user's area system.
       return settings.unitSystem === 'acres' ? 't/ac' : 't/ha';
     }
+    // Bag fert: liquid products are dosed in litres; granular in kg.
+    if (type === 'bag_fert' && product?.form === 'liquid') {
+      return settings.unitSystem === 'acres' ? 'l/ac' : 'l/ha';
+    }
     // For bag-fert input, units/ac is not a valid product-rate (it's a nutrient
     // display preference). Fall back to kg/ha for the input dropdown default.
     return settings.bagFertUnit === 'units/ac' ? 'kg/ha' : settings.bagFertUnit;
-  }, [isEdit, existing, type, settings]);
+  }, [isEdit, existing, type, settings, product]);
 
   // When type changes, swap to the first category in that type and
   // select the sensible default product within it.
@@ -618,10 +635,53 @@ export function LogApplicationForm({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div className="label" style={{ margin: 0 }}>Fields ({picked.size} picked)</div>
               <div style={{ display: 'inline-flex', gap: 10 }}>
-                <button type="button" onClick={() => setPicked(new Set(batchFields!.map((f) => f.id)))} style={{ background: 'none', border: 'none', color: 'var(--forest-dark)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>All</button>
+                <button type="button" onClick={() => {
+                  // "All" ticks the currently-visible (filtered) fields.
+                  const visible = batchFields!.filter((f) => groupFilter === 'all' || (groupFilter === 'ungrouped' ? !f.group_id : f.group_id === groupFilter));
+                  setPicked((prev) => { const n = new Set(prev); visible.forEach((f) => n.add(f.id)); return n; });
+                }} style={{ background: 'none', border: 'none', color: 'var(--forest-dark)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>All{groupFilter !== 'all' ? ' shown' : ''}</button>
                 <button type="button" onClick={() => setPicked(new Set())} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>None</button>
               </div>
             </div>
+
+            {/* Group filter — reduces the list to one block of land at a time */}
+            {groups && groups.length > 0 && (() => {
+              const anyUngrouped = batchFields!.some((f) => !f.group_id);
+              const chips = [
+                { v: 'all', label: 'All' },
+                ...groups.map((g) => ({ v: g.id, label: g.name })),
+                ...(anyUngrouped ? [{ v: 'ungrouped', label: 'Ungrouped' }] : []),
+              ];
+              return (
+                <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 10, WebkitOverflowScrolling: 'touch' }}>
+                  {chips.map((c) => {
+                    const active = groupFilter === c.v;
+                    return (
+                      <button
+                        key={c.v}
+                        type="button"
+                        onClick={() => setGroupFilter(c.v)}
+                        style={{
+                          flexShrink: 0,
+                          background: active ? 'var(--forest)' : 'var(--card)',
+                          color: active ? 'var(--paper)' : 'var(--ink-soft)',
+                          border: active ? 'none' : '1px solid var(--line)',
+                          borderRadius: 20,
+                          padding: '6px 13px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {c.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {picked.size > 1 && (
               <button
@@ -634,7 +694,9 @@ export function LogApplicationForm({
             )}
 
             <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-              {batchFields!.map((f, i) => {
+              {batchFields!
+                .filter((f) => groupFilter === 'all' || (groupFilter === 'ungrouped' ? !f.group_id : f.group_id === groupFilter))
+                .map((f, i) => {
                 const on = picked.has(f.id);
                 const a = displayFieldArea(f, settings.unitSystem);
                 return (

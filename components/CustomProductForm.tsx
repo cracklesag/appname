@@ -22,6 +22,7 @@ export function CustomProductForm({
   initialType?: ProductType;
 }) {
   const [type, setType] = useState<ProductType>(initialType);
+  const [bagForm, setBagForm] = useState<'granular' | 'liquid'>('granular');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -96,10 +97,27 @@ export function CustomProductForm({
 
             {type === 'bag_fert' && (
               <>
-                <NutrientRow label="N"    name="n_pct"    suffix="%" placeholder="e.g. 25" />
-                <NutrientRow label="P₂O₅" name="p2o5_pct" suffix="%" placeholder="e.g. 5" />
-                <NutrientRow label="K₂O"  name="k2o_pct"  suffix="%" placeholder="e.g. 5" />
-                <NutrientRow label="SO₃"  name="s_pct"    suffix="%" placeholder="e.g. 8" optional />
+                {/* Granular vs liquid */}
+                <input type="hidden" name="form" value={bagForm} />
+                <div className="toggle-group" style={{ marginBottom: 12 }}>
+                  <button type="button" className={`toggle-btn ${bagForm === 'granular' ? 'active' : ''}`} onClick={() => setBagForm('granular')}>Granular</button>
+                  <button type="button" className={`toggle-btn ${bagForm === 'liquid' ? 'active' : ''}`} onClick={() => setBagForm('liquid')}>Liquid</button>
+                </div>
+                {bagForm === 'liquid' && (
+                  <div style={{ marginBottom: 12 }}>
+                    <NutrientRow label="Density" name="density_kg_per_l" suffix="kg/L" placeholder="e.g. 1.28" />
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, fontStyle: 'italic' }}>
+                      From the product label. Used to convert your litres/ha rate into kg of nutrient. Typical liquid N is around 1.25–1.30 kg/L.
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                  Analysis as % w/w (e.g. 20-0-0 +15S → N 20, SO₃ 15)
+                </div>
+                <NutrientRow label="N"    name="n_pct"    suffix="%" placeholder="e.g. 20" />
+                <NutrientRow label="P₂O₅" name="p2o5_pct" suffix="%" placeholder="e.g. 0" />
+                <NutrientRow label="K₂O"  name="k2o_pct"  suffix="%" placeholder="e.g. 0" />
+                <NutrientRow label="SO₃"  name="s_pct"    suffix="%" placeholder="e.g. 15" optional />
               </>
             )}
             {type === 'slurry' && (
