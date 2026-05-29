@@ -1,6 +1,5 @@
 import Link from 'next/link';
-import { Droplets, Sprout, Mountain, Tractor } from 'lucide-react';
-import { Header } from '@/components/Header';
+import { Droplets, Sprout, Mountain, Tractor, SlidersHorizontal } from 'lucide-react';
 import { FilterChips } from '@/components/FilterChips';
 import {
   loadAllApplications,
@@ -106,6 +105,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const yearSet = new Set<number>();
   applications.forEach((a) => yearSet.add(new Date(a.date_applied).getFullYear()));
   const availableYears = Array.from(yearSet).sort((a, b) => b - a);
+
+  // Whether any of the collapsible chip filters are active (drives the "on"
+  // badge on the Filters summary so the user knows a filter is hiding rows).
+  const anyChipFilterActive = groupFilter !== 'all' || nextFilter !== 'active';
 
   // Filter
   const filtered = applications.filter((a) => {
@@ -252,7 +255,20 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Activity" subtitle="Cross-farm history" />
+      {/* Branded hero — matches Fields/home for continuity */}
+      <div style={{ background: 'var(--forest-dark)', padding: '16px 18px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/swardly-mark-cream.png" alt="" width={30} height={22} style={{ objectFit: 'contain' }} />
+            <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: '"Fraunces", serif', fontSize: 22, fontWeight: 600, color: 'var(--brand-cream)' }}>Activity</span>
+          <span style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)' }}>{periodLabel}</span>
+        </div>
+      </div>
 
       {searchParams.flash === 'cuts_logged' && (
         <div style={{
@@ -285,45 +301,45 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
       )}
 
       <div style={{ padding: '12px 16px 0' }}>
-        <Link
-          href="/cuts/batch?from=/activity"
-          className="btn-ghost"
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, width: '100%', padding: 10, fontSize: 13, marginBottom: 12,
-            textDecoration: 'none',
-          }}
-        >
-          <Tractor size={16} /> Log batch cut
-        </Link>
-        {/* Filter chips — group. URL param: ?group= */}
-        {groups.length > 0 && (() => {
-          const anyUngroupedField = fields.some((f) => !f.group_id);
-          const opts = [
-            { value: 'all', label: 'All groups' },
-            ...groups.map((g) => ({ value: g.id, label: g.name })),
-            ...(anyUngroupedField ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
-          ];
-          return (
-            <FilterChips
-              paramName="group"
-              ariaLabel="Filter by group"
-              options={opts}
-            />
-          );
-        })()}
-        <FilterChips
-          paramName="next"
-          ariaLabel="Filter by next cut type"
-          options={[
-            { value: 'active',      label: 'Active' },
-            { value: 'silage',      label: 'Silage' },
-            { value: 'bales',       label: 'Bales' },
-            { value: 'grazing',     label: 'Grazing' },
-            { value: 'maintenance', label: 'Maintenance' },
-            { value: 'complete',    label: 'Cuts done' },
-          ]}
-        />
+        {/* Secondary filters tucked into a collapsed panel — keeps the page
+            clean on open; tap "Filters" to reveal group/next-cut chips. */}
+        {(groups.length > 0 || true) && (
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{
+              listStyle: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 13, fontWeight: 700, color: 'var(--forest-dark)',
+              padding: '6px 0',
+            }}>
+              <SlidersHorizontal size={15} /> Filters
+              {anyChipFilterActive && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--paper)', background: 'var(--forest)', borderRadius: 10, padding: '1px 7px' }}>on</span>}
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              {groups.length > 0 && (() => {
+                const anyUngroupedField = fields.some((f) => !f.group_id);
+                const opts = [
+                  { value: 'all', label: 'All groups' },
+                  ...groups.map((g) => ({ value: g.id, label: g.name })),
+                  ...(anyUngroupedField ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
+                ];
+                return (
+                  <FilterChips paramName="group" ariaLabel="Filter by group" options={opts} />
+                );
+              })()}
+              <FilterChips
+                paramName="next"
+                ariaLabel="Filter by next cut type"
+                options={[
+                  { value: 'active',      label: 'Active' },
+                  { value: 'silage',      label: 'Silage' },
+                  { value: 'bales',       label: 'Bales' },
+                  { value: 'grazing',     label: 'Grazing' },
+                  { value: 'maintenance', label: 'Maintenance' },
+                  { value: 'complete',    label: 'Cuts done' },
+                ]}
+              />
+            </div>
+          </details>
+        )}
       </div>
 
       <div className="tabs">
@@ -346,6 +362,17 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
 
       {type === 'cuts' ? (
         <div style={{ padding: 16 }}>
+          <Link
+            href="/cuts/batch?from=/activity"
+            className="btn-ghost"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              gap: 6, width: '100%', padding: 10, fontSize: 13, marginBottom: 14,
+              textDecoration: 'none',
+            }}
+          >
+            <Tractor size={16} /> Log batch cut
+          </Link>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
             {cutsFiltered.length} cut{cutsFiltered.length === 1 ? '' : 's'} · {periodLabel}
           </div>
@@ -367,52 +394,60 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
         </div>
       ) : (
       <div style={{ padding: 16 }}>
-        {/* Filters — period and (for fert) product */}
-        <form
-          className="card"
-          style={{ padding: 12, marginBottom: 14 }}
-          action="/activity"
-          method="get"
-        >
-          {/* hidden field to preserve the type tab on form submit */}
-          {type !== 'all' && <input type="hidden" name="type" value={type} />}
-          {/* hidden field to preserve the next-cut filter across form submit */}
-          {nextFilter !== 'active' && <input type="hidden" name="next" value={nextFilter} />}
-          {/* hidden field to preserve the group filter across form submit */}
-          {groupFilter !== 'all' && <input type="hidden" name="group" value={groupFilter} />}
+        {/* Period / sort / product — collapsed by default to keep the list clean */}
+        <details style={{ marginBottom: 14 }}>
+          <summary style={{
+            listStyle: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 13, fontWeight: 700, color: 'var(--forest-dark)', padding: '6px 0',
+          }}>
+            <SlidersHorizontal size={15} /> Period &amp; sort
+          </summary>
+          <form
+            className="card"
+            style={{ padding: 12, marginTop: 8 }}
+            action="/activity"
+            method="get"
+          >
+            {/* hidden field to preserve the type tab on form submit */}
+            {type !== 'all' && <input type="hidden" name="type" value={type} />}
+            {/* hidden field to preserve the next-cut filter across form submit */}
+            {nextFilter !== 'active' && <input type="hidden" name="next" value={nextFilter} />}
+            {/* hidden field to preserve the group filter across form submit */}
+            {groupFilter !== 'all' && <input type="hidden" name="group" value={groupFilter} />}
 
-          <div style={{ marginBottom: 10 }}>
-            <div className="label" style={{ marginBottom: 6 }}>Period</div>
-            <select className="select" name="period" defaultValue={period}>
-              <option value="this_year">This year</option>
-              <option value="last_12m">Last 12 months</option>
-              {availableYears.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-              <option value="all">All time</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: type === 'bag_fert' ? 10 : 0 }}>
-            <div className="label" style={{ marginBottom: 6 }}>Sort</div>
-            <select className="select" name="sort" defaultValue={sortKey}>
-              <option value="date_desc">Date — newest first</option>
-              <option value="date_asc">Date — oldest first</option>
-              <option value="field">Field A–Z</option>
-              <option value="qty_desc">Largest total first</option>
-            </select>
-          </div>
-
-          {type === 'bag_fert' && (
-            <div>
-              <div className="label" style={{ marginBottom: 6 }}>Product</div>
-              <select className="select" name="product" defaultValue={String(productId)}>
-                <option value="all">All fertilisers</option>
-                {bagProducts.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+            <div style={{ marginBottom: 10 }}>
+              <div className="label" style={{ marginBottom: 6 }}>Period</div>
+              <select className="select" name="period" defaultValue={period}>
+                <option value="this_year">This year</option>
+                <option value="last_12m">Last 12 months</option>
+                {availableYears.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+                <option value="all">All time</option>
               </select>
             </div>
-          )}
 
-          <button type="submit" className="btn-ghost" style={{ marginTop: 10, width: '100%' }}>Apply filters</button>
-        </form>
+            <div style={{ marginBottom: type === 'bag_fert' ? 10 : 0 }}>
+              <div className="label" style={{ marginBottom: 6 }}>Sort</div>
+              <select className="select" name="sort" defaultValue={sortKey}>
+                <option value="date_desc">Date — newest first</option>
+                <option value="date_asc">Date — oldest first</option>
+                <option value="field">Field A–Z</option>
+                <option value="qty_desc">Largest total first</option>
+              </select>
+            </div>
+
+            {type === 'bag_fert' && (
+              <div>
+                <div className="label" style={{ marginBottom: 6 }}>Product</div>
+                <select className="select" name="product" defaultValue={String(productId)}>
+                  <option value="all">All fertilisers</option>
+                  {bagProducts.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <button type="submit" className="btn-ghost" style={{ marginTop: 10, width: '100%' }}>Apply filters</button>
+          </form>
+        </details>
 
         {/* Summary */}
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--paper-deep)' }}>

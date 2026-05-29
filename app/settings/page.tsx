@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Save, LogOut, ChevronRight, Users, UserPlus } from 'lucide-react';
-import { Header } from '@/components/Header';
+import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal } from 'lucide-react';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { loadSettings } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
@@ -39,7 +38,17 @@ export default async function SettingsPage() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Settings" />
+      {/* Branded hero — matches the rest of the app */}
+      <div style={{ background: 'var(--forest-dark)', padding: '16px 18px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icons/swardly-mark-cream.png" alt="" width={30} height={22} style={{ objectFit: 'contain' }} />
+          <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <span style={{ fontFamily: '"Fraunces", serif', fontSize: 22, fontWeight: 600, color: 'var(--brand-cream)' }}>Settings</span>
+        </div>
+      </div>
 
       {isStaff ? (
         // Staff see a minimal settings page — they can't change farm
@@ -167,6 +176,19 @@ export default async function SettingsPage() {
               />
             </div>
           </div>
+
+          {/* Advanced agronomy tuning — collapsed by default. Most users never
+              touch these; they're the model multipliers and report defaults. */}
+          <details style={{ marginBottom: 14 }}>
+            <summary style={{
+              listStyle: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 14, fontWeight: 700, color: 'var(--forest-dark)',
+              padding: '12px 14px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8,
+            }}>
+              <SlidersHorizontal size={16} /> Advanced settings
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>model tuning &amp; report defaults</span>
+            </summary>
+            <div style={{ marginTop: 12 }}>
 
           {/* Yield class multipliers */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
@@ -335,6 +357,8 @@ export default async function SettingsPage() {
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg N/ha</span>
             </div>
           </div>
+            </div>
+          </details>
         </div>
 
         {/* Timing prompts — drive the home screen "Coming up" section */}
