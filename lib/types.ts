@@ -146,6 +146,9 @@ export interface Product {
 export interface Application {
   id: string;
   user_id: string;
+  /** Which user actually entered this row (admin or staff). Null for legacy
+   *  rows predating multi-user; backfilled to user_id by migration. */
+  created_by: string | null;
   field_id: string;
   product_id: number;
   date_applied: string;
@@ -160,6 +163,9 @@ export interface Application {
 export interface Cut {
   id: string;
   user_id: string;
+  /** Which user actually entered this row (admin or staff). Null for legacy
+   *  rows predating multi-user; backfilled to user_id by migration. */
+  created_by: string | null;
   field_id: string;
   cut_number: number;
   cut_date: string;

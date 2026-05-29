@@ -11,6 +11,7 @@ import { NextActionPicker } from '@/components/NextActionPicker';
 import {
   loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups,
 } from '@/lib/data';
+import { getFarmContext } from '@/lib/farm';
 import {
   CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
@@ -31,7 +32,7 @@ export default async function FieldDetailPage({
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
-  const [field, applications, cuts, products, settings, groups, grassSystems] = await Promise.all([
+  const [field, applications, cuts, products, settings, groups, grassSystems, farmCtx] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),
     loadCutsForField(params.id),
@@ -39,9 +40,15 @@ export default async function FieldDetailPage({
     loadSettings(),
     loadGroups(),
     loadGrassSystems(),
+    getFarmContext(),
   ]);
 
   if (!field) notFound();
+
+  const isAdmin = farmCtx?.isAdmin ?? true;
+  const myUserId = farmCtx?.userId ?? null;
+  // Staff may edit/delete only entries they created; admins edit everything.
+  const canEditEntry = (createdBy: string | null) => isAdmin || (createdBy != null && createdBy === myUserId);
 
   const seasonStart = getSeasonStart();
   const seasonLabel = getSeasonLabel();
@@ -129,7 +136,8 @@ export default async function FieldDetailPage({
 
       {tab === 'overview' && (
         <div style={{ padding: 16 }}>
-          {/* Group */}
+          {/* Group — admin only (staff can't reorganise fields) */}
+          {isAdmin && (
           <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
             <div className="label" style={{ margin: 0, flexShrink: 0 }}>Group</div>
             <div style={{ flex: 1 }}>
@@ -140,6 +148,7 @@ export default async function FieldDetailPage({
               />
             </div>
           </div>
+          )}
 
           {/* What's next — editable per-cut state. Updates the most recent
               cut's next_action so users can change their mind without
@@ -193,12 +202,14 @@ export default async function FieldDetailPage({
                     </div>
                   )}
                 </div>
+                {isAdmin && (
                 <Link
                   href={`/fields/${field.id}/soil`}
                   style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <Edit3 size={12} /> Update
                 </Link>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 14 }}>
                 <div style={{ flex: 1 }}>
@@ -223,6 +234,7 @@ export default async function FieldDetailPage({
             <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 13, color: 'var(--amber)', fontWeight: 700 }}>No soil sample on record</div>
+                {isAdmin && (
                 <Link
                   href={`/fields/${field.id}/soil`}
                   className="btn-amber"
@@ -230,6 +242,7 @@ export default async function FieldDetailPage({
                 >
                   <Plus size={12} /> Add
                 </Link>
+                )}
               </div>
               {field.notes && <div style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-soft)' }}>{field.notes}</div>}
             </div>
@@ -243,12 +256,14 @@ export default async function FieldDetailPage({
           }}>
             <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 700 }}>Soil:</span>
             <span style={{ color: 'var(--ink)' }}>{SOIL_TYPE_SHORT_LABELS[getSoilType(field)]}</span>
+            {isAdmin && (
             <Link
               href={`/fields/${field.id}/soil`}
               style={{ color: 'var(--forest-dark, #3d5b29)', textDecoration: 'underline', fontSize: 11 }}
             >
               edit
             </Link>
+            )}
           </div>
 
           {/* Status of next cut. Uses resolved next-cut type so that
@@ -265,12 +280,14 @@ export default async function FieldDetailPage({
                   return <>Building toward cut {nextCutNumber} of {field.cut_profile} · {NEXT_CUT_LABELS[resolvedNextCutType]}</>;
                 })()}
               </div>
+              {isAdmin && (
               <Link
                 href={`/fields/${field.id}/plan`}
                 style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
                 <Edit3 size={12} /> Plan
               </Link>
+              )}
             </div>
             {targets && (() => {
               const nView   = displayBagAmount(availableForNextCut.n, settings.bagFertUnit);
@@ -478,11 +495,11 @@ export default async function FieldDetailPage({
             const items: Array<{ kind: 'app' | 'cut'; date: string; key: string; node: React.ReactNode }> = [];
             seasonApps.forEach((a) => items.push({
               kind: 'app', date: a.date_applied, key: `app-${a.id}`,
-              node: <ApplicationCard app={a} products={products} settings={settings} fieldId={field.id} />,
+              node: <ApplicationCard app={a} products={products} settings={settings} fieldId={field.id} canEdit={canEditEntry(a.created_by)} />,
             }));
             fCuts.forEach((c) => items.push({
               kind: 'cut', date: c.cut_date, key: `cut-${c.id}`,
-              node: <CutEntry cut={c} field={field} settings={settings} />,
+              node: <CutEntry cut={c} field={field} settings={settings} canEdit={canEditEntry(c.created_by)} />,
             }));
             items.sort((a, b) => b.date.localeCompare(a.date));
             return items.map((i) => <div key={i.key}>{i.node}</div>);

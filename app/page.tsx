@@ -14,6 +14,7 @@ import {
   getComingUpForField,
   getSeasonLabel,
 } from '@/lib/rules';
+import { getFarmContext } from '@/lib/farm';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ export default async function HomePage() {
     loadAllApplications(),
     loadAllCuts(),
   ]);
+
+  const farmCtx = await getFarmContext();
+  const isAdmin = farmCtx?.isAdmin ?? true;
 
   const seasonLabel = getSeasonLabel();
 
@@ -78,12 +82,16 @@ export default async function HomePage() {
             <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
           </div>
           <div style={{ display: 'inline-flex', gap: 6 }}>
+            {isAdmin && (
             <Link href="/import" aria-label="Import a document" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
               <FileUp size={15} />
             </Link>
+            )}
+            {isAdmin && (
             <Link href="/fields/new" aria-label="Add field" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
               <Plus size={16} />
             </Link>
+            )}
           </div>
         </div>
 

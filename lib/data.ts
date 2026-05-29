@@ -114,3 +114,49 @@ export async function loadSettings(): Promise<Settings> {
   }
   return merged;
 }
+
+// ---------------------------------------------------------------------
+// Multi-user farm: members + invites (Team screen)
+// ---------------------------------------------------------------------
+
+export interface FarmMemberRow {
+  id: string;
+  owner_id: string;
+  member_id: string;
+  role: 'admin' | 'staff';
+  created_at: string;
+}
+
+export interface FarmInviteRow {
+  id: string;
+  owner_id: string;
+  code: string;
+  role: 'staff';
+  label: string | null;
+  created_at: string;
+  expires_at: string | null;
+  used_at: string | null;
+  used_by: string | null;
+}
+
+/** Load all members of the current admin's farm (RLS scopes to their farm). */
+export async function loadFarmMembers(): Promise<FarmMemberRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('farm_members')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []) as FarmMemberRow[];
+}
+
+/** Load invites for the current admin's farm. */
+export async function loadFarmInvites(): Promise<FarmInviteRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('farm_invites')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []) as FarmInviteRow[];
+}

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { getFarmContext, requireAdmin } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
 
 /**
@@ -63,8 +64,8 @@ async function renumberCutsForField(
 
 export async function saveApplication(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
 
   const fieldId = String(formData.get('field_id'));
   const productId = parseInt(String(formData.get('product_id')), 10);
@@ -79,7 +80,8 @@ export async function saveApplication(formData: FormData) {
   }
 
   const { error } = await supabase.from('applications').insert({
-    user_id: user.id,
+    user_id: ctx.ownerId,        // farm owner owns the row
+    created_by: ctx.userId,      // who actually entered it
     field_id: fieldId,
     product_id: productId,
     date_applied: dateApplied,
@@ -155,8 +157,8 @@ export async function deleteApplication(formData: FormData) {
 
 export async function saveCut(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
 
   const fieldId = String(formData.get('field_id'));
   const cutNumber = parseInt(String(formData.get('cut_number')), 10);
@@ -173,7 +175,8 @@ export async function saveCut(formData: FormData) {
   if (!fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
 
   const { error } = await supabase.from('cuts').insert({
-    user_id: user.id,
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
     field_id: fieldId,
     cut_number: cutNumber,
     cut_date: cutDate,
@@ -185,8 +188,9 @@ export async function saveCut(formData: FormData) {
   if (error) throw new Error(error.message);
 
   // Renumber so cut_number reflects chronological order — handles
-  // backdated cuts being inserted between existing ones.
-  await renumberCutsForField(supabase, user.id, fieldId);
+  // backdated cuts being inserted between existing ones. Operates on the
+  // farm owner's rows.
+  await renumberCutsForField(supabase, ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -195,8 +199,8 @@ export async function saveCut(formData: FormData) {
 
 export async function updateCut(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
 
   const id = String(formData.get('id'));
   const fieldId = String(formData.get('field_id'));
@@ -226,7 +230,7 @@ export async function updateCut(formData: FormData) {
   if (error) throw new Error(error.message);
 
   // Date may have moved — renumber so chronological order holds.
-  await renumberCutsForField(supabase, user.id, fieldId);
+  await renumberCutsForField(supabase, ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -235,8 +239,8 @@ export async function updateCut(formData: FormData) {
 
 export async function deleteCut(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
 
   const id = String(formData.get('id'));
   const fieldId = String(formData.get('field_id'));
@@ -246,7 +250,7 @@ export async function deleteCut(formData: FormData) {
   if (error) throw new Error(error.message);
 
   // Close the gap left by the deleted cut so cut numbers stay 1..N.
-  if (fieldId) await renumberCutsForField(supabase, user.id, fieldId);
+  if (fieldId) await renumberCutsForField(supabase, ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -255,8 +259,7 @@ export async function deleteCut(formData: FormData) {
 
 export async function saveSoil(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  await requireAdmin();
 
   const fieldId = String(formData.get('field_id'));
   const ph = formData.get('ph') ? parseFloat(String(formData.get('ph'))) : null;
@@ -302,8 +305,7 @@ export async function saveSoil(formData: FormData) {
 
 export async function savePlan(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  await requireAdmin();
 
   const fieldId = String(formData.get('field_id'));
   const cutProfile = parseInt(String(formData.get('cut_profile')), 10);
@@ -327,8 +329,8 @@ export async function savePlan(formData: FormData) {
 
 export async function saveSettings(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await requireAdmin();
+  const user = { id: ctx.ownerId };
 
   const data = {
     yieldMultipliers: {
@@ -407,6 +409,7 @@ export async function saveSettings(formData: FormData) {
 
 export async function createField(formData: FormData) {
   const supabase = createClient();
+  await requireAdmin();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
@@ -469,6 +472,7 @@ export async function createField(formData: FormData) {
 
 export async function deleteField(formData: FormData) {
   const supabase = createClient();
+  await requireAdmin();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
@@ -499,8 +503,8 @@ export async function deleteField(formData: FormData) {
 
 export async function resetAllData(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await requireAdmin();
+  const user = { id: ctx.ownerId };
 
   const confirm = String(formData.get('confirm') || '').trim();
   if (confirm !== 'DELETE') {
@@ -1457,8 +1461,8 @@ export async function setCutNextAction(formData: FormData) {
  */
 export async function saveBatchCuts(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
 
   const cutDate = String(formData.get('cut_date') ?? '').trim();
   if (!cutDate || !/^\d{4}-\d{2}-\d{2}$/.test(cutDate)) {
@@ -1491,12 +1495,12 @@ export async function saveBatchCuts(formData: FormData) {
     'another_cut_silage', 'another_cut_bales', 'rotational_grazing', 'maintenance_grazing',
   ]);
 
-  // Load fields once so we can validate field ownership + cut_profile limits
-  // and supply user_id on each row.
+  // Load the farm's fields once to validate field membership + cut_profile
+  // limits. Fields belong to the farm owner.
   const { data: userFields, error: fieldsErr } = await supabase
     .from('fields')
     .select('id, cut_profile')
-    .eq('user_id', user.id);
+    .eq('user_id', ctx.ownerId);
   if (fieldsErr) throw new Error(`Could not load fields: ${fieldsErr.message}`);
   const userFieldById = new Map<string, { id: string; cut_profile: number }>(
     (userFields ?? []).map((f) => [f.id, f as { id: string; cut_profile: number }]),
@@ -1525,7 +1529,8 @@ export async function saveBatchCuts(formData: FormData) {
       throw new Error(`Cut number ${cutNumber} out of range for field ${r.field_id} (profile ${f.cut_profile})`);
     }
     inserts.push({
-      user_id: user.id,
+      user_id: ctx.ownerId,
+      created_by: ctx.userId,
       field_id: r.field_id,
       cut_number: cutNumber,
       cut_date: cutDate,
@@ -1541,11 +1546,9 @@ export async function saveBatchCuts(formData: FormData) {
   if (insertErr) throw new Error(`Could not save batch: ${insertErr.message}`);
 
   // Renumber every affected field so cut_number reflects chronological order.
-  // Each field gets renumbered once, even if multiple rows hit the same field
-  // (rare — typically batch has one row per field, but handle the case).
   const affectedFieldIds = Array.from(new Set(rows.map((r) => r.field_id)));
   for (const fId of affectedFieldIds) {
-    await renumberCutsForField(supabase, user.id, fId);
+    await renumberCutsForField(supabase, ctx.ownerId, fId);
   }
 
   revalidatePath('/activity');
@@ -1557,4 +1560,103 @@ export async function saveBatchCuts(formData: FormData) {
   for (const r of rows) revalidatePath(`/fields/${r.field_id}`);
 
   redirect(`/activity?flash=cuts_logged&count=${rows.length}`);
+}
+
+// =====================================================================
+// Multi-user farm: Team management (admin) + join flow (staff)
+// =====================================================================
+
+/**
+ * Generate a short, readable invite code (no ambiguous chars). Admin-only.
+ * Creates a farm_invites row owned by the admin's farm; staff redeem it via
+ * redeemInvite to join as staff.
+ */
+function generateInviteCode(): string {
+  // Avoid 0/O, 1/I/L to keep codes easy to read aloud.
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
+export async function createFarmInvite(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const label = formData.get('label') ? String(formData.get('label')).trim() : null;
+
+  // Try a few times in the vanishingly unlikely event of a code collision.
+  let lastErr: string | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateInviteCode();
+    const { error } = await supabase.from('farm_invites').insert({
+      owner_id: ctx.ownerId,
+      code,
+      role: 'staff',
+      label,
+    });
+    if (!error) {
+      revalidatePath('/settings/team');
+      return;
+    }
+    lastErr = error.message;
+  }
+  throw new Error(`Could not create invite: ${lastErr ?? 'unknown error'}`);
+}
+
+export async function deleteFarmInvite(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+
+  const id = String(formData.get('id'));
+  if (!id) throw new Error('Missing invite id');
+  const { error } = await supabase.from('farm_invites').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/team');
+}
+
+export async function removeFarmMember(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const memberId = String(formData.get('member_id'));
+  if (!memberId) throw new Error('Missing member id');
+  // Don't let an admin remove themselves here (would orphan the farm).
+  if (memberId === ctx.userId) {
+    throw new Error('You cannot remove yourself from your own farm.');
+  }
+  const { error } = await supabase
+    .from('farm_members')
+    .delete()
+    .eq('owner_id', ctx.ownerId)
+    .eq('member_id', memberId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/team');
+}
+
+/**
+ * Staff redeem an invite code to join a farm. Calls the SECURITY DEFINER RPC
+ * which validates the code and creates the membership. Returns nothing on
+ * success (redirects home); throws with a friendly message on failure.
+ */
+export async function redeemInvite(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const code = String(formData.get('code') || '').trim().toUpperCase();
+  if (!code) throw new Error('Enter an invite code');
+
+  const { data, error } = await supabase.rpc('redeem_farm_invite', { p_code: code });
+  if (error) throw new Error(error.message);
+  const result = data as { ok: boolean; error?: string };
+  if (!result?.ok) {
+    throw new Error(result?.error || 'Could not join farm');
+  }
+
+  revalidatePath('/');
+  revalidatePath('/settings');
+  redirect('/?joined=1');
 }

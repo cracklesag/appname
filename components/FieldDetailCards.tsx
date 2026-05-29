@@ -9,12 +9,14 @@ import { deleteApplication, deleteCut } from '@/lib/actions';
 import { Scissors } from 'lucide-react';
 
 export function ApplicationCard({
-  app, products, settings, fieldId,
+  app, products, settings, fieldId, canEdit = true,
 }: {
   app: Application;
   products: Product[];
   settings: Settings;
   fieldId: string;
+  /** Whether to show edit/delete controls. Staff only edit their own entries. */
+  canEdit?: boolean;
 }) {
   const product = products.find((p) => p.id === app.product_id);
   const nut = calcNutrients(product, app.rate_value, app.rate_unit, app.date_applied, app.method);
@@ -62,6 +64,7 @@ export function ApplicationCard({
       {app.notes && !isPlanItem && (
         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>{app.notes}</div>
       )}
+      {canEdit && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--line-soft)', display: 'flex', justifyContent: 'flex-end' }}>
         <EditDeleteControls
           editHref={`/fields/${fieldId}/applications/${app.id}/edit`}
@@ -70,11 +73,12 @@ export function ApplicationCard({
           label="application"
         />
       </div>
+      )}
     </div>
   );
 }
 
-export function CutEntry({ cut, field, settings }: { cut: Cut; field: Field; settings: Settings }) {
+export function CutEntry({ cut, field, settings, canEdit = true }: { cut: Cut; field: Field; settings: Settings; canEdit?: boolean }) {
   const off = getOfftakeForCut(field.cut_profile, cut.cut_number, cut.yield_class, settings, cut.cut_type);
   return (
     <div className="card" style={{ padding: 12, marginBottom: 8, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
@@ -94,6 +98,7 @@ export function CutEntry({ cut, field, settings }: { cut: Cut; field: Field; set
         </div>
       </div>
       {cut.notes && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-soft)', fontStyle: 'italic' }}>{cut.notes}</div>}
+      {canEdit && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end' }}>
         <EditDeleteControls
           editHref={`/fields/${field.id}/cuts/${cut.id}/edit`}
@@ -102,6 +107,7 @@ export function CutEntry({ cut, field, settings }: { cut: Cut; field: Field; set
           label="cut"
         />
       </div>
+      )}
     </div>
   );
 }

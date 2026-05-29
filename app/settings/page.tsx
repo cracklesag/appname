@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { Save, LogOut, ChevronRight } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { Save, LogOut, ChevronRight, Users } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { loadSettings } from '@/lib/data';
+import { getFarmContext } from '@/lib/farm';
 import { saveSettings, signOut } from '@/lib/actions';
 import { CUT_TYPE_LABELS } from '@/lib/rules';
 
@@ -10,6 +12,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const s = await loadSettings();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  const isStaff = !ctx.isAdmin;
 
   function Segment({
     name, value, options,
@@ -35,6 +40,39 @@ export default async function SettingsPage() {
   return (
     <div style={{ paddingBottom: 80 }}>
       <Header title="Settings" />
+
+      {isStaff ? (
+        // Staff see a minimal settings page — they can't change farm
+        // parameters. Just their account + a note about their access.
+        <div style={{ padding: 16 }}>
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>You&apos;re staff on this farm</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+              You can log cuts, fertiliser, slurry, manure and lime, and edit your own entries.
+              Fields, soil, groups, products and settings are managed by the farm admin.
+            </div>
+          </div>
+          <form action={signOut}>
+            <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <LogOut size={16} /> Sign out
+            </button>
+          </form>
+        </div>
+      ) : (
+      <>
+      {/* Team — admin only */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <Link href="/settings/team" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <Users size={18} style={{ color: 'var(--forest)' }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Team</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Add staff who can log spreading and cuts</div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+      </div>
       <form action={saveSettings}>
         <div style={{ padding: 16 }}>
           {/* Units */}
@@ -448,6 +486,8 @@ export default async function SettingsPage() {
           </button>
         </form>
       </div>
+      </>
+      )}
     </div>
   );
 }
