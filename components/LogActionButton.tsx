@@ -35,7 +35,7 @@ const OPTIONS: ActionOption[] = [
     icon: Scissors,
     tone: '#2B4129',
     toneBg: '#E1E6D9',
-    href: '/cuts/batch',
+    href: '/cuts/batch?from=/',
   },
   {
     key: 'fert',

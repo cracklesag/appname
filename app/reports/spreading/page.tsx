@@ -42,7 +42,7 @@ function isoDaysAgo(todayIso: string, days: number): string {
 export default async function SpreadingReportPage({
   searchParams,
 }: {
-  searchParams: { mode?: ReportMode; window?: string; fields?: string; group?: string };
+  searchParams: { mode?: ReportMode; window?: string; fields?: string; group?: string; from?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
@@ -66,7 +66,7 @@ export default async function SpreadingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Spreading report" subtitle="Plan and review" backHref="/settings" />
+      <Header title="Spreading report" subtitle="Plan and review" backHref={searchParams.from || '/'} />
       <SpreadingReportShell
         initialMode={mode}
         initialWindowDays={windowDays}

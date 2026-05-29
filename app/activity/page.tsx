@@ -247,6 +247,21 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
         </div>
       )}
 
+      {searchParams.flash === 'apps_logged' && (
+        <div style={{
+          margin: '12px 16px 0',
+          padding: '10px 12px',
+          borderRadius: 4,
+          background: 'var(--forest-soft, #eaf2dc)',
+          color: 'var(--forest-dark, #3d5b29)',
+          fontSize: 13,
+        }}>
+          {searchParams.count
+            ? `Logged on ${searchParams.count} field${searchParams.count === '1' ? '' : 's'}.`
+            : 'Applications logged.'}
+        </div>
+      )}
+
       <div style={{ padding: '12px 16px 0' }}>
         <Link
           href="/cuts/batch"

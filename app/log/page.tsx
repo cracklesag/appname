@@ -1,87 +1,62 @@
-import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { loadFields, loadGroups } from '@/lib/data';
-import { displayFieldArea } from '@/lib/rules';
-import { loadSettings } from '@/lib/data';
+import { LogApplicationForm } from '@/components/LogApplicationForm';
+import { loadFields, loadAllProducts, loadSettings } from '@/lib/data';
+import type { ProductType } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Top-level "Log action" application entry point. Reached from the home-screen
- * Log action menu (Fertiliser / Slurry / Solid manure / Lime). The application
- * form is field-scoped, so this is a quick field picker that forwards to
- * /fields/[id]/log carrying the chosen product type.
+ * Top-level "Log action" application entry — batch-capable. Reached from the
+ * home Log action menu (Fertiliser / Slurry / Solid manure / Lime). Sets one
+ * product/rate/date/method and applies it across any number of ticked fields,
+ * with optional per-field rate override. Ticking a single field is just a
+ * batch of one, so this covers both single and multi entry.
  *
- * Cut logging uses /cuts/batch directly (it has its own multi-field picker),
- * so this route only handles applications.
+ * Cuts use /cuts/batch (their own flow); this route handles applications.
  */
-const VALID_TYPES = ['bag_fert', 'slurry', 'solid_manure', 'lime'] as const;
-type LogType = (typeof VALID_TYPES)[number];
+const VALID_TYPES = ['bag_fert', 'slurry', 'solid_manure', 'lime'];
 
-const TYPE_LABEL: Record<LogType, string> = {
+const TYPE_LABEL: Record<string, string> = {
   bag_fert: 'Fertiliser',
   slurry: 'Slurry',
   solid_manure: 'Solid manure',
   lime: 'Lime',
 };
 
-export default async function LogPickerPage({
+export default async function LogPage({
   searchParams,
 }: {
   searchParams: { type?: string };
 }) {
-  const rawType = searchParams.type ?? '';
-  const type: LogType = (VALID_TYPES as readonly string[]).includes(rawType)
-    ? (rawType as LogType)
-    : 'bag_fert';
+  const type: ProductType = (VALID_TYPES.includes(searchParams.type ?? '')
+    ? searchParams.type
+    : 'bag_fert') as ProductType;
 
-  const [fields, groups, settings] = await Promise.all([
+  const [fields, products, settings] = await Promise.all([
     loadFields(),
-    loadGroups(),
+    loadAllProducts(),
     loadSettings(),
   ]);
 
-  const groupName = new Map(groups.map((g) => [g.id, g.name]));
-  const sorted = [...fields].sort((a, b) => a.name.localeCompare(b.name));
+  if (fields.length === 0) {
+    redirect('/fields/new');
+  }
+
+  // Reference field for the form's unit/maths defaults (any field works;
+  // the actual fields applied to come from the tick-list).
+  const refField = fields[0];
 
   return (
-    <div style={{ paddingBottom: 80 }}>
-      <Header
-        title={`Log ${TYPE_LABEL[type].toLowerCase()}`}
-        subtitle="Pick a field"
-        backHref="/"
+    <div>
+      <Header title={`Log ${TYPE_LABEL[type].toLowerCase()}`} subtitle="One or many fields" backHref="/" />
+      <LogApplicationForm
+        field={refField}
+        batchFields={fields}
+        products={products}
+        settings={settings}
+        initialType={type}
       />
-      <div style={{ padding: '12px 16px' }}>
-        {sorted.length === 0 && (
-          <div style={{ color: 'var(--muted)', fontSize: 14, padding: '24px 0', textAlign: 'center' }}>
-            No fields yet. Add a field first.
-          </div>
-        )}
-        {sorted.map((f) => {
-          const a = displayFieldArea(f, settings.unitSystem);
-          return (
-            <Link
-              key={f.id}
-              href={`/fields/${f.id}/log?type=${type}&from=/log?type=${type}`}
-              className="card field-row"
-              style={{ padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-            >
-              <div>
-                <div className="display" style={{ fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{f.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>
-                  {fmtArea(a)}{f.group_id && groupName.get(f.group_id) ? ` · ${groupName.get(f.group_id)}` : ''}
-                </div>
-              </div>
-              <ChevronRight size={18} style={{ color: 'var(--stone)' }} />
-            </Link>
-          );
-        })}
-      </div>
     </div>
   );
-}
-
-function fmtArea(a: { value: number; unit: string }): string {
-  return `${a.value.toFixed(1)} ${a.unit}`;
 }

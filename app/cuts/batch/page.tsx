@@ -16,7 +16,11 @@ export const dynamic = 'force-dynamic';
  * expand row editors. Fields that have already hit their cut profile this
  * season are hidden from the picker.
  */
-export default async function BatchCutPage() {
+export default async function BatchCutPage({
+  searchParams,
+}: {
+  searchParams: { from?: string };
+}) {
   const [fields, cuts, groups, settings] = await Promise.all([
     loadFields(),
     loadAllCuts(),
@@ -45,7 +49,7 @@ export default async function BatchCutPage() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Log batch cut" subtitle="Multiple fields, one go" backHref="/activity" />
+      <Header title="Log batch cut" subtitle="Multiple fields, one go" backHref={searchParams.from || '/activity'} />
       <BatchCutForm
         eligibleFields={eligibleFields}
         groups={groups}

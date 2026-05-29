@@ -99,6 +99,83 @@ export async function saveApplication(formData: FormData) {
   redirect(`/fields/${fieldId}`);
 }
 
+/**
+ * Batch application entry: one product/date/method spread across several
+ * fields, with an optional per-field rate override. The client posts:
+ *   product_id, date_applied, method (optional), notes (optional)
+ *   rows = JSON array of { field_id, rate_value, rate_unit }
+ * One application row is inserted per field. Any farm member may add
+ * applications; rows are stamped created_by = the entering user.
+ */
+export async function saveBatchApplications(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+
+  const productId = parseInt(String(formData.get('product_id')), 10);
+  const dateApplied = String(formData.get('date_applied'));
+  const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
+  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+
+  if (!productId || !dateApplied || !/^\d{4}-\d{2}-\d{2}$/.test(dateApplied)) {
+    throw new Error('Pick a product and a valid date');
+  }
+
+  let rows: Array<{ field_id: string; rate_value: number; rate_unit: string }>;
+  try {
+    rows = JSON.parse(String(formData.get('rows') ?? ''));
+  } catch {
+    throw new Error('Could not parse the selected fields — try again');
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('Tick at least one field before saving');
+  }
+
+  // Validate the fields belong to this farm.
+  const { data: farmFields, error: fErr } = await supabase
+    .from('fields')
+    .select('id')
+    .eq('user_id', ctx.ownerId);
+  if (fErr) throw new Error(`Could not load fields: ${fErr.message}`);
+  const ownFieldIds = new Set((farmFields ?? []).map((f) => f.id as string));
+
+  const VALID_UNITS = new Set(['kg/ha', 'kg/ac', 'lb/ac', 'gal/ac', 'm3/ha', 't/ac', 't/ha']);
+  const inserts = rows.map((r) => {
+    if (!r.field_id || !ownFieldIds.has(r.field_id)) {
+      throw new Error('A selected field was not found on your farm');
+    }
+    const rate = Number(r.rate_value);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error('Every field needs a rate greater than zero');
+    }
+    if (!VALID_UNITS.has(r.rate_unit)) {
+      throw new Error(`Invalid rate unit: ${r.rate_unit}`);
+    }
+    return {
+      user_id: ctx.ownerId,
+      created_by: ctx.userId,
+      field_id: r.field_id,
+      product_id: productId,
+      date_applied: dateApplied,
+      rate_value: rate,
+      rate_unit: r.rate_unit,
+      method,
+      notes,
+      applied_by: 'me',
+    };
+  });
+
+  const { error } = await supabase.from('applications').insert(inserts);
+  if (error) throw new Error(`Could not save batch: ${error.message}`);
+
+  const fieldIds = Array.from(new Set(rows.map((r) => r.field_id)));
+  for (const fId of fieldIds) revalidatePath(`/fields/${fId}`);
+  revalidatePath('/');
+  revalidatePath('/activity');
+
+  redirect(`/activity?flash=apps_logged&count=${rows.length}`);
+}
+
 export async function updateApplication(formData: FormData) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

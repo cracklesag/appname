@@ -28,7 +28,7 @@ export default async function FieldDetailPage({
   params, searchParams,
 }: {
   params: { id: string };
-  searchParams: { tab?: 'overview' | 'season' };
+  searchParams: { tab?: 'overview' | 'season'; from?: string };
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
@@ -126,7 +126,7 @@ export default async function FieldDetailPage({
           const systemBit = grassSystem ? ` · ${grassSystem.short_label}` : '';
           return `${fmt(a.value, 1)} ${a.unit} · ${field.cut_profile}-cut${groupBit}${systemBit}`;
         })()}
-        backHref="/"
+        backHref={searchParams.from || '/fields'}
       />
 
       <div className="tabs">

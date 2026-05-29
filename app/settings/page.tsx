@@ -375,7 +375,7 @@ export default async function SettingsPage() {
           Reports
         </div>
         <Link
-          href="/reports/spreading"
+          href="/reports/spreading?from=/settings"
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -391,7 +391,7 @@ export default async function SettingsPage() {
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
         <Link
-          href="/reports/grazing"
+          href="/reports/grazing?from=/settings"
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -407,7 +407,7 @@ export default async function SettingsPage() {
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
         <Link
-          href="/reports/snapshot"
+          href="/reports/snapshot?from=/settings"
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',

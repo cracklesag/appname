@@ -125,7 +125,7 @@ export default async function HomePage() {
 
             {/* Plan ahead — grazing dressings + gentle P/K review nudge */}
             {(grazingDue.length > 0 || pkReviewCount > 0) && (
-              <Link href="/reports/spreading" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
+              <Link href="/reports/spreading?from=/" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <Calendar size={15} style={{ color: 'var(--forest)' }} />
@@ -144,11 +144,11 @@ export default async function HomePage() {
 
             {/* Quick-access cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-              <Link href="/reports/spreading" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+              <Link href="/reports/spreading?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <FileText size={21} style={{ color: 'var(--forest)' }} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Spread report</span>
               </Link>
-              <Link href="/reports/snapshot" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+              <Link href="/reports/snapshot?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Flame size={21} style={{ color: 'var(--amber)' }} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Field snapshot</span>
               </Link>

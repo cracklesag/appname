@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export default async function SnapshotReportPage({
   searchParams,
 }: {
-  searchParams: { group?: string; next?: string; sort?: string };
+  searchParams: { group?: string; next?: string; sort?: string; from?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
@@ -36,7 +36,7 @@ export default async function SnapshotReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Field snapshot" subtitle="Where everything's at" backHref="/settings" />
+      <Header title="Field snapshot" subtitle="Where everything's at" backHref={searchParams.from || '/'} />
       <SnapshotReportShell
         fields={fields}
         applications={applications}

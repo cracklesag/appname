@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export default async function GrazingReportPage({
   searchParams,
 }: {
-  searchParams: { group?: string; window?: string; due?: string; fields?: string };
+  searchParams: { group?: string; window?: string; due?: string; fields?: string; from?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
@@ -36,7 +36,7 @@ export default async function GrazingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Grazing top-up" subtitle="N cadence schedule" backHref="/settings" />
+      <Header title="Grazing top-up" subtitle="N cadence schedule" backHref={searchParams.from || '/'} />
       <GrazingReportShell
         fields={fields}
         applications={applications}

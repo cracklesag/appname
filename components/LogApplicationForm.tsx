@@ -12,7 +12,7 @@ import {
   calcNutrients, displayBagAmount, displayFieldArea, fmt,
   METHOD_LABELS, SOLID_METHOD_LABELS, CATEGORY_LABELS,
 } from '@/lib/rules';
-import { saveApplication, updateApplication } from '@/lib/actions';
+import { saveApplication, updateApplication, saveBatchApplications } from '@/lib/actions';
 import { validateApplicationRate, validateDate } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
@@ -106,14 +106,21 @@ function findPoultry(products: Product[], source: PoultrySource): Product | null
 }
 
 export function LogApplicationForm({
-  field, products, settings, existing, initialType: initialTypeProp,
+  field, products, settings, existing, initialType: initialTypeProp, batchFields,
 }: {
   field: Field;
   products: Product[];
   settings: Settings;
   existing?: Application;
   initialType?: ProductType;
+  /** When provided, the form runs in BATCH mode: instead of logging to the
+   *  single `field`, the user ticks any number of these fields and the same
+   *  product/rate/date is applied across them (with optional per-field rate
+   *  override). `field` is still passed (used as the reference field for unit
+   *  defaults and nutrient maths); pass any field, e.g. the first one. */
+  batchFields?: Field[];
 }) {
+  const isBatch = Array.isArray(batchFields) && batchFields.length > 0;
   const today = new Date().toISOString().slice(0, 10);
   const isEdit = !!existing;
   const pathname = usePathname() || `/fields/${field.id}/log`;
@@ -167,6 +174,13 @@ export function LogApplicationForm({
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Batch mode state: which fields are ticked, and any per-field rate
+  // overrides (field id -> rate string). A field absent from overrides uses
+  // the shared rate set above.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [showPerField, setShowPerField] = useState(false);
 
   const product = products.find((p) => p.id === productId);
   const currentCategory = product?.category ?? null;
@@ -313,7 +327,9 @@ export function LogApplicationForm({
   // when the user switches to a type that has no products yet. Stops the
   // form silently submitting with a stale product from the previous type.
   const productMatchesType = !!product && product.type === type;
-  const canSave = productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting;
+  const canSave = isBatch
+    ? (productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting && picked.size > 0)
+    : (productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting);
 
   // Method to write into FormData (empty string omitted server-side).
   const methodForForm: string =
@@ -321,13 +337,32 @@ export function LogApplicationForm({
     type === 'solid_manure' ? solidMethod  :
     '';
 
+  function toggleField(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitError(null);
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
     try {
-      if (isEdit) {
+      if (isBatch) {
+        // Build rows: one per ticked field, using the per-field override rate
+        // when present else the shared rate. Unit is the shared storedUnit.
+        const rows = Array.from(picked).map((fid) => {
+          const ov = overrides[fid];
+          const r = ov != null && ov !== '' ? parseFloat(ov) : numericRate;
+          return { field_id: fid, rate_value: r, rate_unit: storedUnit };
+        });
+        fd.set('rows', JSON.stringify(rows));
+        await saveBatchApplications(fd);
+      } else if (isEdit) {
         await updateApplication(fd);
       } else {
         await saveApplication(fd);
@@ -344,9 +379,9 @@ export function LogApplicationForm({
   return (
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
-      <input type="hidden" name="field_id" value={field.id} />
+      {!isBatch && <input type="hidden" name="field_id" value={field.id} />}
       <input type="hidden" name="product_id" value={productId} />
-      <input type="hidden" name="rate_value" value={numericRate} />
+      {!isBatch && <input type="hidden" name="rate_value" value={numericRate} />}
       <input type="hidden" name="rate_unit" value={storedUnit} />
       {(type === 'slurry' || type === 'solid_manure') && (
         <input type="hidden" name="method" value={methodForForm} />
@@ -578,22 +613,86 @@ export function LogApplicationForm({
           <InlineWarning warning={dateWarning} />
         </div>
 
+        {isBatch && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div className="label" style={{ margin: 0 }}>Fields ({picked.size} picked)</div>
+              <div style={{ display: 'inline-flex', gap: 10 }}>
+                <button type="button" onClick={() => setPicked(new Set(batchFields!.map((f) => f.id)))} style={{ background: 'none', border: 'none', color: 'var(--forest-dark)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>All</button>
+                <button type="button" onClick={() => setPicked(new Set())} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>None</button>
+              </div>
+            </div>
+
+            {picked.size > 1 && (
+              <button
+                type="button"
+                onClick={() => setShowPerField((v) => !v)}
+                style={{ width: '100%', marginBottom: 8, background: showPerField ? 'var(--forest-soft)' : 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, color: showPerField ? 'var(--forest-dark)' : 'var(--ink-soft)', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                {showPerField ? 'Same rate for all' : 'Set a different rate per field'}
+              </button>
+            )}
+
+            <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+              {batchFields!.map((f, i) => {
+                const on = picked.has(f.id);
+                const a = displayFieldArea(f, settings.unitSystem);
+                return (
+                  <div key={f.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--line-soft)', background: on ? 'var(--forest-soft)' : 'var(--card)' }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleField(f.id)}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                    >
+                      <span style={{ width: 20, height: 20, borderRadius: 5, border: on ? 'none' : '1.5px solid var(--stone)', background: on ? 'var(--forest)' : 'transparent', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13 }}>
+                        {on ? '✓' : ''}
+                      </span>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ display: 'block', fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{f.name}</span>
+                        <span style={{ display: 'block', fontSize: 12, color: 'var(--muted)' }}>{fmt(a.value, 1)} {a.unit}</span>
+                      </span>
+                    </button>
+                    {on && showPerField && type !== 'lime' && (
+                      <div style={{ padding: '0 13px 11px 44px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="any"
+                          min="0"
+                          className="input"
+                          style={{ width: 110 }}
+                          placeholder={`${numericRate || ''}`}
+                          value={overrides[f.id] ?? ''}
+                          onChange={(e) => setOverrides((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{displayUnit} {overrides[f.id] ? '' : `(default ${numericRate || '—'})`}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {type === 'lime' ? (
           <div style={{ marginBottom: 14 }}>
             <div className="label">Rate (t/ac)</div>
             <select className="select" value={limeRate} onChange={(e) => setLimeRate(parseFloat(e.target.value))}>
               {LIME_RATES.map((r) => <option key={r} value={r}>{r} t/ac</option>)}
             </select>
+            {!isBatch && (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
               {(() => {
                 const a = displayFieldArea(field, settings.unitSystem);
                 return `= ${fmt(totalQty.value, 1)} t total over ${fmt(a.value, 1)} ${a.unit}`;
               })()}
             </div>
+            )}
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
-            <div className="label">Rate ({displayUnit})</div>
+            <div className="label">{isBatch ? `Rate for all fields (${displayUnit})` : `Rate (${displayUnit})`}</div>
             <input
               type="number"
               inputMode="decimal"
@@ -610,12 +709,17 @@ export function LogApplicationForm({
               value={rateValue}
               onChange={(e) => setRateValue(e.target.value)}
             />
-            {numericRate > 0 && (
+            {!isBatch && numericRate > 0 && (
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
                 {(() => {
                   const a = displayFieldArea(field, settings.unitSystem);
                   return `= ${fmt(totalQty.value)} ${totalQty.unit} total over ${fmt(a.value, 1)} ${a.unit}`;
                 })()}
+              </div>
+            )}
+            {isBatch && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                Applied to each ticked field. You can adjust individual fields below.
               </div>
             )}
             <InlineWarning warning={rateWarning} />
@@ -728,9 +832,9 @@ export function LogApplicationForm({
       <div style={{ position: 'sticky', bottom: 0, padding: '0 16px 16px', background: 'linear-gradient(to top, var(--paper) 70%, transparent)' }}>
         <ErrorBanner error={submitError} />
         <div style={{ display: 'flex', gap: 10 }}>
-          <Link href={`/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
+          <Link href={isBatch ? '/' : `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
           <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
-            <Save size={18} /> {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save entry'}
+            <Save size={18} /> {submitting ? 'Saving…' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
           </button>
         </div>
       </div>
