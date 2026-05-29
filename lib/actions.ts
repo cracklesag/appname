@@ -833,6 +833,17 @@ export async function completeOnboarding(unit: 'acres' | 'ha') {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
+  // Ensure this user is admin of their own farm before writing farm-scoped
+  // data. New signups need a self-admin farm_members row so the role-aware
+  // RLS write policies (which require is_admin_of(user_id)) accept their own
+  // settings/fields/etc. The DB trigger handles this for new signups, but we
+  // do it here too so onboarding can never deadlock if the trigger is absent.
+  await supabase
+    .from('farm_members')
+    .insert({ owner_id: user.id, member_id: user.id, role: 'admin' });
+  // Ignore the result: a duplicate (already a member) is fine, and if the
+  // table is missing the single-user fallback still applies.
+
   // Load current settings (or seed defaults)
   const { data: existing } = await supabase
     .from('settings')
