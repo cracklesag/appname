@@ -453,6 +453,7 @@ export function LogApplicationForm({
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
       {!isBatch && <input type="hidden" name="field_id" value={field.id} />}
       <input type="hidden" name="product_id" value={productId} />
+      {isBatch && <input type="hidden" name="log_type" value={type} />}
       {!isBatch && <input type="hidden" name="rate_value" value={numericRate} />}
       <input type="hidden" name="rate_unit" value={storedUnit} />
       {(type === 'slurry' || type === 'solid_manure') && (

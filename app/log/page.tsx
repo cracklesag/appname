@@ -27,7 +27,7 @@ const TYPE_LABEL: Record<string, string> = {
 export default async function LogPage({
   searchParams,
 }: {
-  searchParams: { type?: string };
+  searchParams: { type?: string; flash?: string; count?: string };
 }) {
   const type: ProductType = (VALID_TYPES.includes(searchParams.type ?? '')
     ? searchParams.type
@@ -66,6 +66,27 @@ export default async function LogPage({
           <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>One or many fields</div>
         </div>
       </div>
+
+      {searchParams.flash === 'apps_logged' && (
+        <div style={{
+          margin: '12px 16px 0',
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: 'var(--forest-soft, #eaf2dc)',
+          color: 'var(--forest-dark, #3d5b29)',
+          fontSize: 13,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span>
+            {searchParams.count
+              ? `Logged on ${searchParams.count} field${searchParams.count === '1' ? '' : 's'}. Ready for the next.`
+              : 'Logged. Ready for the next.'}
+          </span>
+          <Link href="/activity?from=/log" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+            View activity
+          </Link>
+        </div>
+      )}
 
       <LogApplicationForm
         field={refField}

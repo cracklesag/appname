@@ -172,8 +172,16 @@ export async function saveBatchApplications(formData: FormData) {
   for (const fId of fieldIds) revalidatePath(`/fields/${fId}`);
   revalidatePath('/');
   revalidatePath('/activity');
+  revalidatePath('/log');
 
-  redirect(`/activity?flash=apps_logged&count=${rows.length}`);
+  // Return to the log screen ready for the next entry, rather than bouncing
+  // to the activity page — keeps the flow going when logging several in a row.
+  // Preserve the type tab so the user stays on e.g. Slurry if that's what they
+  // were logging.
+  const logType = String(formData.get('log_type') || '');
+  const typeParam = ['bag_fert', 'slurry', 'solid_manure', 'lime'].includes(logType)
+    ? `&type=${logType}` : '';
+  redirect(`/log?flash=apps_logged&count=${rows.length}${typeParam}`);
 }
 
 export async function updateApplication(formData: FormData) {
