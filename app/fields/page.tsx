@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ChevronRight, Plus, FileUp } from 'lucide-react';
-import { Header } from '@/components/Header';
 import { MiniBar } from '@/components/NutrientBar';
 import { FilterChips } from '@/components/FilterChips';
 import {
@@ -189,21 +188,28 @@ export default async function FieldsPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header
-        title="Fields"
-        subtitle={seasonLabel}
-        backHref="/"
-        right={
+      {/* Branded hero — matches home, with a back arrow to the dashboard */}
+      <div style={{ background: 'var(--forest-dark)', padding: '16px 18px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/swardly-mark-cream.png" alt="" width={30} height={22} style={{ objectFit: 'contain' }} />
+            <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
+          </div>
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <Link href="/import" aria-label="Import a document" style={{ border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
-              <FileUp size={14} /> Import
+            <Link href="/import" aria-label="Import a document" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+              <FileUp size={15} />
             </Link>
-            <Link href="/fields/new" aria-label="Add field" style={{ border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
-              <Plus size={14} /> Add
+            <Link href="/fields/new" aria-label="Add field" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(239,231,214,0.12)', color: 'var(--brand-cream)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+              <Plus size={16} />
             </Link>
           </div>
-        }
-      />
+        </div>
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: '"Fraunces", serif', fontSize: 22, fontWeight: 600, color: 'var(--brand-cream)' }}>Fields</span>
+          <span style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)' }}>{seasonLabel}</span>
+        </div>
+      </div>
 
       <div style={{ padding: '14px 16px' }}>
         {/* Filter chips — next cut type. URL param: ?next= */}

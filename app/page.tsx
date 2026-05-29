@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Bolt, Calendar, Flame, FileText, ChevronRight, List } from 'lucide-react';
+import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -74,7 +74,7 @@ export default async function HomePage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/swardly-mark.png" alt="" width={30} height={22} style={{ objectFit: 'contain' }} />
+            <img src="/icons/swardly-mark-cream.png" alt="" width={30} height={22} style={{ objectFit: 'contain' }} />
             <span style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
           </div>
           <div style={{ display: 'inline-flex', gap: 6 }}>
@@ -135,7 +135,7 @@ export default async function HomePage() {
             )}
 
             {/* Quick-access cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
               <Link href="/reports/spreading" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <FileText size={21} style={{ color: 'var(--forest)' }} />
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Spread report</span>
@@ -145,14 +145,6 @@ export default async function HomePage() {
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Field snapshot</span>
               </Link>
             </div>
-
-            {/* Into the fields list */}
-            <Link href="/fields" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '13px 14px', textDecoration: 'none', color: 'var(--ink)' }}>
-              <span style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <List size={16} /> All {fields.length} field{fields.length === 1 ? '' : 's'}
-              </span>
-              <ChevronRight size={16} style={{ color: 'var(--stone)' }} />
-            </Link>
           </>
         )}
       </div>
