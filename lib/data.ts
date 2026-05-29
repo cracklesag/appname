@@ -160,7 +160,7 @@ export async function loadFarmMembers(): Promise<FarmMemberRow[]> {
     .from('farm_members')
     .select('*')
     .order('created_at', { ascending: true });
-  if (error) throw error;
+  if (error) return [];
   return (data || []) as FarmMemberRow[];
 }
 
@@ -171,6 +171,27 @@ export async function loadFarmInvites(): Promise<FarmInviteRow[]> {
     .from('farm_invites')
     .select('*')
     .order('created_at', { ascending: false });
-  if (error) throw error;
+  if (error) return [];
   return (data || []) as FarmInviteRow[];
+}
+
+// ---------------------------------------------------------------------
+// Product usage ranking (for the "most used first" product picker)
+// ---------------------------------------------------------------------
+
+/**
+ * Returns a map of product_id -> times used (count of applications across the
+ * farm). RLS scopes to the farm's applications. Used to rank the product
+ * picker most-used-first.
+ */
+export async function loadProductUsage(): Promise<Record<number, number>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('applications').select('product_id');
+  if (error || !data) return {};
+  const counts: Record<number, number> = {};
+  for (const row of data) {
+    const pid = (row as { product_id: number }).product_id;
+    counts[pid] = (counts[pid] ?? 0) + 1;
+  }
+  return counts;
 }
