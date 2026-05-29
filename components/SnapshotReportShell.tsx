@@ -32,7 +32,6 @@ import {
   ResolvedNextAction,
   sampleYear,
   SOIL_TYPE_SHORT_LABELS,
-  soilMetricColor,
   sumNutrients,
 } from '@/lib/rules';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
@@ -484,9 +483,6 @@ function SnapshotRow({
   const area = displayFieldArea(f, settings.unitSystem);
 
   const tgt = settings.soilTargets;
-  const phColor = soilMetricColor(f.ph, tgt.pH);
-  const pColor = soilMetricColor(f.p_idx, tgt.pIdx);
-  const kColor = soilMetricColor(f.k_idx, tgt.kIdx);
 
   return (
     <div className="card" style={{ padding: 12, marginBottom: 8 }}>
@@ -515,16 +511,18 @@ function SnapshotRow({
 
       {/* Two-column compact body */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 6 }}>
-        {/* Left column: soil + cuts */}
+        {/* Left column: soil heat bars + cuts */}
         <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
           {f.sampled ? (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              <span><span style={{ color: 'var(--muted)' }}>pH </span><span style={{ color: phColor, fontWeight: 700 }}>{f.ph ?? '—'}</span></span>
-              <span><span style={{ color: 'var(--muted)' }}>P </span><span style={{ color: pColor, fontWeight: 700 }}>{f.p_idx ?? '—'}</span></span>
-              <span><span style={{ color: 'var(--muted)' }}>K </span><span style={{ color: kColor, fontWeight: 700 }}>{f.k_idx ?? '—'}</span></span>
+            <div style={{ marginBottom: 6 }}>
+              <SoilHeatBar label="pH" value={f.ph} target={tgt.pH} max={7.5} />
+              <SoilHeatBar label="P" value={f.p_idx} target={tgt.pIdx} max={4} />
+              <SoilHeatBar label="K" value={f.k_idx} target={tgt.kIdx} max={4} />
               {isSampleStale(f) && (() => {
                 const yr = sampleYear(f);
-                return yr != null ? <span style={{ color: 'var(--red, #b85b3a)' }}>·{yr}!</span> : null;
+                return yr != null ? (
+                  <div style={{ fontSize: 10, color: 'var(--red, #b85b3a)', marginTop: 2 }}>Sample {yr} — due a re-test</div>
+                ) : null;
               })()}
             </div>
           ) : (
@@ -568,6 +566,48 @@ function SnapshotRow({
 }
 
 // ---- Helpers / builders ------------------------------------------
+
+/**
+ * A compact heat-map bar for a single soil metric (pH, P index, K index).
+ * Fill width scales the value against `max`; fill colour is green at/above
+ * target, amber when close, red when low (mirrors soilMetricColor). A faint
+ * tick marks the target so "good" is visible at a glance.
+ */
+function SoilHeatBar({
+  label, value, target, max,
+}: {
+  label: string;
+  value: number | null | undefined;
+  target: number | null | undefined;
+  max: number;
+}) {
+  const hasValue = value != null;
+  const pct = hasValue ? Math.max(4, Math.min(100, (value! / max) * 100)) : 0;
+  const targetPct = target != null ? Math.max(0, Math.min(100, (target / max) * 100)) : null;
+
+  let fill = 'var(--muted)';
+  if (hasValue && target != null) {
+    if (value! >= target) fill = 'var(--forest, #5a7a3a)';
+    else if (value! >= target * 0.8) fill = 'var(--amber, #c98a2b)';
+    else fill = 'var(--red, #b85b3a)';
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', width: 18, flexShrink: 0 }}>{label}</span>
+      <div style={{ position: 'relative', flex: 1, height: 8, background: 'var(--line-soft, #e8e4da)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, width: `${pct}%`, background: fill, borderRadius: 4, transition: 'width .2s' }} />
+        {targetPct != null && (
+          <div style={{ position: 'absolute', top: -1, bottom: -1, left: `${targetPct}%`, width: 2, background: 'var(--ink-soft, #6b6358)', opacity: 0.5 }} />
+        )}
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, color: hasValue ? 'var(--ink)' : 'var(--muted)', width: 26, textAlign: 'right', flexShrink: 0 }}>
+        {hasValue ? value : '—'}
+      </span>
+    </div>
+  );
+}
+
 
 function daysBetween(fromIso: string, toIso: string): number {
   const a = new Date(fromIso).getTime();
