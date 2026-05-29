@@ -399,8 +399,26 @@ export function LogApplicationForm({
   // when the user switches to a type that has no products yet. Stops the
   // form silently submitting with a stale product from the previous type.
   const productMatchesType = !!product && product.type === type;
+
+  // Per-field rate validity: in "different rate per field" mode the shared
+  // rate box is irrelevant — what matters is that every ticked field has its
+  // own positive rate. In shared mode, the single rate box must be positive.
+  const allPickedHaveRate = useMemo(() => {
+    if (picked.size === 0) return false;
+    for (const fid of picked) {
+      const ov = parseFloat(overrides[fid] ?? '');
+      // Valid if this field has its own positive rate, or there's a positive
+      // shared rate it can fall back to.
+      if (!(ov > 0) && !(numericRate > 0)) return false;
+    }
+    return true;
+  }, [picked, overrides, numericRate]);
+
+  // The effective rate requirement depends on mode.
+  const rateOk = isBatch && showPerField ? allPickedHaveRate : numericRate > 0;
+
   const canSave = isBatch
-    ? (productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting && picked.size > 0)
+    ? (productMatchesType && date && rateOk && !hasBlockingError && !submitting && picked.size > 0)
     : (productMatchesType && date && numericRate > 0 && !hasBlockingError && !submitting);
 
   // Method to write into FormData (empty string omitted server-side).
@@ -425,11 +443,13 @@ export function LogApplicationForm({
     const fd = new FormData(e.currentTarget);
     try {
       if (isBatch) {
-        // Build rows: one per ticked field, using the per-field override rate
-        // when present else the shared rate. Unit is the shared storedUnit.
+        // Build rows: one per ticked field. In per-field mode each field uses
+        // its own override rate; in shared mode all use the single rate. (When
+        // per-field, validation already ensured every field has a rate.)
         const rows = Array.from(picked).map((fid) => {
           const ov = overrides[fid];
-          const r = ov != null && ov !== '' ? parseFloat(ov) : numericRate;
+          const hasOv = ov != null && ov !== '' && parseFloat(ov) > 0;
+          const r = hasOv ? parseFloat(ov) : numericRate;
           return { field_id: fid, rate_value: r, rate_unit: storedUnit };
         });
         fd.set('rows', JSON.stringify(rows));
@@ -812,7 +832,9 @@ export function LogApplicationForm({
                           value={overrides[f.id] ?? ''}
                           onChange={(e) => setOverrides((prev) => ({ ...prev, [f.id]: e.target.value }))}
                         />
-                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{displayUnit} {overrides[f.id] ? '' : `(default ${numericRate || '—'})`}</span>
+                        <span style={{ fontSize: 12, color: overrides[f.id] ? 'var(--muted)' : 'var(--amber, #7A5B12)' }}>
+                          {displayUnit}{overrides[f.id] ? '' : (numericRate ? ` (default ${numericRate})` : ' — needs a rate')}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -839,7 +861,11 @@ export function LogApplicationForm({
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>
-            <div className="label">{isBatch ? `Rate for all fields (${displayUnit})` : `Rate (${displayUnit})`}</div>
+            <div className="label">
+              {!isBatch ? `Rate (${displayUnit})`
+                : showPerField ? `Default rate (${displayUnit}) — optional`
+                : `Rate for all fields (${displayUnit})`}
+            </div>
             <input
               type="number"
               inputMode="decimal"
@@ -866,7 +892,9 @@ export function LogApplicationForm({
             )}
             {isBatch && (
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                Applied to each ticked field. You can adjust individual fields below.
+                {showPerField
+                  ? 'Optional fallback for any field below you leave blank. Set each field\u2019s rate above.'
+                  : 'Applied to each ticked field. You can adjust individual fields below.'}
               </div>
             )}
             <InlineWarning warning={rateWarning} />
