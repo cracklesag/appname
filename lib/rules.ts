@@ -966,6 +966,79 @@ export function getFieldPKShortfall(
 }
 
 // =====================================================================
+// Field-level nitrogen recommendation (RB209 N tables)
+// =====================================================================
+//
+// SNS status: there's no per-field SNS column yet, so we default to MODERATE
+// (RB209's own baseline). A legume-rich grass system nudges toward lower N
+// need; that's handled separately by the system N multiplier in getCutTargets.
+// When a per-field SNS override is added later, read it here.
+
+export interface FieldNRec {
+  cutType: CutType;
+  cutNumber: number;
+  /** RB209 N recommendation for this cut, kg/ha. */
+  n: number;
+  sns: rb209.SNSStatus;
+}
+
+/** Default SNS for a field. Moderate unless we learn otherwise. */
+export function getFieldSNS(_field: Field): rb209.SNSStatus {
+  return 'moderate';
+}
+
+/**
+ * RB209 nitrogen recommendation for a field's given cut.
+ * Silage uses the per-cut table with per-cut SNS adjustment; grazing uses the
+ * season total spread evenly across expected grazings; hay uses per-cut by SNS.
+ */
+export function getFieldNRecommendation(
+  field: Field,
+  cutNumber: number,
+  fieldCuts?: Cut[],
+): FieldNRec {
+  let cutType: CutType;
+  if (fieldCuts) {
+    const resolved = getResolvedNextCutType(field, fieldCuts);
+    cutType = (resolved === 'silage' || resolved === 'bales' || resolved === 'grazing')
+      ? resolved
+      : resolved === 'maintenance' ? 'grazing'
+      : (getPlannedCuts(field)[cutNumber - 1] || 'silage');
+  } else {
+    cutType = getPlannedCuts(field)[cutNumber - 1] || 'silage';
+  }
+
+  const sns = getFieldSNS(field);
+  const cutCount = field.cut_profile || 1;
+  let n = 0;
+
+  if (cutType === 'grazing') {
+    // Spread the season grazing total across the rotations. Use cut_profile as
+    // a rough proxy for intensity → target DM yield band.
+    const targetYield = [5, 7, 9, 13][Math.max(0, Math.min(3, cutCount - 1))];
+    const seasonTotal = rb209.grazingNTotal(targetYield, sns);
+    // Per-application figure: divide across roughly cutCount+1 grazing rounds.
+    n = Math.round(seasonTotal / Math.max(1, cutCount));
+  } else {
+    // silage / bales
+    n = rb209.silageNForCut(cutCount, cutNumber, sns);
+  }
+
+  return { cutType, cutNumber, n, sns };
+}
+
+/** Net N still to apply for this cut, after deducting season-applied N. */
+export function getFieldNShortfall(
+  field: Field,
+  cutNumber: number,
+  appliedN: number,
+  fieldCuts?: Cut[],
+): { rec: FieldNRec; nToApply: number } {
+  const rec = getFieldNRecommendation(field, cutNumber, fieldCuts);
+  return { rec, nToApply: Math.max(0, Math.round(rec.n - appliedN)) };
+}
+
+// =====================================================================
 // Fertiliser planner — reverse the calc: shortfall → product + rate
 // =====================================================================
 //

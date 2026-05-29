@@ -75,3 +75,78 @@ export function MiniBar({
     </div>
   );
 }
+
+/**
+ * Need-vs-supply bar with overshoot, for the fertiliser plan and P/K status.
+ *
+ * The track's first 100% is the field's NEED; a fixed overshoot zone to the
+ * right fills PINK when supply exceeds need. When need is zero (field at/above
+ * target index), any supply is shown as over-application in pink.
+ *
+ *   under target → green fill, hollow remainder
+ *   on target    → full green
+ *   over target  → green to 100% + pink overshoot segment
+ */
+export function SupplyBar({
+  label,
+  need,
+  supply,
+  unit = 'kg/ha',
+}: {
+  label: string;
+  need: number;
+  supply: number;
+  unit?: string;
+}) {
+  const hasNeed = need > 0.5;
+  const metFrac = hasNeed ? Math.min(1, supply / need) : 0;
+  const overAbs = hasNeed ? Math.max(0, supply - need) : supply;
+  const overFrac = hasNeed ? Math.min(1, overAbs / need) : (supply > 0.5 ? 1 : 0);
+
+  const under = hasNeed && supply < need - 0.5;
+  const over = overAbs > 0.5;
+
+  const GREEN = 'var(--forest, #5a7a3a)';
+  const GREEN_SOFT = 'var(--forest-soft, #e6efd9)';
+  const PINK = '#d96a9a';
+  const PINK_SOFT = '#f7e0eb';
+  const NEUTRAL = 'var(--line, #d9d2c4)';
+
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {hasNeed ? (
+            <>
+              <span className="nutrient-num" style={{ color: over ? PINK : 'var(--ink)', fontWeight: 700 }}>{fmt(Math.round(supply))}</span>
+              {' / '}{fmt(Math.round(need))} {unit}
+            </>
+          ) : supply > 0.5 ? (
+            <><span className="nutrient-num" style={{ color: PINK, fontWeight: 700 }}>{fmt(Math.round(supply))}</span> {unit} · none needed</>
+          ) : (
+            <span style={{ color: GREEN }}>at target ✓</span>
+          )}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', height: 9, borderRadius: 5, overflow: 'hidden', background: NEUTRAL }}>
+        {/* Need zone (100% of need) */}
+        <div style={{ flex: '1 1 0', position: 'relative', background: GREEN_SOFT }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${metFrac * 100}%`, background: GREEN }} />
+        </div>
+        {/* Overshoot zone */}
+        <div style={{ flex: '0 0 35%', position: 'relative', background: PINK_SOFT }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${overFrac * 100}%`, background: PINK }} />
+        </div>
+      </div>
+
+      {over && (
+        <div style={{ fontSize: 10, color: PINK, marginTop: 2, fontWeight: 600 }}>over by {fmt(Math.round(overAbs))} {unit}</div>
+      )}
+      {under && (
+        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>short by {fmt(Math.round(need - supply))} {unit}</div>
+      )}
+    </div>
+  );
+}

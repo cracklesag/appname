@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { fmt } from '@/lib/rules';
+import { SupplyBar } from '@/components/NutrientBar';
 
 export interface FertPlanRow {
   id: string;
@@ -19,6 +20,16 @@ export interface FertPlanRow {
   cutNumber: number;
   p2o5ToApply: number;
   k2oToApply: number;
+  nToApply: number;
+  nNeed: number;
+  pNeed: number;
+  kNeed: number;
+  suppliedN: number;
+  suppliedP: number;
+  suppliedK: number;
+  appliedN: number;
+  appliedP: number;
+  appliedK: number;
   plan: {
     products: { productId: number; productName: string; rateKgPerHa: number; totalKg: number }[];
     note: string;
@@ -186,7 +197,7 @@ export function FertPlanShell({
                     </div>
                   </div>
                 ))}
-                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2, marginBottom: 10 }}>
                   Need P {row.p2o5ToApply} · K {row.k2oToApply} kg/ha.
                   {(row.plan.p2o5Balance !== 0 || row.plan.k2oBalance !== 0) && (
                     <>
@@ -196,6 +207,12 @@ export function FertPlanShell({
                     </>
                   )}
                 </div>
+
+                {/* Need-vs-supply bars. Supply = already applied this season +
+                    what this plan adds. Need = RB209 cut requirement. */}
+                <SupplyBar label="N"  need={row.nNeed} supply={row.appliedN + row.suppliedN} />
+                <SupplyBar label="P₂O₅" need={row.pNeed} supply={row.appliedP + row.suppliedP} />
+                <SupplyBar label="K₂O" need={row.kNeed} supply={row.appliedK + row.suppliedK} />
               </>
             )}
           </Link>

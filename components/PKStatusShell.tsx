@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { fmt } from '@/lib/rules';
+import { SupplyBar } from '@/components/NutrientBar';
 
 export interface PKFieldRow {
   id: string;
@@ -183,28 +184,9 @@ export function PKStatusShell({
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              {/* P */}
-              <div style={{ flex: 1, background: 'var(--paper-deep, #f3efe4)', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>P₂O₅ · index {row.pBand}</div>
-                <div className="nutrient-num" style={{ fontSize: 18, color: row.p2o5ToApply > 0 ? 'var(--ink)' : 'var(--muted)' }}>
-                  {row.p2o5ToApply > 0 ? `${row.p2o5ToApply}` : '✓'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.p2o5ToApply > 0 ? 'kg/ha' : 'met'}</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-                  need {row.recP2o5} · applied {row.appliedP}
-                </div>
-              </div>
-              {/* K */}
-              <div style={{ flex: 1, background: 'var(--paper-deep, #f3efe4)', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>K₂O · index {row.kBandLabel}</div>
-                <div className="nutrient-num" style={{ fontSize: 18, color: row.k2oToApply > 0 ? 'var(--ink)' : 'var(--muted)' }}>
-                  {row.k2oToApply > 0 ? `${row.k2oToApply}` : '✓'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>{row.k2oToApply > 0 ? 'kg/ha' : 'met'}</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-                  need {row.recK2o} · applied {row.appliedK}
-                </div>
-              </div>
-            </div>
+            {/* Need-vs-supply bars: applied this season vs RB209 need. */}
+            <SupplyBar label={`P₂O₅ · index ${row.pBand}`} need={row.recP2o5} supply={row.appliedP} />
+            <SupplyBar label={`K₂O · index ${row.kBandLabel}`} need={row.recK2o} supply={row.appliedK} />
 
             {/* First-cut K split + catch-up hints */}
             {(row.kSplit || row.extraKAfterCut > 0) && (

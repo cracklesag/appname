@@ -5,6 +5,7 @@ import {
 } from '@/lib/data';
 import {
   getSeasonStart, sumNutrients, getFieldPKShortfall, planFieldFertiliser, displayFieldArea,
+  getFieldNRecommendation, calcNutrients,
 } from '@/lib/rules';
 import { FertPlanShell, FertPlanRow } from '@/components/FertPlanShell';
 
@@ -44,11 +45,27 @@ export default async function FertPlanPage({
       const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
         f, cutNumber, applied.p, applied.k, fieldCuts,
       );
+      const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
+      const nToApply = Math.max(0, Math.round(nRec.n - applied.n));
 
       const plan = planFieldFertiliser(p2o5ToApply, k2oToApply, products);
       const area = displayFieldArea(f, settings.unitSystem);
       const haActual = f.ha || 0;
       const groupName = groups.find((g) => g.id === f.group_id)?.name ?? null;
+
+      // What the planned products actually deliver in N, P and K (kg/ha) — so
+      // the bars can show supply vs need across all three nutrients, including
+      // incidental N/P/K from a compound chosen for a different nutrient.
+      let suppliedN = 0, suppliedP = 0, suppliedK = 0;
+      if (plan) {
+        for (const pp of plan.products) {
+          const prod = products.find((pr) => pr.id === pp.productId);
+          const nut = calcNutrients(prod, pp.rateKgPerHa, 'kg/ha', new Date().toISOString().slice(0, 10), null);
+          suppliedN += nut.nPerHa;
+          suppliedP += nut.p2o5PerHa;
+          suppliedK += nut.k2oPerHa;
+        }
+      }
 
       return {
         id: f.id,
@@ -65,13 +82,22 @@ export default async function FertPlanPage({
         cutNumber: rec.cutNumber,
         p2o5ToApply,
         k2oToApply,
+        nToApply,
+        nNeed: Math.round(nRec.n),
+        pNeed: rec.p2o5,
+        kNeed: rec.k2o + rec.extraKAfterCut,
+        suppliedN: Math.round(suppliedN),
+        suppliedP: Math.round(suppliedP),
+        suppliedK: Math.round(suppliedK),
+        appliedN: Math.round(applied.n),
+        appliedP: Math.round(applied.p),
+        appliedK: Math.round(applied.k),
         plan: plan
           ? {
               products: plan.products.map((pp) => ({
                 productId: pp.productId,
                 productName: pp.productName,
                 rateKgPerHa: pp.rateKgPerHa,
-                // kg of product over the whole field
                 totalKg: Math.round(pp.rateKgPerHa * haActual),
               })),
               note: plan.note,

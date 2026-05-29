@@ -387,6 +387,56 @@ export function silageNForYield(yieldRowIndex: number, sns: SNSStatus): SilageNR
 }
 
 // ---------------------------------------------------------------------
+// Field-level nitrogen recommendation (per cut)
+// ---------------------------------------------------------------------
+//
+// RB209 N logic differs from P/K: it's driven by target DM yield (which sets
+// the per-cut table row) and SNS status (which adjusts the rate). For silage,
+// the SNS adjustment is PER CUT, not a flat total: high SNS = −10 first cut /
+// −20 second cut; low SNS = +10 first cut / +20 second cut (Table 3.8 notes).
+// Grazing and hay use simpler whole-season / per-cut adjustments.
+
+/** Map a silage cut system (number of cuts) to the Table 3.8 yield row index. */
+export function silageYieldRowForCutCount(cutCount: number): number {
+  // 1-cut→5-7t(row0), 2-cut→7-9t(row1), 3-cut→9-12t(row2), 4-cut→12-15t(row3)
+  return Math.max(0, Math.min(3, cutCount - 1));
+}
+
+/**
+ * Silage N for ONE specific cut, with the per-cut SNS adjustment applied.
+ * cutNumber is 1-based. Returns kg/ha N for that cut (never below zero).
+ */
+export function silageNForCut(cutCount: number, cutNumber: number, sns: SNSStatus): number {
+  const row = SILAGE_N_BY_YIELD[silageYieldRowForCutCount(cutCount)];
+  const base = row.perCut[cutNumber - 1] ?? 0;
+  if (base === 0) return 0;
+  // Per-cut SNS adjustment (Table 3.8 notes).
+  let adj = 0;
+  if (cutNumber === 1) adj = sns === 'high' ? -10 : sns === 'low' ? 10 : 0;
+  else if (cutNumber === 2) adj = sns === 'high' ? -20 : sns === 'low' ? 20 : 0;
+  return Math.max(0, base + adj);
+}
+
+/** Map a grazing system to a Table 3.9 yield row index from target DM yield (t/ha). */
+export function grazingYieldRow(targetDmYield: number): number {
+  // Find the closest band by upper bound.
+  const uppers = [5, 7, 8, 9, 12, 13, 15];
+  for (let i = 0; i < uppers.length; i++) if (targetDmYield <= uppers[i]) return i;
+  return uppers.length - 1;
+}
+
+/** Total grazing N for the season at a target DM yield, with whole-season SNS ±30. */
+export function grazingNTotal(targetDmYield: number, sns: SNSStatus): number {
+  const row = GRAZING_N_BY_YIELD[grazingYieldRow(targetDmYield)];
+  return Math.max(0, row.total + SNS_TOTAL_N_ADJUST[sns]);
+}
+
+/** Hay N per cut by SNS (Table 3.10). */
+export function hayNForCut(sns: SNSStatus): number {
+  return HAY_N_BY_SNS[sns];
+}
+
+// ---------------------------------------------------------------------
 // Decimal-index bridge
 // ---------------------------------------------------------------------
 //
