@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { LogApplicationForm } from '@/components/LogApplicationForm';
-import { loadFields, loadAllProducts, loadSettings, loadGroups, loadProductUsage } from '@/lib/data';
+import { loadFields, loadAllProducts, loadSettings, loadGroups, loadProductUsage, loadAllApplications } from '@/lib/data';
 import type { ProductType } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -33,16 +33,31 @@ export default async function LogPage({
     ? searchParams.type
     : 'bag_fert') as ProductType;
 
-  const [fields, products, settings, groups, usage] = await Promise.all([
+  const [fields, products, settings, groups, usage, allApps] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadSettings(),
     loadGroups(),
     loadProductUsage(),
+    loadAllApplications(),
   ]);
 
   if (fields.length === 0) {
     redirect('/fields/new');
+  }
+
+  // Build a map of the most recent application date per field per product
+  // type, so the form can warn about a likely double-entry (same field + same
+  // type within a few days). Only the latest date per (field,type) is needed.
+  const productTypeById = new Map(products.map((p) => [p.id, p.type]));
+  const recentByField: Record<string, Record<string, string>> = {};
+  for (const a of allApps) {
+    const t = productTypeById.get(a.product_id);
+    if (!t) continue;
+    const byType = (recentByField[a.field_id] ??= {});
+    if (!byType[t] || a.date_applied > byType[t]) {
+      byType[t] = a.date_applied;
+    }
   }
 
   const refField = fields[0];
@@ -97,6 +112,7 @@ export default async function LogPage({
         settings={settings}
         initialType={type}
         usage={usage}
+        recentByField={recentByField}
       />
     </div>
   );

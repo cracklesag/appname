@@ -106,7 +106,7 @@ function findPoultry(products: Product[], source: PoultrySource): Product | null
 }
 
 export function LogApplicationForm({
-  field, products, settings, existing, initialType: initialTypeProp, batchFields, groups, usage,
+  field, products, settings, existing, initialType: initialTypeProp, batchFields, groups, usage, recentByField,
 }: {
   field: Field;
   products: Product[];
@@ -118,6 +118,8 @@ export function LogApplicationForm({
   groups?: { id: string; name: string }[];
   /** product_id -> times used, for most-used-first ordering of bag fert. */
   usage?: Record<number, number>;
+  /** fieldId -> { productType -> latest application date } for double-entry warning. */
+  recentByField?: Record<string, Record<string, string>>;
 }) {
   const isBatch = Array.isArray(batchFields) && batchFields.length > 0;
   const today = new Date().toISOString().slice(0, 10);
@@ -393,6 +395,47 @@ export function LogApplicationForm({
     [numericRate, type, displayUnit]
   );
   const dateWarning = useMemo(() => validateDate(date), [date]);
+
+  // Double-entry warning: if the same product TYPE was applied to the field
+  // within 7 days of the chosen date, flag a likely duplicate. Non-blocking —
+  // the user can still proceed. Skipped when editing an existing entry.
+  const DUP_WINDOW_DAYS = 7;
+  const dupWarning = useMemo(() => {
+    if (isEdit || !recentByField || !date) return null;
+    const chosen = new Date(date + 'T00:00:00').getTime();
+    if (isNaN(chosen)) return null;
+
+    const fieldIds = isBatch ? Array.from(picked) : [field.id];
+    if (fieldIds.length === 0) return null;
+
+    const hits: { name: string; daysAgo: number }[] = [];
+    for (const fid of fieldIds) {
+      const last = recentByField[fid]?.[type];
+      if (!last) continue;
+      const lastT = new Date(last + 'T00:00:00').getTime();
+      if (isNaN(lastT)) continue;
+      const days = Math.round((chosen - lastT) / 86400000);
+      if (Math.abs(days) <= DUP_WINDOW_DAYS) {
+        const fname = isBatch ? (batchFields?.find((f) => f.id === fid)?.name ?? 'a field') : field.name;
+        hits.push({ name: fname, daysAgo: days });
+      }
+    }
+    if (hits.length === 0) return null;
+
+    const typeLabel = type === 'slurry' ? 'slurry'
+      : type === 'bag_fert' ? 'fertiliser'
+      : type === 'solid_manure' ? 'manure'
+      : type === 'lime' ? 'lime' : 'an application';
+
+    if (hits.length === 1) {
+      const h = hits[0];
+      const when = h.daysAgo === 0 ? 'the same day'
+        : h.daysAgo > 0 ? `${h.daysAgo} day${h.daysAgo === 1 ? '' : 's'} ago`
+        : `${Math.abs(h.daysAgo)} day${Math.abs(h.daysAgo) === 1 ? '' : 's'} later`;
+      return { kind: 'warning' as const, message: `${typeLabel} was already logged on ${h.name} ${when}. Sure this isn't a duplicate?` };
+    }
+    return { kind: 'warning' as const, message: `${typeLabel} was already logged within a week on ${hits.length} of these fields. Sure these aren't duplicates?` };
+  }, [isEdit, recentByField, date, isBatch, picked, field.id, field.name, batchFields, type]);
 
   // In per-field batch mode the shared rate box is optional, so an empty/zero
   // shared rate must NOT count as a blocking error — each field carries its
@@ -746,6 +789,7 @@ export function LogApplicationForm({
           <div className="label">Date applied</div>
           <input type="date" name="date_applied" className="input" value={date} onChange={(e) => setDate(e.target.value)} required />
           <InlineWarning warning={dateWarning} />
+          <InlineWarning warning={dupWarning} />
         </div>
 
         {isBatch && (
