@@ -35,20 +35,34 @@ export default async function FertPlanPage({
   const rows: FertPlanRow[] = fields
     .filter((f) => !f.needs_setup)
     .map((f) => {
-      const fieldApps = applications.filter(
+      const fieldCuts = cuts.filter((c) => c.field_id === f.id);
+      const seasonCuts = fieldCuts
+        .filter((c) => c.cut_date >= seasonStart)
+        .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
+      const lastCut = seasonCuts[0];
+      const cutNumber = Math.min((f.cut_profile || 1), seasonCuts.length + 1);
+
+      // Applied this season — used for P & K, which accumulate against the
+      // season's offtake/index maintenance.
+      const seasonApps = applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
       );
-      const applied = sumNutrients(fieldApps, products);
+      const applied = sumNutrients(seasonApps, products);
 
-      const fieldCuts = cuts.filter((c) => c.field_id === f.id);
-      const seasonCuts = fieldCuts.filter((c) => c.cut_date >= seasonStart);
-      const cutNumber = Math.min((f.cut_profile || 1), seasonCuts.length + 1);
+      // Applied since the last cut — used for NITROGEN, which is a per-cut
+      // recommendation. Each cut removes the crop N, so N starts fresh: only
+      // count what's gone on since the last cut (or season start if no cut yet).
+      // This stops a heavy first-cut dressing wrongly suppressing the
+      // second-cut N recommendation.
+      const nWindowStart = lastCut ? lastCut.cut_date : seasonStart;
+      const sinceCutApps = seasonApps.filter((a) => a.date_applied >= nWindowStart);
+      const appliedNSinceCut = sumNutrients(sinceCutApps, products).n;
 
       const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
         f, cutNumber, applied.p, applied.k, fieldCuts,
       );
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
-      const nToApply = Math.max(0, Math.round(nRec.n - applied.n));
+      const nToApply = Math.max(0, Math.round(nRec.n - appliedNSinceCut));
 
       const area = displayFieldArea(f, settings.unitSystem);
       const haActual = f.ha || 0;
@@ -76,7 +90,7 @@ export default async function FertPlanPage({
         nNeed: Math.round(nRec.n),
         pNeed: rec.p2o5,
         kNeed: rec.k2o + rec.extraKAfterCut,
-        appliedN: Math.round(applied.n),
+        appliedN: Math.round(appliedNSinceCut),
         appliedP: Math.round(applied.p),
         appliedK: Math.round(applied.k),
       };

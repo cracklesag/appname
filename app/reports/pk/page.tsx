@@ -32,7 +32,7 @@ export default async function PKStatusPage({
   const rows: PKFieldRow[] = fields
     .filter((f) => !f.needs_setup)
     .map((f) => {
-      // Season-to-date P/K already applied to this field (kg/ha).
+      // Season-to-date applied (kg/ha) — used for P & K.
       const fieldApps = applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
       );
@@ -40,8 +40,18 @@ export default async function PKStatusPage({
 
       // Which cut number are we at (cuts done this season + 1)?
       const fieldCuts = cuts.filter((c) => c.field_id === f.id);
-      const seasonCuts = fieldCuts.filter((c) => c.cut_date >= seasonStart);
+      const seasonCuts = fieldCuts
+        .filter((c) => c.cut_date >= seasonStart)
+        .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
+      const lastCut = seasonCuts[0];
       const cutNumber = Math.min((f.cut_profile || 1), seasonCuts.length + 1);
+
+      // Nitrogen is per-cut: only count N applied since the last cut (or
+      // season start if no cut yet), so an over-applied earlier cut doesn't
+      // suppress this cut's N recommendation.
+      const nWindowStart = lastCut ? lastCut.cut_date : seasonStart;
+      const sinceCutApps = fieldApps.filter((a) => a.date_applied >= nWindowStart);
+      const appliedNSinceCut = sumNutrients(sinceCutApps, products).n;
 
       const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
         f, cutNumber, applied.p, applied.k, fieldCuts,
@@ -73,7 +83,7 @@ export default async function PKStatusPage({
         recN: Math.round(nRec.n),
         recP2o5: rec.p2o5,
         recK2o: rec.k2o + rec.extraKAfterCut,
-        appliedN: Math.round(applied.n),
+        appliedN: Math.round(appliedNSinceCut),
         appliedP: Math.round(applied.p),
         appliedK: Math.round(applied.k),
         atMaintenance: rec.atMaintenance,
