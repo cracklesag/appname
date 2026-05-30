@@ -61,6 +61,9 @@ export interface Field {
   ph: number | null;
   p_idx: number | null;
   k_idx: number | null;
+  /** Soil magnesium index (decimal, e.g. 1.0). Drives Mg-based lime type
+   *  (magnesian vs calcium) on the lime report. Null = not sampled for Mg. */
+  mg_idx: number | null;
   sampled: boolean;
   sample_date: string | null;
   soil_type: SoilType;

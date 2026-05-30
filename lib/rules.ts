@@ -233,6 +233,40 @@ export function organicReleaseFraction(
   return Math.min(p.releaseFymCapPct / 100, p.releaseFymStartPct / 100 + (p.releaseFymPerMonthPct / 100) * m);
 }
 
+/**
+ * Map the app's soil_type to the RB209 lime soil category + grassland liming
+ * factor. The app has four soil types, all mineral; organic/peaty aren't
+ * represented as soil_type yet.
+ */
+function limeSoilProfile(soil: SoilType | null): { category: rb209.LimeSoilCategory; factor: number } {
+  switch (soil) {
+    case 'light_sand':  return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.sands };
+    case 'heavy_clay':  return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.clays };
+    case 'deep_silt':   return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.loams };
+    case 'medium_loam':
+    default:            return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.loams };
+  }
+}
+
+/**
+ * Resolve the target pH for a field. Uses the user's soilTargets.pH setting as
+ * the override if set; otherwise the RB209 grassland default for the soil
+ * category (0.2 above optimum).
+ */
+export function resolveTargetPh(field: Field, settings: Settings): number {
+  const { category } = limeSoilProfile(field.soil_type);
+  const rbDefault = rb209.GRASS_TARGET_PH[category];
+  const override = settings.soilTargets?.pH;
+  return (typeof override === 'number' && override > 0) ? override : rbDefault;
+}
+
+/** Full RB209 grassland lime recommendation for a field. */
+export function getFieldLimeRecommendation(field: Field, settings: Settings): rb209.LimeRecommendation {
+  const { factor } = limeSoilProfile(field.soil_type);
+  const targetPh = resolveTargetPh(field, settings);
+  return rb209.limeRecommendation(field.ph, targetPh, factor, field.mg_idx, 0);
+}
+
 /** Whole months between two ISO dates (a before b). Floored, min 0. */
 export function monthsBetween(aIso: string, bIso: string): number {
   const a = new Date(aIso + 'T00:00:00');

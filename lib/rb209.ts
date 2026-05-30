@@ -474,3 +474,143 @@ export function kBandFromDecimal(idx: number | null | undefined): KIndexBand {
 export function kBandLabel(band: KIndexBand): string {
   return String(band);
 }
+
+// ============================================================
+// LIME — RB209 soil acidity / liming (grassland)
+// Source: RB209 + AHDB "Soil pH and liming recommendations".
+// Grassland lime is for a 15 cm soil depth; recommendations assume
+// ground limestone / chalk (NV 50–55). All figures are an ESTIMATE to
+// guide spreading — sense-check against a current soil report.
+// ============================================================
+
+/** Optimum grassland soil pH by broad soil category (RB209 Table 1). */
+export type LimeSoilCategory = 'mineral' | 'organic' | 'peaty';
+
+/** Optimum pH for continuous grass / grass-clover swards. */
+export const GRASS_OPTIMUM_PH: Record<LimeSoilCategory, number> = {
+  mineral: 6.0,
+  organic: 5.7,
+  peaty: 5.3,
+};
+
+/** RB209 advises aiming 0.2 pH above optimum — this is the default target. */
+export const GRASS_TARGET_PH: Record<LimeSoilCategory, number> = {
+  mineral: 6.2,
+  organic: 5.9,
+  peaty: 5.5,
+};
+
+/**
+ * Grassland liming factors (t/ha of ground limestone per 1.0 pH unit) by soil
+ * type, from AHDB Table 2b. Lime requirement = (target − measured) × factor.
+ */
+export const GRASS_LIMING_FACTOR: Record<string, number> = {
+  sands: 4,          // sands and loamy sands
+  loams: 5,          // sandy loams and silt loams
+  clays: 6,          // clay loams and clays
+  organic: 7.5,
+  peaty: 12,
+};
+
+/** Never recommend liming above this pH (trace-element lock-up risk). */
+export const LIME_MAX_PH = 7.0;
+
+/** Max lime in a single application on grassland (no cultivation) — t/ha.
+ *  Anything above this is split, the balance applied the following year. */
+export const LIME_MAX_SINGLE_THA = 7.5;
+
+/**
+ * Soil magnesium index thresholds. At Index 0–1, magnesian (dolomitic)
+ * limestone is the cost-effective way to lift both pH and Mg; at Index 2+,
+ * ordinary calcium limestone. RB209 maintains soil Mg at Index 2.
+ */
+export function mgIndexFromDecimal(idx: number | null | undefined): number | null {
+  if (idx == null) return null;
+  if (idx < 0) return 0;
+  if (idx > 9) return 9;
+  return Math.round(idx);
+}
+
+export type LimeType = 'magnesian' | 'calcium';
+
+/** Choose lime type from soil Mg index: low Mg (0–1) → magnesian. */
+export function limeTypeForMg(mgIdx: number | null | undefined): LimeType {
+  const m = mgIndexFromDecimal(mgIdx);
+  if (m == null) return 'calcium';      // no Mg data → default calcium
+  return m <= 1 ? 'magnesian' : 'calcium';
+}
+
+export interface LimeRecommendation {
+  needsLime: boolean;
+  measuredPh: number | null;
+  targetPh: number;
+  /** Total lime requirement, t/ha (0 if at/above target). */
+  totalTha: number;
+  /** Dressings to apply, t/ha each — 1 entry if ≤ max, else split over years. */
+  dressings: number[];
+  limeType: LimeType;
+  /** Why no lime / any caveat (e.g. already at target, above pH 7). */
+  note: string | null;
+}
+
+/**
+ * RB209 grassland lime recommendation for a field.
+ * @param measuredPh  current soil pH (null = unsampled)
+ * @param targetPh    target pH (caller resolves from soil category / settings)
+ * @param limingFactor t/ha per 1.0 pH (from GRASS_LIMING_FACTOR by soil type)
+ * @param mgIdx       soil magnesium index (decimal) for lime-type choice
+ * @param stonePct    optional stone % to discount the rate (0–100)
+ */
+export function limeRecommendation(
+  measuredPh: number | null,
+  targetPh: number,
+  limingFactor: number,
+  mgIdx: number | null | undefined,
+  stonePct = 0,
+): LimeRecommendation {
+  const limeType = limeTypeForMg(mgIdx);
+
+  if (measuredPh == null) {
+    return {
+      needsLime: false, measuredPh: null, targetPh,
+      totalTha: 0, dressings: [], limeType,
+      note: 'Not sampled — no pH on record.',
+    };
+  }
+  if (measuredPh >= targetPh) {
+    return {
+      needsLime: false, measuredPh, targetPh,
+      totalTha: 0, dressings: [], limeType,
+      note: 'At or above target pH.',
+    };
+  }
+  if (measuredPh >= LIME_MAX_PH) {
+    return {
+      needsLime: false, measuredPh, targetPh,
+      totalTha: 0, dressings: [], limeType,
+      note: 'Above pH 7 — do not lime (trace-element lock-up).',
+    };
+  }
+
+  const deficit = targetPh - measuredPh;
+  let tha = deficit * limingFactor;
+  if (stonePct > 0) tha *= (1 - Math.min(95, stonePct) / 100);
+  tha = Math.round(tha * 10) / 10;   // 0.1 t/ha precision
+
+  // Split into yearly dressings if over the single-application cap.
+  const dressings: number[] = [];
+  let remaining = tha;
+  while (remaining > LIME_MAX_SINGLE_THA + 0.05) {
+    dressings.push(LIME_MAX_SINGLE_THA);
+    remaining = Math.round((remaining - LIME_MAX_SINGLE_THA) * 10) / 10;
+  }
+  if (remaining > 0.05) dressings.push(remaining);
+
+  return {
+    needsLime: tha > 0.05, measuredPh, targetPh,
+    totalTha: tha, dressings, limeType,
+    note: dressings.length > 1
+      ? `Split over ${dressings.length} years — max ${LIME_MAX_SINGLE_THA} t/ha per dressing on grassland.`
+      : null,
+  };
+}

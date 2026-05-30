@@ -27,6 +27,7 @@ export function SoilForm({
   const [ph, setPh] = useState(field.ph != null ? String(field.ph) : '');
   const [pIdx, setPIdx] = useState(field.p_idx != null ? String(field.p_idx) : '');
   const [kIdx, setKIdx] = useState(field.k_idx != null ? String(field.k_idx) : '');
+  const [mgIdx, setMgIdx] = useState(field.mg_idx != null ? String(field.mg_idx) : '');
   const [soilType, setSoilType] = useState<SoilType>(field.soil_type || 'medium_loam');
   // Grass system — include the currently-assigned system even if it's
   // hidden, so the user can see what they have and switch away from a
@@ -116,6 +117,17 @@ export function SoilForm({
                 value={kIdx} onChange={(e) => setKIdx(e.target.value)}
               />
             </div>
+            <div style={{ flex: 1 }}>
+              <div className="label" style={{ fontSize: 11 }}>Mg idx</div>
+              <input
+                type="number" step="0.1" inputMode="decimal" name="mg_idx"
+                className="input" placeholder="opt."
+                value={mgIdx} onChange={(e) => setMgIdx(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>
+            Mg index is optional — it picks magnesian vs calcium lime on the lime report (Index 0–1 → magnesian).
           </div>
           <InlineWarning warning={phWarning ?? pIdxWarning ?? kIdxWarning} />
         </div>

@@ -354,6 +354,7 @@ export async function saveSoil(formData: FormData) {
   const ph = formData.get('ph') ? parseFloat(String(formData.get('ph'))) : null;
   const pIdx = formData.get('p_idx') ? parseFloat(String(formData.get('p_idx'))) : null;
   const kIdx = formData.get('k_idx') ? parseFloat(String(formData.get('k_idx'))) : null;
+  const mgIdx = formData.get('mg_idx') ? parseFloat(String(formData.get('mg_idx'))) : null;
   const sampleDate = formData.get('sample_date') ? String(formData.get('sample_date')) : null;
   const lastPloughed = formData.get('last_ploughed') ? String(formData.get('last_ploughed')) : null;
   const lastReseeded = formData.get('last_reseeded') ? String(formData.get('last_reseeded')) : null;
@@ -370,13 +371,13 @@ export async function saveSoil(formData: FormData) {
     ? undefined  // form didn't send it — leave alone
     : rawGrassSystemId;
 
-  const sampled = ph != null || pIdx != null || kIdx != null;
+  const sampled = ph != null || pIdx != null || kIdx != null || mgIdx != null;
 
   // Build the update object so we only set soil_type / grass_system_id if
   // they were actually submitted; lets older forms (and partial saves)
   // keep working without overwriting existing values.
   const update: Record<string, unknown> = {
-    ph, p_idx: pIdx, k_idx: kIdx,
+    ph, p_idx: pIdx, k_idx: kIdx, mg_idx: mgIdx,
     sample_date: sampleDate, last_ploughed: lastPloughed, last_reseeded: lastReseeded,
     notes, sampled,
     updated_at: new Date().toISOString(),
