@@ -21,11 +21,13 @@ import {
   getNextCutType,
   getSoilType,
   isHeadingForRotationalGrazing,
+  isMaintenanceGrazing,
   resolveFieldNextAction,
   resolveGrassSystem,
   SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
 } from '@/lib/rules';
+import { setGroupToGrazing } from '@/lib/actions';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 
 // =====================================================================
@@ -245,6 +247,31 @@ export function GrazingReportShell({
 
   // Copy + print.
   const [copied, setCopied] = useState(false);
+
+  // Groups that contain fields NOT currently heading for grazing — these are
+  // candidates for the bulk "set group to grazing" action. (A field on
+  // maintenance grazing is deliberately left out of the rotation, so it
+  // doesn't count as "missing".)
+  const [grazeGroupId, setGrazeGroupId] = useState<string>('');
+  const nonGrazingByGroup = useMemo(() => {
+    const out: { id: string; name: string; count: number; sample: string[] }[] = [];
+    for (const g of groups) {
+      const inGroup = fields.filter((f) => f.group_id === g.id && !f.needs_setup);
+      const notGrazing = inGroup.filter((f) => {
+        const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
+        const resolved = resolveFieldNextAction(f, fCuts);
+        return !isHeadingForRotationalGrazing(resolved) && !isMaintenanceGrazing(resolved);
+      });
+      if (notGrazing.length > 0) {
+        out.push({
+          id: g.id, name: g.name, count: notGrazing.length,
+          sample: notGrazing.slice(0, 3).map((f) => f.name),
+        });
+      }
+    }
+    return out;
+  }, [groups, fields, cuts, seasonStart]);
+
   const handleCopy = () => {
     const text = buildPlainText(visibleStates, {
       cadenceKgN, cadenceWeeks, todayIso, settings,
@@ -266,9 +293,61 @@ export function GrazingReportShell({
 
   // ---- Render ----------------------------------------------------------
 
+  // Bulk "set a whole group to grazing" helper — shown when a group has fields
+  // that aren't set to grazing. Posts to the server action via a form.
+  const grazeHelper = nonGrazingByGroup.length === 0 ? null : (
+    <form action={setGroupToGrazing} className="card no-print" style={{ padding: 13, marginBottom: 14, background: 'var(--card)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
+        Grazing block not showing?
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 10 }}>
+        A field only appears here when its cut plan is set to grazing — grouping it isn&apos;t enough.
+        Set a whole group to grazing in one go:
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select
+          name="group_id"
+          value={grazeGroupId}
+          onChange={(e) => setGrazeGroupId(e.target.value)}
+          className="select"
+          style={{ flex: 1, minWidth: 150 }}
+          required
+        >
+          <option value="">Choose a group…</option>
+          {nonGrazingByGroup.map((g) => (
+            <option key={g.id} value={g.id}>{g.name} ({g.count} not grazing)</option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={grazeGroupId === ''}
+          style={{
+            flexShrink: 0, background: grazeGroupId === '' ? 'var(--line)' : 'var(--forest)',
+            color: grazeGroupId === '' ? 'var(--muted)' : 'var(--paper)',
+            border: 'none', borderRadius: 8, padding: '9px 14px', fontSize: 13, fontWeight: 700,
+            cursor: grazeGroupId === '' ? 'default' : 'pointer',
+          }}
+        >
+          Set to grazing
+        </button>
+      </div>
+      {grazeGroupId !== '' && (() => {
+        const g = nonGrazingByGroup.find((x) => x.id === grazeGroupId);
+        if (!g) return null;
+        const extra = g.count - g.sample.length;
+        return (
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+            Will set {g.sample.join(', ')}{extra > 0 ? ` and ${extra} more` : ''} to a grazing plan.
+          </div>
+        );
+      })()}
+    </form>
+  );
+
   if (allGrazedStates.length === 0) {
     return (
       <div style={{ padding: 16 }}>
+        {grazeHelper}
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
           <div style={{ fontSize: 14, color: 'var(--muted)' }}>
             No fields with grazing planned this season.
@@ -284,6 +363,7 @@ export function GrazingReportShell({
 
   return (
     <div style={{ padding: 16 }}>
+      {grazeHelper}
       {/* Cadence settings hint */}
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
         Cadence: <strong>{cadenceDisp} {shellNUnit} every {cadenceWeeks} week{cadenceWeeks === 1 ? '' : 's'}</strong>

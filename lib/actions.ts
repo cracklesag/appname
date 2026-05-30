@@ -1296,8 +1296,60 @@ export async function setGroupMembership(formData: FormData) {
   revalidatePath('/reports/grazing');
 }
 
-// =====================================================================
-// GRASS SYSTEMS
+/**
+ * Set every field in a group to a grazing plan — each field's planned_cuts
+ * become all 'grazing' (keeping its existing cut_profile length, min 1). This
+ * makes a whole grazing block show on the grazing top-up report in one go,
+ * instead of editing each field's plan by hand.
+ *
+ * Only touches planned_cuts (and normalises a 0/empty profile to 1). Does NOT
+ * change a field's logged cuts — a field with a recent non-grazing cut keeps
+ * that cut's next_action until its next grazing round is logged.
+ */
+export async function setGroupToGrazing(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  await requireAdmin();
+
+  const groupId = String(formData.get('group_id') ?? '').trim();
+  if (!groupId) throw new Error('Group id is required');
+
+  // Confirm the group is the user's (clearer error than an RLS failure).
+  const { data: groupRow, error: groupErr } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', groupId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (groupErr || !groupRow) throw new Error('Group not found or not yours');
+
+  // Fetch the group's fields — need each cut_profile to size planned_cuts.
+  const { data: groupFields, error: fieldsErr } = await supabase
+    .from('fields')
+    .select('id, cut_profile')
+    .eq('user_id', user.id)
+    .eq('group_id', groupId);
+  if (fieldsErr) throw new Error(`Could not load group fields: ${fieldsErr.message}`);
+
+  const now = new Date().toISOString();
+  for (const f of groupFields ?? []) {
+    const profile = Math.max(1, Number(f.cut_profile) || 1);
+    const plannedCuts: CutType[] = Array(profile).fill('grazing');
+    const { error } = await supabase
+      .from('fields')
+      .update({ cut_profile: profile, planned_cuts: plannedCuts, updated_at: now })
+      .eq('id', f.id)
+      .eq('user_id', user.id);
+    if (error) throw new Error(`Could not update field: ${error.message}`);
+  }
+
+  revalidatePath('/');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/spreading');
+  revalidatePath('/settings/groups');
+  revalidatePath(`/settings/groups/${groupId}`);
+}
 // =====================================================================
 //
 // Library has shared seeds (user_id NULL) shipped by migration plus
