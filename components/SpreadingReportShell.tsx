@@ -20,6 +20,9 @@ import {
   fmt,
   fmtDateShort,
   getCutTargets,
+  getFieldPKRecommendation,
+  organicReleaseFraction,
+  monthsBetween,
   getNCap,
   getNextCutType,
   getOfftakeForCut,
@@ -985,8 +988,11 @@ function ReportSection(props: {
         ? 1
         : Math.min(s.cutsDoneThisSeason + 1, f.cut_profile);
       const baseTarget = getCutTargets(f, cutNumber, settings, system, s.seasonCuts);
+      // P & K target from the RB209 build-up recommendation (matches fert plan,
+      // P&K status, field detail); N stays from getCutTargets.
+      const pkRec = getFieldPKRecommendation(f, cutNumber, s.seasonCuts);
       const fullTarget: Triple = baseTarget
-        ? { n: baseTarget.n, p: baseTarget.p2o5, k: baseTarget.k2o }
+        ? { n: baseTarget.n, p: pkRec.p2o5, k: pkRec.k2o + pkRec.extraKAfterCut }
         : { n: 0, p: 0, k: 0 };
 
       // Apply split if requested.
@@ -1013,7 +1019,23 @@ function ReportSection(props: {
       let carryover = { p: 0, k: 0 };
       if (s.lastCut && mode !== 'spring') {
         const preCutApps = seasonApps.filter((a) => a.date_applied < windowStart);
-        const preCutTotals = sumNutrients(preCutApps, products);
+        // Release pre-cut P/K over time by material type (slurry fast, FYM
+        // slow), matching the fert plan / P&K status / field detail.
+        const relParams = {
+          releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
+          releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
+          releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
+          releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
+          releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
+        };
+        let preP = 0, preK = 0;
+        for (const a of preCutApps) {
+          const t = (products.find((p) => p.id === a.product_id)?.type ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
+          const frac = organicReleaseFraction(t, monthsBetween(a.date_applied, todayIso), relParams);
+          const nut = sumNutrients([a], products);
+          preP += nut.p * frac;
+          preK += nut.k * frac;
+        }
         let pOff = 0, kOff = 0;
         const fCuts = cuts
           .filter((c) => c.field_id === f.id && c.cut_date >= seasonStart)
@@ -1023,8 +1045,8 @@ function ReportSection(props: {
           pOff += o.p2o5; kOff += o.k2o;
         });
         carryover = {
-          p: Math.max(0, preCutTotals.p - pOff),
-          k: Math.max(0, preCutTotals.k - kOff),
+          p: Math.max(0, preP - pOff),
+          k: Math.max(0, preK - kOff),
         };
       }
       const applied: Triple = {

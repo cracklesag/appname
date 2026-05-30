@@ -5,7 +5,8 @@ import {
 } from '@/lib/data';
 import {
   getSeasonStart, sumNutrients, getResolvedNextCutType, getPlannedCuts,
-  getFieldPKShortfall, getFieldNRecommendation, displayFieldArea,
+  getFieldPKRecommendation, getFieldNRecommendation, displayFieldArea,
+  getOfftakeForCut, organicReleaseFraction, monthsBetween,
   nutrientPerArea, nutrientUnitLabel,
 } from '@/lib/rules';
 import * as rb209 from '@/lib/rb209';
@@ -33,11 +34,10 @@ export default async function PKStatusPage({
   const rows: PKFieldRow[] = fields
     .filter((f) => !f.needs_setup)
     .map((f) => {
-      // Season-to-date applied (kg/ha) — used for P & K.
+      // Applications this season for this field.
       const fieldApps = applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
       );
-      const applied = sumNutrients(fieldApps, products);
 
       // Which cut number are we at (cuts done this season + 1)?
       const fieldCuts = cuts.filter((c) => c.field_id === f.id);
@@ -52,12 +52,47 @@ export default async function PKStatusPage({
       // suppress this cut's N recommendation.
       const nWindowStart = lastCut ? lastCut.cut_date : seasonStart;
       const sinceCutApps = fieldApps.filter((a) => a.date_applied >= nWindowStart);
-      const appliedNSinceCut = sumNutrients(sinceCutApps, products).n;
+      const sinceCutTotals = sumNutrients(sinceCutApps, products);
+      const appliedNSinceCut = sinceCutTotals.n;
 
-      const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
-        f, cutNumber, applied.p, applied.k, fieldCuts,
-      );
+      // P & K carryover: pre-cut applications, released over time by material
+      // type, net of crop offtake — same model as the fertiliser plan so the
+      // two screens agree and pre-cut slurry isn't counted at full value.
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const releaseParams = {
+        releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
+        releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
+        releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
+        releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
+        releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
+      };
+      const productTypeById = new Map(products.map((p) => [p.id, p.type]));
+      const preCutApps = fieldApps.filter((a) => a.date_applied < nWindowStart);
+      let carryPRaw = 0, carryKRaw = 0;
+      for (const a of preCutApps) {
+        const t = (productTypeById.get(a.product_id) ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
+        const frac = organicReleaseFraction(t, monthsBetween(a.date_applied, todayIso), releaseParams);
+        const nut = sumNutrients([a], products);
+        carryPRaw += nut.p * frac;
+        carryKRaw += nut.k * frac;
+      }
+      let pOff = 0, kOff = 0;
+      for (const c of seasonCuts) {
+        const o = getOfftakeForCut(f.cut_profile, c.cut_number, c.yield_class, settings, c.cut_type);
+        pOff += o.p2o5; kOff += o.k2o;
+      }
+      const carryP = Math.max(0, carryPRaw - pOff);
+      const carryK = Math.max(0, carryKRaw - kOff);
+
+      const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts);
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
+
+      // Available P/K = carryover + applied since the cut; shortfall is the
+      // gross RB209 build-up need less that.
+      const availP = carryP + sinceCutTotals.p;
+      const availK = carryK + sinceCutTotals.k;
+      const p2o5ToApply = Math.max(0, Math.round(rec.p2o5 - availP));
+      const k2oToApply = Math.max(0, Math.round((rec.k2o + rec.extraKAfterCut) - availK));
 
       const area = displayFieldArea(f, settings.unitSystem);
       const groupName = groups.find((g) => g.id === f.group_id)?.name ?? null;
@@ -90,8 +125,8 @@ export default async function PKStatusPage({
         recP2o5: conv(rec.p2o5),
         recK2o: conv(rec.k2o + rec.extraKAfterCut),
         appliedN: conv(appliedNSinceCut),
-        appliedP: conv(applied.p),
-        appliedK: conv(applied.k),
+        appliedP: conv(availP),
+        appliedK: conv(availK),
         atMaintenance: rec.atMaintenance,
         kSplit: rec.kSplit
           ? { previousAutumn: conv(rec.kSplit.previousAutumn), spring: conv(rec.kSplit.spring), springCapped: rec.kSplit.springCapped }

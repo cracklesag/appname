@@ -17,6 +17,7 @@ import {
   isSampleStale, sampleAgeYears, sampleYear,
   getSoilType, SOIL_TYPE_SHORT_LABELS,
   getCutTargets, getOfftakeForCut, getResolvedNextCutType, getSeasonLabel, getSeasonStart, methodLabel,
+  getFieldPKRecommendation, organicReleaseFraction, monthsBetween,
   NEXT_CUT_LABELS,
   resolveGrassSystem,
   soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
@@ -71,24 +72,53 @@ export default async function FieldDetailPage({
   // shows "Maintenance" / "Grazing" when the user has flagged the field
   // accordingly, not the static planned_cuts entry.
   const resolvedNextCutType = getResolvedNextCutType(field, fCuts);
-  const targets = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem, fCuts) : null;
+  // N target from getCutTargets (offtake/system-based). P & K targets from the
+  // RB209 recommendation (build-up at low index + catch-up K) so the field
+  // detail matches the fertiliser plan and P&K status exactly.
+  const nTargetSrc = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem, fCuts) : null;
+  const pkRec = cutsRemaining > 0 ? getFieldPKRecommendation(field, nextCutNumber, fCuts) : null;
+  const targets = (nTargetSrc && pkRec) ? {
+    n: nTargetSrc.n,
+    p2o5: pkRec.p2o5,
+    k2o: pkRec.k2o + pkRec.extraKAfterCut,
+    yieldDM: nTargetSrc.yieldDM,
+    cutType: nTargetSrc.cutType,
+  } : null;
 
   const appsSinceCut = seasonApps.filter((a) => a.date_applied >= windowStart);
   const sinceCutTotals = sumNutrients(appsSinceCut, products);
 
-  // Carryover from before last cut, but within season — P and K only
+  // Carryover from before last cut (within season) — P and K only. Each pre-cut
+  // application is released over time by material type (slurry fast, FYM slow),
+  // then crop offtake from cuts taken is netted off. Matches the fert plan.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const releaseParams = {
+    releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
+    releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
+    releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
+    releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
+    releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
+  };
   let carryover = { p: 0, k: 0 };
   if (lastCut) {
     const preCutApps = seasonApps.filter((a) => a.date_applied < windowStart);
-    const preCutTotals = sumNutrients(preCutApps, products);
+    let carryPRaw = 0, carryKRaw = 0;
+    for (const a of preCutApps) {
+      const t = (products.find((p) => p.id === a.product_id)?.type ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
+      const months = monthsBetween(a.date_applied, todayIso);
+      const frac = organicReleaseFraction(t, months, releaseParams);
+      const nut = sumNutrients([a], products);
+      carryPRaw += nut.p * frac;
+      carryKRaw += nut.k * frac;
+    }
     let pOff = 0, kOff = 0;
     [...fCuts].sort((a, b) => a.cut_date.localeCompare(b.cut_date)).forEach((c) => {
       const o = getOfftakeForCut(field.cut_profile, c.cut_number, c.yield_class, settings, c.cut_type);
       pOff += o.p2o5; kOff += o.k2o;
     });
     carryover = {
-      p: Math.max(0, preCutTotals.p - pOff),
-      k: Math.max(0, preCutTotals.k - kOff),
+      p: Math.max(0, carryPRaw - pOff),
+      k: Math.max(0, carryKRaw - kOff),
     };
   }
 

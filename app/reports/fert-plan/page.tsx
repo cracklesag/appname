@@ -5,7 +5,7 @@ import {
   loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings,
 } from '@/lib/data';
 import {
-  getSeasonStart, sumNutrients, getFieldPKShortfall, displayFieldArea,
+  getSeasonStart, sumNutrients, getFieldPKRecommendation, displayFieldArea,
   getFieldNRecommendation, getOfftakeForCut, organicReleaseFraction, monthsBetween,
 } from '@/lib/rules';
 import { FertPlanShell, FertPlanRow } from '@/components/FertPlanShell';
@@ -99,9 +99,20 @@ export default async function FertPlanPage({
       const loggedOrganic = sumNutrients(sinceCutOrganic, products);
       const loggedGranular = sumNutrients(sinceCutGranular, products);
 
-      const { rec, p2o5ToApply, k2oToApply } = getFieldPKShortfall(
-        f, cutNumber, applied.p, applied.k, fieldCuts,
-      );
+      // RB209 P & K recommendation for this cut (the gross need).
+      const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts);
+      const pGrossNeed = rec.p2o5;
+      const kGrossNeed = rec.k2o + rec.extraKAfterCut;
+
+      // ONE consistent P/K model: the shortfall the granular planner must
+      // cover = gross need − carryover (pre-cut, released, net of offtake)
+      // − what's already gone on since the cut (logged organic + granular).
+      // This replaces the old whole-season "applied" subtraction, which
+      // double-counted pre-cut slurry and made MOP read far too low.
+      const pSupplyBeforePlan = carryP + loggedOrganic.p + loggedGranular.p;
+      const kSupplyBeforePlan = carryK + loggedOrganic.k + loggedGranular.k;
+      const p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
+      const k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
       const nToApply = Math.max(0, Math.round(nRec.n - appliedNSinceCut));
 
