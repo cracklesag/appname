@@ -26,6 +26,7 @@ import {
   getSoilType,
   isSampleStale,
   NEXT_CUT_LABELS,
+  nutrientPerArea,
   NextCutType,
   resolveFieldNextAction,
   resolveGrassSystem,
@@ -482,6 +483,8 @@ function SnapshotRow({
 }) {
   const f = state.field;
   const area = displayFieldArea(f, settings.unitSystem);
+  const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
+  const disp = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
 
   const tgt = settings.soilTargets;
 
@@ -540,9 +543,9 @@ function SnapshotRow({
         {/* Right column: season totals + next cut */}
         <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
           <div style={{ marginBottom: 4 }}>
-            Season: <strong style={{ color: 'var(--ink)' }}>{fmt(state.seasonApplied.n)}</strong>N
-            {' · '}<strong style={{ color: 'var(--ink)' }}>{fmt(state.seasonApplied.p)}</strong>P
-            {' · '}<strong style={{ color: 'var(--ink)' }}>{fmt(state.seasonApplied.k)}</strong>K kg/ha
+            Season: <strong style={{ color: 'var(--ink)' }}>{fmt(disp(state.seasonApplied.n))}</strong>N
+            {' · '}<strong style={{ color: 'var(--ink)' }}>{fmt(disp(state.seasonApplied.p))}</strong>P
+            {' · '}<strong style={{ color: 'var(--ink)' }}>{fmt(disp(state.seasonApplied.k))}</strong>K {nUnit}
             {state.seasonApplied.n > state.nCap && (
               <span style={{ color: 'var(--red, #b85b3a)' }}> · over cap!</span>
             )}
@@ -550,10 +553,10 @@ function SnapshotRow({
           {state.gap && (state.gap.n > 1 || state.gap.p > 1 || state.gap.k > 1) ? (
             <div>
               Gap to next cut:
-              {state.gap.n > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(state.gap.n)}</strong>N</>}
-              {state.gap.p > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(state.gap.p)}</strong>P</>}
-              {state.gap.k > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(state.gap.k)}</strong>K</>}
-              {' kg/ha'}
+              {state.gap.n > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(disp(state.gap.n))}</strong>N</>}
+              {state.gap.p > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(disp(state.gap.p))}</strong>P</>}
+              {state.gap.k > 1 && <> <strong style={{ color: 'var(--red, #b85b3a)' }}>{fmt(disp(state.gap.k))}</strong>K</>}
+              {' '}{nUnit}
             </div>
           ) : state.gap ? (
             <div style={{ color: 'var(--forest-dark, #3d5b29)' }}>Next cut covered ✓</div>

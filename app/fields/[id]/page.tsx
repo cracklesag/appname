@@ -13,7 +13,7 @@ import {
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import {
-  CUT_TYPE_LABELS, displayBagAmount, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
+  CUT_TYPE_LABELS, nutrientPerArea, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
   getSoilType, SOIL_TYPE_SHORT_LABELS,
   getCutTargets, getOfftakeForCut, getResolvedNextCutType, getSeasonLabel, getSeasonStart, methodLabel,
@@ -290,16 +290,18 @@ export default async function FieldDetailPage({
               )}
             </div>
             {targets && (() => {
-              const nView   = displayBagAmount(availableForNextCut.n, settings.bagFertUnit);
-              const pView   = displayBagAmount(availableForNextCut.p, settings.bagFertUnit);
-              const kView   = displayBagAmount(availableForNextCut.k, settings.bagFertUnit);
-              const nTgt    = displayBagAmount(targets.n,    settings.bagFertUnit).value;
-              const pTgt    = displayBagAmount(targets.p2o5, settings.bagFertUnit).value;
-              const kTgt    = displayBagAmount(targets.k2o,  settings.bagFertUnit).value;
-              const pCarry  = displayBagAmount(carryover.p,  settings.bagFertUnit).value;
-              const kCarry  = displayBagAmount(carryover.k,  settings.bagFertUnit).value;
-              const sView   = displayBagAmount(availableForNextCut.so3, settings.bagFertUnit);
-              const mView   = displayBagAmount(availableForNextCut.mgo, settings.bagFertUnit);
+              const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
+              const cv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+              const nView   = { value: cv(availableForNextCut.n), unit: nUnit };
+              const pView   = { value: cv(availableForNextCut.p), unit: nUnit };
+              const kView   = { value: cv(availableForNextCut.k), unit: nUnit };
+              const nTgt    = cv(targets.n);
+              const pTgt    = cv(targets.p2o5);
+              const kTgt    = cv(targets.k2o);
+              const pCarry  = cv(carryover.p);
+              const kCarry  = cv(carryover.k);
+              const sView   = { value: cv(availableForNextCut.so3), unit: nUnit };
+              const mView   = { value: cv(availableForNextCut.mgo), unit: nUnit };
               const showSulphurMagnesium = availableForNextCut.so3 > 0 || availableForNextCut.mgo > 0;
               return (
                 <>
@@ -442,11 +444,13 @@ export default async function FieldDetailPage({
             </div>
             <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
               {(() => {
-                const nView = displayBagAmount(seasonTotals.n, settings.bagFertUnit);
-                const pView = displayBagAmount(seasonTotals.p, settings.bagFertUnit);
-                const kView = displayBagAmount(seasonTotals.k, settings.bagFertUnit);
-                const sView = displayBagAmount(seasonTotals.so3, settings.bagFertUnit);
-                const mView = displayBagAmount(seasonTotals.mgo, settings.bagFertUnit);
+                const nUnit2 = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
+                const cv2 = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+                const nView = { value: cv2(seasonTotals.n), unit: nUnit2 };
+                const pView = { value: cv2(seasonTotals.p), unit: nUnit2 };
+                const kView = { value: cv2(seasonTotals.k), unit: nUnit2 };
+                const sView = { value: cv2(seasonTotals.so3), unit: nUnit2 };
+                const mView = { value: cv2(seasonTotals.mgo), unit: nUnit2 };
                 return (
                   <>
                     <div style={{ flex: '1 1 60px' }}>

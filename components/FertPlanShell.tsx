@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { fmt, calcNutrients, planFieldFertiliser } from '@/lib/rules';
+import { fmt, calcNutrients, planFieldFertiliser, nutrientPerArea } from '@/lib/rules';
 import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit } from '@/lib/types';
@@ -48,6 +48,12 @@ export function FertPlanShell({
   slurryUnit: 'gal/ac' | 'm3/ha';
 }) {
   const [groupFilter, setGroupFilter] = useState(initialGroup);
+
+  // Display unit for nutrient & rate figures (the planner works internally in
+  // kg/ha; we convert only for display so acres users see per-acre numbers).
+  const sys = unitSystem === 'acres' ? 'acres' : 'hectares';
+  const nUnit = sys === 'acres' ? 'kg/ac' : 'kg/ha';
+  const disp = (kgHa: number) => Math.round(nutrientPerArea(kgHa, sys));
 
   // Organic sources the user can plan to apply first (slurry / solid / digestate).
   const organics = useMemo(
@@ -338,7 +344,7 @@ export function FertPlanShell({
             {/* Planned slurry contribution */}
             {c.slurryTotal > 0 && (
               <div style={{ fontSize: 11, color: 'var(--forest-dark)', marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '6px 9px' }}>
-                {c.organicName}: delivers ~{c.slurryN}N · {c.slurryP}P · {c.slurryK}K kg/ha
+                {c.organicName}: delivers ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}
               </div>
             )}
 
@@ -359,8 +365,8 @@ export function FertPlanShell({
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(p.totalKg)} kg over field</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{p.rateKgPerHa}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>kg/ha</div>
+                      <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{disp(p.rateKgPerHa)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nUnit}</div>
                     </div>
                   </div>
                 ))}
@@ -374,9 +380,9 @@ export function FertPlanShell({
             {/* Need-vs-supply bars */}
             {!atTarget && (
               <div style={{ marginTop: 9 }}>
-                <SupplyBar label="N"  need={row.nNeed} supply={c.supplyN} />
-                <SupplyBar label="P₂O₅" need={row.pNeed} supply={c.supplyP} />
-                <SupplyBar label="K₂O" need={row.kNeed} supply={c.supplyK} />
+                <SupplyBar label="N"  need={disp(row.nNeed)} supply={disp(c.supplyN)} unit={nUnit} />
+                <SupplyBar label="P₂O₅" need={disp(row.pNeed)} supply={disp(c.supplyP)} unit={nUnit} />
+                <SupplyBar label="K₂O" need={disp(row.kNeed)} supply={disp(c.supplyK)} unit={nUnit} />
               </div>
             )}
 

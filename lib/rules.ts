@@ -194,11 +194,22 @@ const GAL_AC_PER_M3_HA = 89.0;
 const T_AC_PER_T_HA = 0.4047;
 
 /**
- * Display a field's area in the user's preferred system. Returns the numeric
- * value and the unit label. Field rows always carry both `acres` and `ha`
- * (kept in sync by the AddFieldForm and the importer), so this is just a
- * choice of which column to display, not a conversion.
+ * Convert a nutrient/areal figure stored in kg/ha to the user's chosen unit
+ * SYSTEM (acres or hectares). This is the master conversion for every
+ * nutrient number shown in the app — N/P/K need & supply, offtake, N caps.
+ * The acres/hectares setting is authoritative: acres → kg/ac, hectares →
+ * kg/ha, regardless of how the field area was originally entered.
  */
+export function nutrientPerArea(kgPerHa: number, system: Settings['unitSystem']): number {
+  return system === 'acres' ? kgPerHa / KG_HA_PER_KG_AC : kgPerHa;
+}
+
+/** The unit label for a nutrient figure given the user's system. */
+export function nutrientUnitLabel(system: Settings['unitSystem']): string {
+  return system === 'acres' ? 'kg/ac' : 'kg/ha';
+}
+
+
 export function displayFieldArea(field: { acres: number; ha: number }, system: Settings['unitSystem']): { value: number; unit: 'ac' | 'ha' } {
   return system === 'acres'
     ? { value: field.acres, unit: 'ac' }

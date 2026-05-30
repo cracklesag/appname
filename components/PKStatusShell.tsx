@@ -66,6 +66,7 @@ export function PKStatusShell({
   initialGroup: string;
   unitSystem: string;
 }) {
+  const nUnit = unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
   const [groupFilter, setGroupFilter] = useState(initialGroup);
 
   const visible = useMemo(() => {
@@ -84,16 +85,17 @@ export function PKStatusShell({
       });
   }, [rows, groupFilter]);
 
-  // Totals across the visible set, scaled by field area (kg of actual product nutrient).
+  // Totals across the visible set, scaled by field area (kg of actual nutrient).
+  // Both the per-area rate and the area are now in the user's chosen system
+  // (kg/ac × acres, or kg/ha × ha), so a straight multiply gives total kg.
   const totals = useMemo(() => {
     let pKg = 0, kKg = 0;
     for (const { row } of visible) {
-      const ha = unitSystem === 'acres' ? row.areaValue / 2.4711 : row.areaValue;
-      pKg += row.p2o5ToApply * ha;
-      kKg += row.k2oToApply * ha;
+      pKg += row.p2o5ToApply * row.areaValue;
+      kKg += row.k2oToApply * row.areaValue;
     }
     return { pKg: Math.round(pKg), kKg: Math.round(kKg) };
-  }, [visible, unitSystem]);
+  }, [visible]);
 
   const anyUngrouped = rows.some((r) => !r.groupId);
   const chips = [
@@ -187,21 +189,21 @@ export function PKStatusShell({
             )}
 
             {/* Need-vs-supply bars: applied this season vs RB209 need. */}
-            <SupplyBar label="N" need={row.recN} supply={row.appliedN} />
-            <SupplyBar label={`P₂O₅ · index ${row.pBand}`} need={row.recP2o5} supply={row.appliedP} />
-            <SupplyBar label={`K₂O · index ${row.kBandLabel}`} need={row.recK2o} supply={row.appliedK} />
+            <SupplyBar label="N" need={row.recN} supply={row.appliedN} unit={nUnit} />
+            <SupplyBar label={`P₂O₅ · index ${row.pBand}`} need={row.recP2o5} supply={row.appliedP} unit={nUnit} />
+            <SupplyBar label={`K₂O · index ${row.kBandLabel}`} need={row.recK2o} supply={row.appliedK} unit={nUnit} />
 
             {/* First-cut K split + catch-up hints */}
             {(row.kSplit || row.extraKAfterCut > 0) && (
               <div style={{ marginTop: 7, fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
                 {row.kSplit && (
                   <div>
-                    K timing: {row.kSplit.previousAutumn} kg/ha previous autumn, {row.kSplit.spring} kg/ha spring
+                    K timing: {row.kSplit.previousAutumn} {nUnit} previous autumn, {row.kSplit.spring} {nUnit} spring
                     {row.kSplit.springCapped && ' (spring capped at 80 — balance to autumn)'}
                   </div>
                 )}
                 {row.extraKAfterCut > 0 && (
-                  <div>+{row.extraKAfterCut} kg/ha K₂O catch-up after cutting (soil K at/below 2+)</div>
+                  <div>+{row.extraKAfterCut} {nUnit} K₂O catch-up after cutting (soil K at/below 2+)</div>
                 )}
               </div>
             )}

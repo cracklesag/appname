@@ -13,6 +13,7 @@ import {
 } from '@/lib/types';
 import {
   displayBagAmount,
+  nutrientPerArea,
   displayFieldArea,
   fmt,
   fmtDateShort,
@@ -79,6 +80,8 @@ export function GrazingReportShell({
 
   const cadenceKgN = settings.reportDefaults.grazingCadenceKgN;
   const cadenceWeeks = settings.reportDefaults.grazingCadenceWeeks;
+  const shellNUnit = settings.unitSystem === 'acres' ? 'kg N/ac' : 'kg N/ha';
+  const cadenceDisp = Math.round(nutrientPerArea(cadenceKgN, settings.unitSystem));
 
   const writeUrl = useCallback(
     (next: { group?: string; windowWeeks?: number; dueOnly?: boolean }) => {
@@ -283,7 +286,7 @@ export function GrazingReportShell({
     <div style={{ padding: 16 }}>
       {/* Cadence settings hint */}
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
-        Cadence: <strong>{cadenceKgN} kg N/ha every {cadenceWeeks} week{cadenceWeeks === 1 ? '' : 's'}</strong>
+        Cadence: <strong>{cadenceDisp} {shellNUnit} every {cadenceWeeks} week{cadenceWeeks === 1 ? '' : 's'}</strong>
         {' · '}<a href="/settings" style={{ color: 'var(--forest-dark, #3d5b29)' }}>change in settings</a>
       </div>
 
@@ -338,7 +341,7 @@ export function GrazingReportShell({
       <div className="print-only" style={{ marginBottom: 12 }}>
         <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>Grazing top-up schedule</h2>
         <div style={{ fontSize: 11, color: '#555' }}>
-          {cadenceKgN} kg N/ha every {cadenceWeeks} week{cadenceWeeks === 1 ? '' : 's'} · {fmtFullDate(todayIso)}
+          {cadenceDisp} {shellNUnit} every {cadenceWeeks} week{cadenceWeeks === 1 ? '' : 's'} · {fmtFullDate(todayIso)}
         </div>
       </div>
 
@@ -449,7 +452,9 @@ function GrazingFieldCard({
     status.kind === 'upcoming' ? { tone: 'var(--forest-dark, #3d5b29)', label: `In ${status.days}d` } :
                                   { tone: 'var(--ink-soft, #6a6055)', label: 'Awaiting first dose' };
 
-  const recommendedNView = displayBagAmount(cadenceKgN, settings.bagFertUnit);
+  const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
+  const cv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+  const recommendedNView = { value: cv(cadenceKgN), unit: nUnit };
   const totalNKg = cadenceKgN * f.ha;
 
   const nCapHeadroom = nCap - seasonNApplied;
@@ -484,7 +489,7 @@ function GrazingFieldCard({
         {lastNApp ? (
           <>
             Last N: <strong style={{ color: 'var(--ink)' }}>{fmtDateShort(lastNApp.date)}</strong>
-            {' '}({fmt(lastNApp.nPerHa)} kg N/ha)
+            {' '}({fmt(cv(lastNApp.nPerHa))} {nUnit} N)
             {' · '}Next due: <strong style={{ color: 'var(--ink)' }}>{fmtDateShort(nextDueIso)}</strong>
           </>
         ) : (
@@ -518,8 +523,8 @@ function GrazingFieldCard({
           color: overCap ? 'var(--red, #b85b3a)' : 'var(--ink-soft)',
         }}>
           {overCap
-            ? `⚠ Over annual N cap — ${fmt(seasonNApplied)} kg/ha applied vs ${nCap} cap.`
-            : `Approaching annual N cap — ${fmt(seasonNApplied)} kg/ha of ${nCap} (${fmt(nCapHeadroom)} headroom).`}
+            ? `⚠ Over annual N cap — ${fmt(cv(seasonNApplied))} ${nUnit} applied vs ${cv(nCap)} cap.`
+            : `Approaching annual N cap — ${fmt(cv(seasonNApplied))} ${nUnit} of ${cv(nCap)} (${fmt(cv(nCapHeadroom))} headroom).`}
         </div>
       )}
     </div>

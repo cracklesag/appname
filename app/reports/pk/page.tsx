@@ -6,6 +6,7 @@ import {
 import {
   getSeasonStart, sumNutrients, getResolvedNextCutType, getPlannedCuts,
   getFieldPKShortfall, getFieldNRecommendation, displayFieldArea,
+  nutrientPerArea, nutrientUnitLabel,
 } from '@/lib/rules';
 import * as rb209 from '@/lib/rb209';
 import { PKStatusShell, PKFieldRow } from '@/components/PKStatusShell';
@@ -64,6 +65,11 @@ export default async function PKStatusPage({
       // Within-band hint: where the decimal index sits, e.g. "K 2- (low in band)".
       const kBandLabel = rec.kBand;
 
+      // Convert every nutrient figure from kg/ha to the user's unit system
+      // (acres → kg/ac, hectares → kg/ha). The acres/hectares setting is the
+      // master switch for all areal numbers shown.
+      const conv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+
       return {
         id: f.id,
         name: f.name,
@@ -78,17 +84,19 @@ export default async function PKStatusPage({
         kBandLabel,
         cutType: rec.cutType,
         cutNumber: rec.cutNumber,
-        p2o5ToApply,
-        k2oToApply,
-        recN: Math.round(nRec.n),
-        recP2o5: rec.p2o5,
-        recK2o: rec.k2o + rec.extraKAfterCut,
-        appliedN: Math.round(appliedNSinceCut),
-        appliedP: Math.round(applied.p),
-        appliedK: Math.round(applied.k),
+        p2o5ToApply: conv(p2o5ToApply),
+        k2oToApply: conv(k2oToApply),
+        recN: conv(nRec.n),
+        recP2o5: conv(rec.p2o5),
+        recK2o: conv(rec.k2o + rec.extraKAfterCut),
+        appliedN: conv(appliedNSinceCut),
+        appliedP: conv(applied.p),
+        appliedK: conv(applied.k),
         atMaintenance: rec.atMaintenance,
-        kSplit: rec.kSplit ?? null,
-        extraKAfterCut: rec.extraKAfterCut,
+        kSplit: rec.kSplit
+          ? { previousAutumn: conv(rec.kSplit.previousAutumn), spring: conv(rec.kSplit.spring), springCapped: rec.kSplit.springCapped }
+          : null,
+        extraKAfterCut: conv(rec.extraKAfterCut),
       };
     });
 

@@ -15,6 +15,7 @@ import {
 import {
   calcNutrients,
   displayBagAmount,
+  nutrientPerArea,
   displayFieldArea,
   fmt,
   fmtDateShort,
@@ -388,7 +389,7 @@ export function SpreadingReportShell({
   // ---- Calibration unit labels (driven by user settings) -----------
   const slurryUnitLabel = settings.slurryUnit; // 'gal/ac' or 'm3/ha'
   const solidUnitLabel = settings.unitSystem === 'acres' ? 't/ac' : 't/ha';
-  const granularUnitLabel = 'kg N/ha';
+  const granularUnitLabel = settings.unitSystem === 'acres' ? 'kg N/ac' : 'kg N/ha';
 
   // For the split panel: only show the panel when split is on. The first %
   // is read from settings (front-loaded). If the user is on dressing 2 of 2
@@ -1059,7 +1060,10 @@ function ReportSection(props: {
         planned.k += n.k2oPerHa;
       }
       if (planN > 0) {
-        planned.n += planN;
+        // planN is entered in the user's unit (kg N/ac or kg N/ha). The maths
+        // works in kg/ha, so convert per-acre entries up.
+        const planNKgHa = settings.unitSystem === 'acres' ? planN * 2.4711 : planN;
+        planned.n += planNKgHa;
         // No P/K contribution from the "N only" granular intent.
       }
 
@@ -1169,7 +1173,7 @@ function ReportSection(props: {
             Plan:
             {planSlurry > 0 && ` ${fmt(planSlurry)} ${slurryUnit} slurry`}
             {planSolid > 0 && `${planSlurry > 0 ? ',' : ''} ${fmt(planSolid, 1)} ${solidUnit} solid`}
-            {planN > 0 && `${planSlurry > 0 || planSolid > 0 ? ',' : ''} ${fmt(planN)} kg N/ha granular`}
+            {planN > 0 && `${planSlurry > 0 || planSolid > 0 ? ',' : ''} ${fmt(planN)} ${settings.unitSystem === 'acres' ? 'kg N/ac' : 'kg N/ha'} granular`}
             {split === 'split' && ` · dressing ${dressingNumber} of ${totalDressings}`}
           </div>
         )}
@@ -1334,6 +1338,9 @@ function ReportFieldCard({
           <NutrientRow label="K₂O"  values={[target.k, applied.k, planned.k, remaining.k]} short={remaining.k > 1} settings={settings} />
         </tbody>
       </table>
+      <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'right', marginTop: 2 }}>
+        all figures {settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'}
+      </div>
 
       {/* Total kg for the field — useful for ordering bags */}
       {(remaining.n > 1 || remaining.p > 1 || remaining.k > 1) && (
@@ -1357,8 +1364,8 @@ function ReportFieldCard({
           color: overCap ? 'var(--red, #b85b3a)' : 'var(--ink-soft)',
         }}>
           {overCap
-            ? `⚠ Over annual N cap — ${fmt(seasonNApplied)} kg/ha applied vs ${nCap} cap.`
-            : `Approaching annual N cap — ${fmt(seasonNApplied)} kg/ha of ${nCap} (${fmt(nCapHeadroom)} headroom).`}
+            ? `⚠ Over annual N cap — ${fmt(Math.round(nutrientPerArea(seasonNApplied, settings.unitSystem)))} ${settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'} applied vs ${Math.round(nutrientPerArea(nCap, settings.unitSystem))} cap.`
+            : `Approaching annual N cap — ${fmt(Math.round(nutrientPerArea(seasonNApplied, settings.unitSystem)))} ${settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'} of ${Math.round(nutrientPerArea(nCap, settings.unitSystem))} (${fmt(Math.round(nutrientPerArea(nCapHeadroom, settings.unitSystem)))} headroom).`}
         </div>
       )}
 
@@ -1429,10 +1436,7 @@ function NutrientRow({
       fontWeight: opts?.emphasise ? 700 : 400,
       fontVariantNumeric: 'tabular-nums',
     }}>
-      {(() => {
-        const v = displayBagAmount(n, settings.bagFertUnit);
-        return fmt(v.value);
-      })()}
+      {fmt(Math.round(nutrientPerArea(n, settings.unitSystem)))}
     </td>
   );
 
