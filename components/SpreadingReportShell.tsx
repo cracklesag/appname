@@ -38,10 +38,10 @@ import {
   shouldFlagSulphurRisk,
   SOIL_TYPE_SHORT_LABELS,
   getSoilType,
-  soilMetricColor,
   sumNutrients,
 } from '@/lib/rules';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
+import { SoilHeatBar } from '@/components/SoilHeatBar';
 
 type ReportMode = 'post_cut' | 'spring' | 'mid_season';
 
@@ -1255,11 +1255,8 @@ function ReportFieldCard({
 
   const area = displayFieldArea(f, settings.unitSystem);
 
-  // Soil index colour helpers (matches home dashboard treatment).
+  // Soil targets for the heat bars.
   const tgt = settings.soilTargets;
-  const phColor = soilMetricColor(f.ph, tgt.pH);
-  const pColor  = soilMetricColor(f.p_idx, tgt.pIdx);
-  const kColor  = soilMetricColor(f.k_idx, tgt.kIdx);
 
   // N cap warning — flag if season-to-date N is within 20 kg/ha of cap.
   const nCapHeadroom = nCap - seasonNApplied;
@@ -1297,21 +1294,21 @@ function ReportFieldCard({
         </span>
       </div>
 
-      {/* Soil indices + sample year */}
+      {/* Soil heat-map bars + sample year */}
       {f.sampled && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 10, fontSize: 12, flexWrap: 'wrap' }}>
-          <span><span style={{ color: 'var(--muted)' }}>pH </span><span style={{ color: phColor, fontWeight: 700 }}>{f.ph ?? '—'}</span></span>
-          <span><span style={{ color: 'var(--muted)' }}>P </span><span style={{ color: pColor, fontWeight: 700 }}>{f.p_idx ?? '—'}</span></span>
-          <span><span style={{ color: 'var(--muted)' }}>K </span><span style={{ color: kColor, fontWeight: 700 }}>{f.k_idx ?? '—'}</span></span>
+        <div style={{ marginBottom: 10 }}>
+          <SoilHeatBar label="pH" value={f.ph} target={tgt.pH} max={7.5} />
+          <SoilHeatBar label="P" value={f.p_idx} target={tgt.pIdx} max={4} />
+          <SoilHeatBar label="K" value={f.k_idx} target={tgt.kIdx} max={4} />
           {(() => {
             const yr = sampleYear(f);
             const age = sampleAgeYears(f);
             const stale = isSampleStale(f);
             if (yr == null) return null;
             return (
-              <span style={{ color: stale ? 'var(--red, #b85b3a)' : 'var(--muted)' }}>
-                Sampled {yr}{age != null && age > 0 ? ` (${age}y old${stale ? ' — stale' : ''})` : ''}
-              </span>
+              <div style={{ fontSize: 10, color: stale ? 'var(--red, #b85b3a)' : 'var(--muted)', marginTop: 2 }}>
+                Sampled {yr}{age != null && age > 0 ? ` (${age}y old${stale ? ' — due a re-test' : ''})` : ''}
+              </div>
             );
           })()}
         </div>
