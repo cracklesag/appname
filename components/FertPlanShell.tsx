@@ -1,11 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { fmt, calcNutrients, planFieldFertiliser, nutrientPerArea } from '@/lib/rules';
+import { fmt, nutrientPerArea } from '@/lib/rules';
+import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
 import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit } from '@/lib/types';
+
+export type { FertPlanRow };
 
 // Colours for the three supply sources (match the agreed mockup).
 const SRC = { carry: '#888780', slurry: '#1D9E75', granular: '#378ADD', over: '#E24B4A' };
@@ -62,41 +66,6 @@ function SourceBar({
   );
 }
 
-export interface FertPlanRow {
-  id: string;
-  name: string;
-  groupId: string | null;
-  groupName: string | null;
-  areaValue: number;
-  areaUnit: string;
-  ha: number;
-  sampled: boolean;
-  ph: number | null;
-  pIdx: number | null;
-  kIdx: number | null;
-  pBand: number;
-  kBandLabel: string;
-  cutType: string;
-  cutNumber: number;
-  p2o5ToApply: number;
-  k2oToApply: number;
-  nToApply: number;
-  pHeld: boolean;
-  kHeld: boolean;
-  carryP: number;
-  carryK: number;
-  loggedOrganicP: number;
-  loggedOrganicK: number;
-  loggedGranularP: number;
-  loggedGranularK: number;
-  nNeed: number;
-  pNeed: number;
-  kNeed: number;
-  appliedN: number;
-  appliedP: number;
-  appliedK: number;
-}
-
 // Soil targets for the heat bars — RB209 index 2 / pH 6.0 for grassland.
 const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
 
@@ -106,7 +75,7 @@ export function FertPlanShell({
   rows: FertPlanRow[];
   groups: { id: string; name: string }[];
   initialGroup: string;
-  unitSystem: string;
+  unitSystem: 'acres' | 'hectares';
   products: Product[];
   slurryUnit: 'gal/ac' | 'm3/ha';
 }) {
@@ -138,6 +107,24 @@ export function FertPlanShell({
   const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  // Session-only toggles (reset on leaving the plan):
+  // bag products switched off (never recommended), fields dropped from the
+  // spread lists, and fields where intended slurry is switched off.
+  const [excludedProductIds, setExcludedProductIds] = useState<number[]>([]);
+  const [excludedFieldIds, setExcludedFieldIds] = useState<string[]>([]);
+  const [slurryOffFieldIds, setSlurryOffFieldIds] = useState<string[]>([]);
+  const [showProductMenu, setShowProductMenu] = useState(false);
+
+  const router = useRouter();
+
+  const toggleIn = <T,>(arr: T[], v: T): T[] =>
+    arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+
+  const planState: PlanState = useMemo(() => ({
+    defaultOrganicId, defaultRate, overrides,
+    excludedProductIds, excludedFieldIds, slurryOffFieldIds,
+  }), [defaultOrganicId, defaultRate, overrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
+
   const organicRateUnit: RateUnit = useMemo(() => {
     // Slurry uses the farm's slurry unit; solid manure uses t/ha or t/ac.
     const def = organics.find((o) => o.id === defaultOrganicId);
@@ -155,82 +142,19 @@ export function FertPlanShell({
     return [...list].sort((a, b) => a.name.localeCompare(b.name));
   }, [rows, groupFilter]);
 
-  // For each field, resolve the planned organic (override or default), compute
-  // its N/P/K contribution, subtract from the RB209 shortfall, then plan the
-  // granular fertiliser for what's left.
-  const computed = useMemo(() => {
-    return visible.map((row) => {
-      const ov = overrides[row.id];
-      const organicId = ov ? ov.productId : defaultOrganicId;
-      const rateStr = ov ? ov.rate : defaultRate;
-      const rate = parseFloat(rateStr);
-      const organic = organics.find((o) => o.id === organicId);
+  // Per-field plan via the shared planner (honours product on/off + slurry off).
+  const computed = useMemo(
+    () => visible.map((row) => planField(row, planState, organics, granular, { slurryUnit, unitSystem })),
+    [visible, planState, organics, granular, slurryUnit, unitSystem],
+  );
 
-      // Unit depends on the resolved organic's type.
-      const unit: RateUnit = organic?.type === 'solid_manure'
-        ? (unitSystem === 'acres' ? 't/ac' : 't/ha')
-        : slurryUnit;
-
-      let slurryN = 0, slurryP = 0, slurryK = 0;
-      if (organic && rate > 0) {
-        const n = calcNutrients(organic, rate, unit, new Date().toISOString().slice(0, 10), 'splash_plate');
-        slurryN = Math.round(n.nPerHa);
-        slurryP = Math.round(n.p2o5PerHa);
-        slurryK = Math.round(n.k2oPerHa);
-      }
-
-      // Reduce the shortfall by what the slurry delivers (not below zero).
-      const pAfter = Math.max(0, row.p2o5ToApply - slurryP);
-      const kAfter = Math.max(0, row.k2oToApply - slurryK);
-      const nAfter = Math.max(0, row.nToApply - slurryN);
-
-      const plan = planFieldFertiliser(pAfter, kAfter, granular, nAfter);
-
-      // Supply = already applied this season + planned slurry + planned granular.
-      let granN = 0, granP = 0, granK = 0;
-      const planProducts = plan
-        ? plan.products.map((pp) => {
-            granN += pp.deliversN; granP += pp.deliversP2O5; granK += pp.deliversK2O;
-            return {
-              productId: pp.productId,
-              productName: pp.productName,
-              rateKgPerHa: pp.rateKgPerHa,
-              totalKg: Math.round(pp.rateKgPerHa * row.ha),
-            };
-          })
-        : [];
-
-      return {
-        row,
-        organicId,
-        rateStr,
-        organicName: organic?.name ?? null,
-        organicUnit: unit,
-        slurryN, slurryP, slurryK,
-        slurryTotal: organic && rate > 0 ? Math.round(rate * row.ha) : 0,
-        pAfter, kAfter, nAfter,
-        planProducts,
-        planNote: plan?.note ?? '',
-        supplyN: row.appliedN + slurryN + Math.round(granN),
-        supplyP: row.appliedP + slurryP + Math.round(granP),
-        supplyK: row.appliedK + slurryK + Math.round(granK),
-        nothingGranular: planProducts.length === 0,
-        // P & K supply broken into sources, for the stacked bar (kg/ha):
-        pBands: {
-          carry: row.carryP,
-          slurry: row.loggedOrganicP + slurryP,
-          granular: row.loggedGranularP + Math.round(granP),
-          need: row.pNeed,
-        },
-        kBands: {
-          carry: row.carryK,
-          slurry: row.loggedOrganicK + slurryK,
-          granular: row.loggedGranularK + Math.round(granK),
-          need: row.kNeed,
-        },
-      };
-    });
-  }, [visible, overrides, defaultOrganicId, defaultRate, organics, granular, slurryUnit, unitSystem]);
+  /** Save the current toggles/overrides and open a spread list. */
+  const openSpreadList = (mode: 'granular' | 'slurry') => {
+    try {
+      sessionStorage.setItem('swardly_plan_state', JSON.stringify(planState));
+    } catch { /* ignore */ }
+    router.push(`/reports/spread-list?mode=${mode}&from=/reports/fert-plan`);
+  };
 
   // Order totals: granular products + planned organic volume.
   const productTotals = useMemo(() => {
@@ -314,6 +238,53 @@ export function FertPlanShell({
         </div>
       )}
 
+      {/* Fertiliser sources in use — toggle which bag products the plan may use */}
+      {granular.length > 0 && (
+        <div className="card" style={{ padding: 13, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => setShowProductMenu((v) => !v)}
+            style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+              Fertiliser sources in use
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--forest-dark)', fontWeight: 700 }}>
+              {granular.length - excludedProductIds.length}/{granular.length} on · {showProductMenu ? 'hide' : 'edit'}
+            </span>
+          </button>
+          {showProductMenu && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 10px', lineHeight: 1.45 }}>
+                Switch off anything you&apos;re not spreading this round. The plan won&apos;t recommend it —
+                a field short of that nutrient just stays short, and it won&apos;t appear on the spread list.
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {granular.map((p) => {
+                  const on = !excludedProductIds.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setExcludedProductIds((prev) => toggleIn(prev, p.id))}
+                      style={{
+                        background: on ? 'var(--forest)' : 'var(--card)',
+                        color: on ? 'var(--paper)' : 'var(--muted)',
+                        border: on ? 'none' : '1px solid var(--line)',
+                        borderRadius: 20, padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', textDecoration: on ? 'none' : 'line-through',
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Group filter */}
       {groups.length > 0 && (
         <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
@@ -367,6 +338,26 @@ export function FertPlanShell({
         </div>
       )}
 
+      {/* Compile spread lists for the contractor */}
+      {computed.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => openSpreadList('granular')}
+            style={{ flex: 1, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Granular spread list
+          </button>
+          <button
+            type="button"
+            onClick={() => openSpreadList('slurry')}
+            style={{ flex: 1, background: SRC.slurry, color: '#fff', border: 'none', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Slurry spread list
+          </button>
+        </div>
+      )}
+
       {/* P & K source legend */}
       {computed.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 11 }}>
@@ -386,6 +377,8 @@ export function FertPlanShell({
         const row = c.row;
         const isOpen = !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
+        const excluded = excludedFieldIds.includes(row.id);
+        const slurryOff = slurryOffFieldIds.includes(row.id);
         const cutLabel = row.cutType === 'grazing' ? 'grazing'
           : row.cutType === 'bales' ? `cut ${row.cutNumber} (bales)`
           : `cut ${row.cutNumber}`;
@@ -394,7 +387,7 @@ export function FertPlanShell({
           && !row.pHeld && !row.kHeld;
 
         return (
-          <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8 }}>
+          <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8, opacity: excluded ? 0.5 : 1 }}>
             <div
               onClick={() => setExpanded((p) => ({ ...p, [row.id]: !p[row.id] }))}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}
@@ -407,7 +400,11 @@ export function FertPlanShell({
                   {' · '}{cutLabel}
                 </div>
               </div>
-              {atTarget && (
+              {excluded ? (
+                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', border: '1px solid var(--line)', padding: '4px 9px', borderRadius: 6 }}>
+                  off list
+                </span>
+              ) : atTarget && (
                 <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '4px 9px', borderRadius: 6 }}>
                   ✓ at target
                 </span>
@@ -496,8 +493,40 @@ export function FertPlanShell({
               </div>
             )}
 
+            {/* Field-level spread toggles (shown when expanded) */}
+            {isOpen && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setExcludedFieldIds((prev) => toggleIn(prev, row.id))}
+                  style={{
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px',
+                    background: excluded ? 'var(--forest)' : 'var(--card)',
+                    color: excluded ? 'var(--paper)' : 'var(--ink-soft)',
+                    border: excluded ? 'none' : '1px solid var(--line)',
+                  }}
+                >
+                  {excluded ? 'Add back to spread list' : 'Take off spread list'}
+                </button>
+                {(c.organicName || slurryOff || defaultOrganicId !== '') && (
+                  <button
+                    type="button"
+                    onClick={() => setSlurryOffFieldIds((prev) => toggleIn(prev, row.id))}
+                    style={{
+                      fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px',
+                      background: slurryOff ? 'var(--card)' : SRC.slurry,
+                      color: slurryOff ? 'var(--muted)' : '#fff',
+                      border: slurryOff ? '1px solid var(--line)' : 'none',
+                    }}
+                  >
+                    {slurryOff ? 'Slurry off — turn on' : 'Slurry on — turn off'}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Per-field override (expand) */}
-            {isOpen && organics.length > 0 && (
+            {isOpen && organics.length > 0 && !slurryOff && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
                   Slurry for this field {hasOverride ? '(overriding the default)' : '(using the default)'}
