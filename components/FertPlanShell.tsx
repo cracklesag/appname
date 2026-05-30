@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fmt, nutrientPerArea } from '@/lib/rules';
@@ -71,6 +72,7 @@ const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
 
 export function FertPlanShell({
   rows, groups, initialGroup, unitSystem, products, slurryUnit,
+  minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
 }: {
   rows: FertPlanRow[];
   groups: { id: string; name: string }[];
@@ -78,6 +80,8 @@ export function FertPlanShell({
   unitSystem: 'acres' | 'hectares';
   products: Product[];
   slurryUnit: 'gal/ac' | 'm3/ha';
+  minSpreadP2O5KgPerHa: number;
+  minSpreadK2OKgPerHa: number;
 }) {
   const [groupFilter, setGroupFilter] = useState(initialGroup);
 
@@ -99,6 +103,8 @@ export function FertPlanShell({
 
   // Planning state: a default organic + default rate applied to all fields,
   // with per-field overrides. Empty = no organic planned.
+  // Plan toggles + overrides. These are PERSISTED to localStorage so they're
+  // maintained when you come back to the plan (and carried to the spread lists).
   const [defaultOrganicId, setDefaultOrganicId] = useState<number | ''>(
     organics.length > 0 ? organics[0].id : '',
   );
@@ -107,15 +113,36 @@ export function FertPlanShell({
   const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  // Session-only toggles (reset on leaving the plan):
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
   const [excludedProductIds, setExcludedProductIds] = useState<number[]>([]);
   const [excludedFieldIds, setExcludedFieldIds] = useState<string[]>([]);
   const [slurryOffFieldIds, setSlurryOffFieldIds] = useState<string[]>([]);
   const [showProductMenu, setShowProductMenu] = useState(false);
+  // Which field's slurry rate is being edited inline (null = none).
+  const [editingSlurry, setEditingSlurry] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   const router = useRouter();
+
+  const STORE_KEY = 'swardly_plan_state';
+
+  // Load saved toggles/overrides once on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.defaultOrganicId !== undefined) setDefaultOrganicId(s.defaultOrganicId);
+        if (typeof s.defaultRate === 'string') setDefaultRate(s.defaultRate);
+        if (s.overrides) setOverrides(s.overrides);
+        if (Array.isArray(s.excludedProductIds)) setExcludedProductIds(s.excludedProductIds);
+        if (Array.isArray(s.excludedFieldIds)) setExcludedFieldIds(s.excludedFieldIds);
+        if (Array.isArray(s.slurryOffFieldIds)) setSlurryOffFieldIds(s.slurryOffFieldIds);
+      }
+    } catch { /* ignore */ }
+    setHydrated(true);
+  }, []);
 
   const toggleIn = <T,>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
@@ -124,6 +151,12 @@ export function FertPlanShell({
     defaultOrganicId, defaultRate, overrides,
     excludedProductIds, excludedFieldIds, slurryOffFieldIds,
   }), [defaultOrganicId, defaultRate, overrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
+
+  // Persist whenever the plan state changes (after the initial hydrate).
+  useEffect(() => {
+    if (!hydrated) return;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
+  }, [planState, hydrated]);
 
   const organicRateUnit: RateUnit = useMemo(() => {
     // Slurry uses the farm's slurry unit; solid manure uses t/ha or t/ac.
@@ -142,17 +175,18 @@ export function FertPlanShell({
     return [...list].sort((a, b) => a.name.localeCompare(b.name));
   }, [rows, groupFilter]);
 
-  // Per-field plan via the shared planner (honours product on/off + slurry off).
+  // Per-field plan via the shared planner (honours product on/off + slurry off
+  // + the minimum-rate hold on the post-slurry residual).
   const computed = useMemo(
-    () => visible.map((row) => planField(row, planState, organics, granular, { slurryUnit, unitSystem })),
-    [visible, planState, organics, granular, slurryUnit, unitSystem],
+    () => visible.map((row) => planField(row, planState, organics, granular, {
+      slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
+    })),
+    [visible, planState, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa],
   );
 
   /** Save the current toggles/overrides and open a spread list. */
   const openSpreadList = (mode: 'granular' | 'slurry') => {
-    try {
-      sessionStorage.setItem('swardly_plan_state', JSON.stringify(planState));
-    } catch { /* ignore */ }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
     router.push(`/reports/spread-list?mode=${mode}&from=/reports/fert-plan`);
   };
 
@@ -382,9 +416,11 @@ export function FertPlanShell({
         const cutLabel = row.cutType === 'grazing' ? 'grazing'
           : row.cutType === 'bales' ? `cut ${row.cutNumber} (bales)`
           : `cut ${row.cutNumber}`;
+        // At target = nothing left to plan once slurry + the minimum-rate hold
+        // are accounted for, and no slurry being added either.
         const atTarget = c.nothingGranular && c.slurryTotal === 0
-          && row.p2o5ToApply === 0 && row.k2oToApply === 0 && row.nToApply === 0
-          && !row.pHeld && !row.kHeld;
+          && c.pAfter === 0 && c.kAfter === 0 && row.nToApply === 0
+          && !c.pHeld && !c.kHeld;
 
         return (
           <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8, opacity: excluded ? 0.5 : 1 }}>
@@ -401,13 +437,30 @@ export function FertPlanShell({
                 </div>
               </div>
               {excluded ? (
-                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', border: '1px solid var(--line)', padding: '4px 9px', borderRadius: 6 }}>
-                  off list
-                </span>
-              ) : atTarget && (
-                <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '4px 9px', borderRadius: 6 }}>
-                  ✓ at target
-                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setExcludedFieldIds((prev) => toggleIn(prev, row.id)); }}
+                  style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', border: '1px solid var(--line)', padding: '4px 9px', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  off list · add
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {atTarget && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '4px 9px', borderRadius: 6 }}>
+                      ✓ at target
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExcludedFieldIds((prev) => toggleIn(prev, row.id)); }}
+                    aria-label="Take field off the spread list"
+                    title="Take off spread list"
+                    style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    on ✓
+                  </button>
+                </div>
               )}
             </div>
 
@@ -424,10 +477,47 @@ export function FertPlanShell({
               </div>
             )}
 
-            {/* Planned slurry contribution */}
+            {/* Planned slurry contribution — with an inline rate editor so you
+                can bump the volume up or down per field; bars + granular below
+                recalculate live as you type. */}
             {c.slurryTotal > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--forest-dark)', marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '6px 9px' }}>
-                {c.organicName}: delivers ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}
+              <div style={{ marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '7px 9px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--forest-dark)', minWidth: 0 }}>
+                    {c.organicName}: {c.rateStr || 0} {c.organicUnit} · ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSlurry((cur) => (cur === row.id ? null : row.id))}
+                    aria-label="Edit slurry volume"
+                    style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', cursor: 'pointer' }}
+                  >
+                    <Pencil size={12} /> {editingSlurry === row.id ? 'Done' : 'Edit'}
+                  </button>
+                </div>
+                {editingSlurry === row.id && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      autoFocus
+                      className="input"
+                      value={c.rateStr}
+                      onChange={(e) => setOverride(row.id, { rate: e.target.value })}
+                      style={{ width: 100, textAlign: 'right' }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.organicUnit}</span>
+                    {!!overrides[row.id] && (
+                      <button
+                        type="button"
+                        onClick={() => clearOverride(row.id)}
+                        style={{ fontSize: 11, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, marginLeft: 'auto' }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -479,15 +569,15 @@ export function FertPlanShell({
             {/* Low-rate hold notice — P or K shortfall too small to spread, so
                 it's held in the season balance and will combine with a later
                 cut once it's worth applying. */}
-            {(row.pHeld || row.kHeld) && (
+            {(c.pHeld || c.kHeld) && (
               <div style={{
                 marginTop: 8, padding: '7px 10px', borderRadius: 8,
                 background: '#F4EFE2', border: '1px solid #E4D9BD',
                 fontSize: 11, color: '#6B5D34', lineHeight: 1.45,
               }}>
-                {row.pHeld && row.kHeld
+                {c.pHeld && c.kHeld
                   ? `P and K shortfalls are below your minimum spread rate — held for now and carried forward; they'll show once they build up enough to be worth spreading.`
-                  : row.pHeld
+                  : c.pHeld
                   ? `P₂O₅ shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`
                   : `K₂O shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`}
               </div>

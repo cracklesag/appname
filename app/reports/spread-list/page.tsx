@@ -39,6 +39,8 @@ export default async function SpreadListPage({
       slurryUnit={settings.slurryUnit}
       mode={mode}
       fromHref={searchParams.from || '/reports/fert-plan'}
+      minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}
+      minSpreadK2OKgPerHa={settings.reportDefaults.minSpreadK2OKgPerHa}
     />
   );
 }

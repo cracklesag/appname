@@ -24,8 +24,6 @@ export interface FertPlanRow {
   p2o5ToApply: number;
   k2oToApply: number;
   nToApply: number;
-  pHeld: boolean;
-  kHeld: boolean;
   carryP: number;
   carryK: number;
   loggedOrganicP: number;
@@ -111,15 +109,12 @@ export function buildFertPlanRows(
 
       const pSupplyBeforePlan = carryP + loggedOrganic.p + loggedGranular.p;
       const kSupplyBeforePlan = carryK + loggedOrganic.k + loggedGranular.k;
-      let p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
-      let k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
-
-      const minP = settings.reportDefaults.minSpreadP2O5KgPerHa;
-      const minK = settings.reportDefaults.minSpreadK2OKgPerHa;
-      const pHeld = p2o5ToApply > 0 && p2o5ToApply < minP;
-      const kHeld = k2oToApply > 0 && k2oToApply < minK;
-      if (pHeld) p2o5ToApply = 0;
-      if (kHeld) k2oToApply = 0;
+      // Raw shortfall before intended slurry. The minimum-rate hold is applied
+      // later in planField, AFTER intended slurry is deducted — otherwise a
+      // field where slurry covers most of the need leaves a sub-threshold
+      // granular dribble that the pre-slurry hold would miss.
+      const p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
+      const k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
 
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
       const nToApply = Math.max(0, Math.round(nRec.n - appliedNSinceCut));
@@ -146,8 +141,6 @@ export function buildFertPlanRows(
         p2o5ToApply,
         k2oToApply,
         nToApply,
-        pHeld,
-        kHeld,
         carryP: Math.round(carryP),
         carryK: Math.round(carryK),
         loggedOrganicP: Math.round(loggedOrganic.p),
@@ -188,6 +181,9 @@ export interface PlannedField {
   slurryN: number; slurryP: number; slurryK: number;
   slurryTotal: number;
   pAfter: number; kAfter: number; nAfter: number;
+  /** P/K shortfall held back because it's below the minimum spread rate
+   *  (after intended slurry). Held nutrient isn't planned as granular. */
+  pHeld: boolean; kHeld: boolean;
   planProducts: { productId: number; productName: string; rateKgPerHa: number; totalKg: number }[];
   planNote: string;
   supplyN: number; supplyP: number; supplyK: number;
@@ -198,14 +194,20 @@ export interface PlannedField {
 
 /**
  * Plan a single field given the toggle/override state. Honours product on/off
- * (excluded products never enter the planner) and slurry on/off per field.
+ * (excluded products never enter the planner), slurry on/off per field, and
+ * holds a P/K shortfall that falls below the minimum spread rate AFTER intended
+ * slurry is deducted (so slurry covering most of the need doesn't leave a
+ * sub-threshold granular dribble).
  */
 export function planField(
   row: FertPlanRow,
   state: PlanState,
   organics: Product[],
   granularAll: Product[],
-  settings: Pick<Settings, 'slurryUnit' | 'unitSystem'>,
+  settings: Pick<Settings, 'slurryUnit' | 'unitSystem'> & {
+    minSpreadP2O5KgPerHa: number;
+    minSpreadK2OKgPerHa: number;
+  },
 ): PlannedField {
   const slurryUnit = settings.slurryUnit;
   const unitSystem = settings.unitSystem;
@@ -229,9 +231,19 @@ export function planField(
     slurryK = Math.round(n.k2oPerHa);
   }
 
-  const pAfter = Math.max(0, row.p2o5ToApply - slurryP);
-  const kAfter = Math.max(0, row.k2oToApply - slurryK);
+  let pAfter = Math.max(0, row.p2o5ToApply - slurryP);
+  let kAfter = Math.max(0, row.k2oToApply - slurryK);
   const nAfter = Math.max(0, row.nToApply - slurryN);
+
+  // Minimum-rate hold on the residual the granular plan would actually cover.
+  // Below the threshold it's too small to spread accurately — hold it (it
+  // stays owed and re-presents on a later cut as carryover depletes).
+  const minP = settings.minSpreadP2O5KgPerHa;
+  const minK = settings.minSpreadK2OKgPerHa;
+  const pHeld = pAfter > 0 && pAfter < minP;
+  const kHeld = kAfter > 0 && kAfter < minK;
+  if (pHeld) pAfter = 0;
+  if (kHeld) kAfter = 0;
 
   // Apply product on/off: excluded bag products can't be chosen by the planner.
   const granular = granularAll.filter((p) => !state.excludedProductIds.includes(p.id));
@@ -259,6 +271,7 @@ export function planField(
     slurryN, slurryP, slurryK,
     slurryTotal: (!slurryOff && organic && rate > 0) ? Math.round(rate * row.ha) : 0,
     pAfter, kAfter, nAfter,
+    pHeld, kHeld,
     planProducts,
     planNote: plan?.note ?? '',
     supplyN: row.appliedN + slurryN + Math.round(granN),

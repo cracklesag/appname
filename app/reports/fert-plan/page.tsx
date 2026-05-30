@@ -60,6 +60,8 @@ export default async function FertPlanPage({
         unitSystem={settings.unitSystem}
         products={planProducts}
         slurryUnit={settings.slurryUnit}
+        minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}
+        minSpreadK2OKgPerHa={settings.reportDefaults.minSpreadK2OKgPerHa}
       />
     </div>
   );

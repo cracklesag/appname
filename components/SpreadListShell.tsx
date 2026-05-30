@@ -22,6 +22,7 @@ const DEFAULT_STATE: PlanState = {
 
 export function SpreadListShell({
   rows, products, unitSystem, slurryUnit, mode, fromHref,
+  minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
 }: {
   rows: FertPlanRow[];
   products: Product[];
@@ -29,14 +30,16 @@ export function SpreadListShell({
   slurryUnit: 'gal/ac' | 'm3/ha';
   mode: 'granular' | 'slurry';
   fromHref: string;
+  minSpreadP2O5KgPerHa: number;
+  minSpreadK2OKgPerHa: number;
 }) {
   const [state, setState] = useState<PlanState>(DEFAULT_STATE);
   const [loaded, setLoaded] = useState(false);
 
-  // Pull the plan toggles/overrides saved by the fert plan (session-only).
+  // Pull the plan toggles/overrides saved by the fert plan (persisted).
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem('swardly_plan_state');
+      const raw = localStorage.getItem('swardly_plan_state');
       if (raw) setState({ ...DEFAULT_STATE, ...JSON.parse(raw) });
     } catch { /* ignore */ }
     setLoaded(true);
@@ -56,9 +59,11 @@ export function SpreadListShell({
   const planned = useMemo(() => {
     return rows
       .filter((r) => !state.excludedFieldIds.includes(r.id))
-      .map((r) => planField(r, state, organics, granular, { slurryUnit, unitSystem }))
+      .map((r) => planField(r, state, organics, granular, {
+        slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
+      }))
       .sort((a, b) => a.row.name.localeCompare(b.row.name));
-  }, [rows, state, organics, granular, slurryUnit, unitSystem]);
+  }, [rows, state, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa]);
 
   // Granular: per-field products + product order totals.
   const granularFields = useMemo(
