@@ -421,7 +421,19 @@ export async function saveSettings(formData: FormData) {
   const ctx = await requireAdmin();
   const user = { id: ctx.ownerId };
 
+  // Load the existing settings blob so we preserve any fields the form
+  // doesn't submit — most importantly `onboarded`. Overwriting the whole
+  // blob without this drops the flag and bounces the user to /welcome.
+  const { data: existingRow } = await supabase
+    .from('settings')
+    .select('data')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  const existing = (existingRow?.data as Record<string, unknown>) || {};
+
   const data = {
+    ...existing,
+    onboarded: existing.onboarded === false ? false : true,
     farmName: (String(formData.get('farm_name') || '').trim()) || null,
     yieldMultipliers: {
       light: parseFloat(String(formData.get('yield_light'))),
