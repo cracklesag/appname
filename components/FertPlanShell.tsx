@@ -314,6 +314,12 @@ export function FertPlanShell({
                   );
                 })}
               </div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 10 }}>
+                Don&apos;t see one you use?{' '}
+                <Link href="/products?return=/reports/fert-plan" style={{ color: 'var(--forest)', fontWeight: 600, textDecoration: 'none' }}>
+                  Add more in Settings
+                </Link>
+              </div>
             </>
           )}
         </div>

@@ -9,10 +9,16 @@ import { deleteCustomProduct } from '@/lib/actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: { return?: string };
+}) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+
+  const returnTo = searchParams.return || '/settings';
 
   // RLS already restricts what the user can see, but we filter explicitly
   // to show ONLY their custom rows on this management screen.
@@ -28,10 +34,10 @@ export default async function ProductsPage() {
       <Header
         title="Custom products"
         subtitle="Your own products"
-        backHref="/settings"
+        backHref={returnTo}
         right={
           <Link
-            href="/products/new"
+            href={`/products/new?return=${encodeURIComponent(returnTo)}`}
             className="btn-primary"
             style={{ padding: '8px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
           >
