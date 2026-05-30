@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation';
-import { Header } from '@/components/Header';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import {
   loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings,
 } from '@/lib/data';
 import {
-  getSeasonStart, sumNutrients, getFieldPKShortfall, planFieldFertiliser, displayFieldArea,
+  getSeasonStart, sumNutrients, getFieldPKShortfall, displayFieldArea,
   getFieldNRecommendation,
 } from '@/lib/rules';
 import { FertPlanShell, FertPlanRow } from '@/components/FertPlanShell';
+import { Product } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,21 +50,9 @@ export default async function FertPlanPage({
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
       const nToApply = Math.max(0, Math.round(nRec.n - applied.n));
 
-      const plan = planFieldFertiliser(p2o5ToApply, k2oToApply, products, nToApply);
       const area = displayFieldArea(f, settings.unitSystem);
       const haActual = f.ha || 0;
       const groupName = groups.find((g) => g.id === f.group_id)?.name ?? null;
-
-      // What the planned products deliver in N, P and K (kg/ha) — taken from
-      // the plan itself, which already computed per-product delivery.
-      let suppliedN = 0, suppliedP = 0, suppliedK = 0;
-      if (plan) {
-        for (const pp of plan.products) {
-          suppliedN += pp.deliversN;
-          suppliedP += pp.deliversP2O5;
-          suppliedK += pp.deliversK2O;
-        }
-      }
 
       return {
         id: f.id,
@@ -73,6 +63,9 @@ export default async function FertPlanPage({
         areaUnit: area.unit,
         ha: haActual,
         sampled: f.sampled,
+        ph: f.ph,
+        pIdx: f.p_idx,
+        kIdx: f.k_idx,
         pBand: rec.pBand,
         kBandLabel: rec.kBand,
         cutType: rec.cutType,
@@ -83,32 +76,43 @@ export default async function FertPlanPage({
         nNeed: Math.round(nRec.n),
         pNeed: rec.p2o5,
         kNeed: rec.k2o + rec.extraKAfterCut,
-        suppliedN: Math.round(suppliedN),
-        suppliedP: Math.round(suppliedP),
-        suppliedK: Math.round(suppliedK),
         appliedN: Math.round(applied.n),
         appliedP: Math.round(applied.p),
         appliedK: Math.round(applied.k),
-        plan: plan
-          ? {
-              products: plan.products.map((pp) => ({
-                productId: pp.productId,
-                productName: pp.productName,
-                rateKgPerHa: pp.rateKgPerHa,
-                totalKg: Math.round(pp.rateKgPerHa * haActual),
-              })),
-              note: plan.note,
-              p2o5Balance: plan.p2o5Balance,
-              k2oBalance: plan.k2oBalance,
-            }
-          : null,
       };
     });
 
+  const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
+  const planProducts = products.filter(
+    (p) => p.type === 'bag_fert' || isOrganic(p),
+  );
+
   return (
     <div style={{ paddingBottom: 90 }}>
-      <Header title="Fertiliser plan" subtitle="RB209 — product & rate per field" backHref={searchParams.from || '/'} />
-      <FertPlanShell rows={rows} groups={groups} initialGroup={groupFilter} unitSystem={settings.unitSystem} />
+      <div style={{ background: 'var(--forest-dark)', padding: '14px 16px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Link href={searchParams.from || '/'} aria-label="Back" style={{ color: 'var(--brand-cream)', display: 'inline-flex', marginLeft: -4 }}>
+            <ArrowLeft size={22} />
+          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/swardly-mark-cream.png" alt="" width={26} height={19} style={{ objectFit: 'contain' }} />
+            <span style={{ fontFamily: '"Fraunces", serif', fontSize: 18, fontWeight: 600, color: 'var(--brand-cream)' }}>swardly</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>Fertiliser plan</div>
+          <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>RB209 — slurry first, then granular</div>
+        </div>
+      </div>
+      <FertPlanShell
+        rows={rows}
+        groups={groups}
+        initialGroup={groupFilter}
+        unitSystem={settings.unitSystem}
+        products={planProducts}
+        slurryUnit={settings.slurryUnit}
+      />
     </div>
   );
 }
