@@ -477,6 +477,22 @@ export async function saveSettings(formData: FormData) {
       maintenanceDoseThresholdKgN: Math.max(0, Math.min(200,
         parseFloat(String(formData.get('report_maintenance_threshold') || '30')) || 30
       )),
+      // Carryover release model (fert plan). Clamped to sensible ranges.
+      releaseSlurryStartPct: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('release_slurry_start') || '70')) || 70
+      )),
+      releaseSlurryPerMonthPct: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('release_slurry_permonth') || '15')) || 15
+      )),
+      releaseFymStartPct: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('release_fym_start') || '35')) || 35
+      )),
+      releaseFymPerMonthPct: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('release_fym_permonth') || '10')) || 10
+      )),
+      releaseFymCapPct: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('release_fym_cap') || '95')) || 95
+      )),
     },
     timingDefaults: {
       nDueAfterCutDays: Math.max(0, Math.min(30,

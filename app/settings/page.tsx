@@ -357,6 +357,45 @@ export default async function SettingsPage() {
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg N/ha</span>
             </div>
           </div>
+
+          {/* Carryover release model (fert plan) */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 4 }}>Carryover release model</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+              How much of an earlier slurry or muck application&apos;s P &amp; K the fertiliser plan
+              treats as available now, by months since spreading. An estimate, not an RB209 figure —
+              tune it to what you see on your ground.
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>Slurry / digestate (fast)</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>Available in month spread</div>
+              <input type="number" min="0" max="100" step="5" name="release_slurry_start" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.releaseSlurryStartPct} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>Extra per month after</div>
+              <input type="number" min="0" max="100" step="5" name="release_slurry_permonth" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.releaseSlurryPerMonthPct} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 6 }}>FYM / solid manure (slow)</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>Available in month spread</div>
+              <input type="number" min="0" max="100" step="5" name="release_fym_start" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.releaseFymStartPct} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>Extra per month after</div>
+              <input type="number" min="0" max="100" step="5" name="release_fym_permonth" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.releaseFymPerMonthPct} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>Maximum ever released</div>
+              <input type="number" min="0" max="100" step="5" name="release_fym_cap" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.releaseFymCapPct} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
+            </div>
+          </div>
             </div>
           </details>
         </div>
@@ -417,63 +456,6 @@ export default async function SettingsPage() {
       </form>
 
       <div style={{ padding: 16 }}>
-        {/* Reports section */}
-        <div style={{
-          fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.06em', color: 'var(--muted)',
-          marginBottom: 8, paddingLeft: 2,
-        }}>
-          Reports
-        </div>
-        <Link
-          href="/reports/spreading?from=/settings"
-          className="card"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 14, marginBottom: 8, textDecoration: 'none', color: 'inherit',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Spreading report</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              Plan a round of inputs and see remaining shortfall per field
-            </div>
-          </div>
-          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
-        </Link>
-        <Link
-          href="/reports/grazing?from=/settings"
-          className="card"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 14, marginBottom: 8, textDecoration: 'none', color: 'inherit',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Grazing top-up</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              N cadence schedule for grazing fields — when each field is due
-            </div>
-          </div>
-          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
-        </Link>
-        <Link
-          href="/reports/snapshot?from=/settings"
-          className="card"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: 14, marginBottom: 18, textDecoration: 'none', color: 'inherit',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Field snapshot</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              Compact &quot;where everything&apos;s at&quot; — every field, season totals, gaps
-            </div>
-          </div>
-          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
-        </Link>
-
         {/* Tools section */}
         <div style={{
           fontSize: 11, fontWeight: 700, textTransform: 'uppercase',

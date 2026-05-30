@@ -224,6 +224,18 @@ export interface Settings {
      * and don't behave like a top-up dose.
      */
     maintenanceDoseThresholdKgN: number;
+    /**
+     * Carryover release model (fert plan) — ESTIMATE, not RB209. Controls how
+     * much of an earlier organic application's P & K is treated as crop-
+     * available now, by material and months elapsed:
+     *   fraction = min(cap, startPct/100 + perMonthPct/100 × monthsElapsed)
+     * Slurry/digestate is fast; FYM/solid manure slow. All as percentages.
+     */
+    releaseSlurryStartPct: number;   // availability in the month of spreading
+    releaseSlurryPerMonthPct: number; // extra availability per month after
+    releaseFymStartPct: number;
+    releaseFymPerMonthPct: number;
+    releaseFymCapPct: number;        // FYM never exceeds this (soft cap)
   };
   /**
    * Timing parameters for the home-screen "Coming up" prompts. All in days
@@ -267,6 +279,11 @@ export const DEFAULT_SETTINGS: Settings = {
     grazingCadenceKgN: 40,
     grazingCadenceWeeks: 4,
     maintenanceDoseThresholdKgN: 30,
+    releaseSlurryStartPct: 70,
+    releaseSlurryPerMonthPct: 15,
+    releaseFymStartPct: 35,
+    releaseFymPerMonthPct: 10,
+    releaseFymCapPct: 95,
   },
   timingDefaults: {
     nDueAfterCutDays: 0,

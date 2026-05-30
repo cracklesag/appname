@@ -194,6 +194,55 @@ const GAL_AC_PER_M3_HA = 89.0;
 const T_AC_PER_T_HA = 0.4047;
 
 /**
+ * ESTIMATED nutrient release-over-time fraction for P or K from an organic
+ * application, given the material type and whole months elapsed since it was
+ * applied. Returns 0–1, the fraction of that application's P/K now considered
+ * crop-available.
+ *
+ * IMPORTANT — this is a MODEL, not an RB209 figure. RB209 treats manure P & K
+ * as largely available in the year of spreading and does not publish a
+ * month-by-month release curve. These curves are a sensible-shape estimate so
+ * the fert plan can show how earlier muck/slurry is "creeping in" to support a
+ * cut. The UI labels any figure derived from this as an estimate.
+ *
+ * Shapes:
+ *  - Slurry / digestate (liquid): fast — ~70% month 0, ~100% by month 2.
+ *  - Solid manure / FYM: slow — ~35% month 0, climbing toward ~90% by month 6,
+ *    capping at ~95%. This is the "winter muck slowly coming available" case.
+ *  - Bag fert: always 1 (fully available; no carryover modelling needed).
+ */
+export function organicReleaseFraction(
+  type: 'slurry' | 'solid_manure' | 'bag_fert' | 'lime',
+  monthsElapsed: number,
+  params?: {
+    releaseSlurryStartPct: number; releaseSlurryPerMonthPct: number;
+    releaseFymStartPct: number; releaseFymPerMonthPct: number; releaseFymCapPct: number;
+  },
+): number {
+  const m = Math.max(0, monthsElapsed);
+  if (type === 'bag_fert') return 1;
+  if (type === 'lime') return 1;
+  const p = params ?? {
+    releaseSlurryStartPct: 70, releaseSlurryPerMonthPct: 15,
+    releaseFymStartPct: 35, releaseFymPerMonthPct: 10, releaseFymCapPct: 95,
+  };
+  if (type === 'slurry') {
+    return Math.min(1, p.releaseSlurryStartPct / 100 + (p.releaseSlurryPerMonthPct / 100) * m);
+  }
+  // solid_manure / FYM
+  return Math.min(p.releaseFymCapPct / 100, p.releaseFymStartPct / 100 + (p.releaseFymPerMonthPct / 100) * m);
+}
+
+/** Whole months between two ISO dates (a before b). Floored, min 0. */
+export function monthsBetween(aIso: string, bIso: string): number {
+  const a = new Date(aIso + 'T00:00:00');
+  const b = new Date(bIso + 'T00:00:00');
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
+  const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  return Math.max(0, months);
+}
+
+/**
  * Convert a nutrient/areal figure stored in kg/ha to the user's chosen unit
  * SYSTEM (acres or hectares). This is the master conversion for every
  * nutrient number shown in the app — N/P/K need & supply, offtake, N caps.

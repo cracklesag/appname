@@ -7,6 +7,61 @@ import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit } from '@/lib/types';
 
+// Colours for the three supply sources (match the agreed mockup).
+const SRC = { carry: '#888780', slurry: '#1D9E75', granular: '#378ADD', over: '#E24B4A' };
+
+/**
+ * Stacked source bar (Style A): one nutrient, filled left-to-right with
+ * carryover -> slurry -> granular, scaled so the RB209 need sits at a fixed
+ * point and a marker line shows it. Anything past need shows red (over).
+ * showFigures reveals the per-source kg breakdown beneath.
+ */
+function SourceBar({
+  label, bands, unit, disp, showFigures,
+}: {
+  label: string;
+  bands: { carry: number; slurry: number; granular: number; need: number };
+  unit: string;
+  disp: (kgHa: number) => number;
+  showFigures: boolean;
+}) {
+  const supply = bands.carry + bands.slurry + bands.granular;
+  const need = bands.need;
+  const scaleMax = need > 0 ? need / 0.75 : Math.max(supply, 1);
+  const pct = (v: number) => `${Math.max(0, Math.min(100, (v / scaleMax) * 100))}%`;
+  const needPct = need > 0 ? `${(need / scaleMax) * 100}%` : null;
+  const over = Math.max(0, supply - need);
+
+  return (
+    <div style={{ marginBottom: showFigures ? 12 : 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>{label}</span>
+        <span style={{ fontSize: 11, color: over > 0.5 ? SRC.over : 'var(--muted)' }}>
+          {disp(supply)}{need > 0 ? ` / ${disp(need)}` : ''} {unit}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 14, background: 'var(--line-soft, #e8e4da)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+          {bands.carry > 0 && <div style={{ width: pct(bands.carry), background: SRC.carry }} />}
+          {bands.slurry > 0 && <div style={{ width: pct(bands.slurry), background: SRC.slurry }} />}
+          {bands.granular > 0 && <div style={{ width: pct(bands.granular), background: SRC.granular }} />}
+        </div>
+        {needPct && (
+          <div style={{ position: 'absolute', top: -2, bottom: -2, left: needPct, width: 2, background: 'var(--ink, #2c2c2a)' }} />
+        )}
+      </div>
+      {showFigures && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap', fontSize: 10 }}>
+          {bands.carry > 0 && <span style={{ background: '#F1EFE8', color: '#444441', padding: '1px 7px', borderRadius: 10 }}>carryover {disp(bands.carry)}</span>}
+          {bands.slurry > 0 && <span style={{ background: '#E1F5EE', color: '#085041', padding: '1px 7px', borderRadius: 10 }}>slurry {disp(bands.slurry)}</span>}
+          {bands.granular > 0 && <span style={{ background: '#E6F1FB', color: '#0C447C', padding: '1px 7px', borderRadius: 10 }}>granular {disp(bands.granular)}</span>}
+          {over > 0.5 && <span style={{ background: '#FCEBEB', color: '#A32D2D', padding: '1px 7px', borderRadius: 10 }}>over {disp(over)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface FertPlanRow {
   id: string;
   name: string;
@@ -26,6 +81,12 @@ export interface FertPlanRow {
   p2o5ToApply: number;
   k2oToApply: number;
   nToApply: number;
+  carryP: number;
+  carryK: number;
+  loggedOrganicP: number;
+  loggedOrganicK: number;
+  loggedGranularP: number;
+  loggedGranularK: number;
   nNeed: number;
   pNeed: number;
   kNeed: number;
@@ -152,6 +213,19 @@ export function FertPlanShell({
         supplyP: row.appliedP + slurryP + Math.round(granP),
         supplyK: row.appliedK + slurryK + Math.round(granK),
         nothingGranular: planProducts.length === 0,
+        // P & K supply broken into sources, for the stacked bar (kg/ha):
+        pBands: {
+          carry: row.carryP,
+          slurry: row.loggedOrganicP + slurryP,
+          granular: row.loggedGranularP + Math.round(granP),
+          need: row.pNeed,
+        },
+        kBands: {
+          carry: row.carryK,
+          slurry: row.loggedOrganicK + slurryK,
+          granular: row.loggedGranularK + Math.round(granK),
+          need: row.kNeed,
+        },
       };
     });
   }, [visible, overrides, defaultOrganicId, defaultRate, organics, granular, slurryUnit, unitSystem]);
@@ -291,6 +365,15 @@ export function FertPlanShell({
         </div>
       )}
 
+      {/* P & K source legend */}
+      {computed.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 11 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.carry }} /><span style={{ color: 'var(--muted)' }}>Carryover</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.slurry }} /><span style={{ color: 'var(--muted)' }}>Slurry / digestate</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.granular }} /><span style={{ color: 'var(--muted)' }}>Granular</span></span>
+        </div>
+      )}
+
       {computed.length === 0 && (
         <div className="card" style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
           No fields to show.
@@ -377,12 +460,19 @@ export function FertPlanShell({
               </div>
             ) : null}
 
-            {/* Need-vs-supply bars */}
+            {/* Need-vs-supply bars. N stays a simple supply bar; P & K show
+                the source breakdown (carryover / slurry / granular), with the
+                per-source figures revealed when the field is expanded. */}
             {!atTarget && (
               <div style={{ marginTop: 9 }}>
                 <SupplyBar label="N"  need={disp(row.nNeed)} supply={disp(c.supplyN)} unit={nUnit} />
-                <SupplyBar label="P₂O₅" need={disp(row.pNeed)} supply={disp(c.supplyP)} unit={nUnit} />
-                <SupplyBar label="K₂O" need={disp(row.kNeed)} supply={disp(c.supplyK)} unit={nUnit} />
+                <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />
+                <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />
+                {!isOpen && (
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
+                    Tap to see P &amp; K split by source · carryover is an estimated release
+                  </div>
+                )}
               </div>
             )}
 
@@ -439,7 +529,10 @@ export function FertPlanShell({
         Granular plans meet RB209 Section 3 (June 2023) P &amp; K recommendations at each field&apos;s
         soil index, after deducting what&apos;s already been applied this season and any slurry you
         plan above. Slurry nutrient values use your product settings and assume splash-plate
-        application. Always sense-check rates and consult a FACTS adviser where needed.
+        application. The grey <strong>carryover</strong> band is an <em>estimate</em> of P &amp; K
+        from earlier applications still becoming available (slurry fast, FYM over months) net of
+        crop offtake — it is a model, not an RB209 figure. Always sense-check rates and consult a
+        FACTS adviser where needed.
       </p>
     </div>
   );
