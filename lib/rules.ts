@@ -242,6 +242,101 @@ export function monthsBetween(aIso: string, bIso: string): number {
   return Math.max(0, months);
 }
 
+export interface SeasonPKBalance {
+  /** Sum of RB209 P2O5/K2O recommendation across cuts taken + the one being
+   *  built toward (kg/ha). The season requirement up to now. */
+  needP: number;
+  needK: number;
+  /** Total P2O5/K2O supplied this season — applied (organic + granular),
+   *  with pre-window organic released over time (kg/ha). */
+  suppliedP: number;
+  suppliedK: number;
+  /** Still owed = max(0, need - supplied). What the granular plan should aim
+   *  to cover (kg/ha). A skipped cut's need stays here until met. */
+  owedP: number;
+  owedK: number;
+  /** Breakdown of supply for the source bars (kg/ha). */
+  carryP: number; carryK: number;       // pre-window organic, released, net offtake
+  sinceP: number; sinceK: number;        // applied since the cut window
+}
+
+/**
+ * Whole-season "still owed" P & K for a field, summed across the cuts taken so
+ * far plus the cut currently being built toward. P and K are season-long index
+ * maintenance, not strict per-cut timing — so we track the running balance:
+ * total RB209 need to date minus total supplied. A cut whose shortfall was too
+ * small to spread (held back) naturally stays in `owed` until it's worth
+ * applying. Over-application banks against later cuts.
+ *
+ * `cutNumber` is the cut being built toward (cuts done + 1, capped at profile).
+ * Pre-window organic P/K is released over time via the settings release model,
+ * net of crop offtake taken so far. Applications since the window count in full.
+ */
+export function seasonPKBalance(
+  field: Field,
+  cutNumber: number,
+  seasonApps: Application[],
+  seasonCuts: Cut[],
+  products: Product[],
+  settings: Settings,
+  windowStartIso: string,
+  todayIso: string,
+): SeasonPKBalance {
+  // Season P/K requirement = sum of each cut's RB209 recommendation for cuts
+  // 1..cutNumber (the cuts that have happened plus the one we're feeding).
+  let needP = 0, needK = 0;
+  for (let c = 1; c <= cutNumber; c++) {
+    const rec = getFieldPKRecommendation(field, c, seasonCuts);
+    needP += rec.p2o5;
+    // Catch-up K is a one-off for the season, not per cut — only add it once.
+    needK += rec.k2o + (c === cutNumber ? rec.extraKAfterCut : 0);
+  }
+
+  const releaseParams = {
+    releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
+    releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
+    releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
+    releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
+    releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
+  };
+  const typeById = new Map(products.map((p) => [p.id, p.type]));
+
+  // Supply since the window (full value) + pre-window organic (released).
+  let sinceP = 0, sinceK = 0, carryRawP = 0, carryRawK = 0;
+  for (const a of seasonApps) {
+    const nut = sumNutrients([a], products);
+    if (a.date_applied >= windowStartIso) {
+      sinceP += nut.p; sinceK += nut.k;
+    } else {
+      const t = (typeById.get(a.product_id) ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
+      const frac = organicReleaseFraction(t, monthsBetween(a.date_applied, todayIso), releaseParams);
+      carryRawP += nut.p * frac;
+      carryRawK += nut.k * frac;
+    }
+  }
+
+  // Net crop offtake (cuts taken this season) off the carryover.
+  let pOff = 0, kOff = 0;
+  for (const c of seasonCuts) {
+    const o = getOfftakeForCut(field.cut_profile, c.cut_number, c.yield_class, settings, c.cut_type);
+    pOff += o.p2o5; kOff += o.k2o;
+  }
+  const carryP = Math.max(0, carryRawP - pOff);
+  const carryK = Math.max(0, carryRawK - kOff);
+
+  const suppliedP = carryP + sinceP;
+  const suppliedK = carryK + sinceK;
+
+  return {
+    needP, needK,
+    suppliedP, suppliedK,
+    owedP: Math.max(0, needP - suppliedP),
+    owedK: Math.max(0, needK - suppliedK),
+    carryP, carryK, sinceP, sinceK,
+  };
+}
+
+
 /**
  * Convert a nutrient/areal figure stored in kg/ha to the user's chosen unit
  * SYSTEM (acres or hectares). This is the master conversion for every

@@ -81,6 +81,8 @@ export interface FertPlanRow {
   p2o5ToApply: number;
   k2oToApply: number;
   nToApply: number;
+  pHeld: boolean;
+  kHeld: boolean;
   carryP: number;
   carryK: number;
   loggedOrganicP: number;
@@ -388,7 +390,8 @@ export function FertPlanShell({
           : row.cutType === 'bales' ? `cut ${row.cutNumber} (bales)`
           : `cut ${row.cutNumber}`;
         const atTarget = c.nothingGranular && c.slurryTotal === 0
-          && row.p2o5ToApply === 0 && row.k2oToApply === 0 && row.nToApply === 0;
+          && row.p2o5ToApply === 0 && row.k2oToApply === 0 && row.nToApply === 0
+          && !row.pHeld && !row.kHeld;
 
         return (
           <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8 }}>
@@ -473,6 +476,23 @@ export function FertPlanShell({
                     Tap to see P &amp; K split by source · carryover is an estimated release
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Low-rate hold notice — P or K shortfall too small to spread, so
+                it's held in the season balance and will combine with a later
+                cut once it's worth applying. */}
+            {(row.pHeld || row.kHeld) && (
+              <div style={{
+                marginTop: 8, padding: '7px 10px', borderRadius: 8,
+                background: '#F4EFE2', border: '1px solid #E4D9BD',
+                fontSize: 11, color: '#6B5D34', lineHeight: 1.45,
+              }}>
+                {row.pHeld && row.kHeld
+                  ? `P and K shortfalls are below your minimum spread rate — held for now and carried forward; they'll show once they build up enough to be worth spreading.`
+                  : row.pHeld
+                  ? `P₂O₅ shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`
+                  : `K₂O shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`}
               </div>
             )}
 

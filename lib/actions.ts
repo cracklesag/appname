@@ -493,6 +493,14 @@ export async function saveSettings(formData: FormData) {
       releaseFymCapPct: Math.max(0, Math.min(100,
         parseFloat(String(formData.get('release_fym_cap') || '95')) || 95
       )),
+      // Minimum granular spread rate (kg nutrient/ha) below which the fert
+      // plan holds the dribble. Clamped 0–100.
+      minSpreadP2O5KgPerHa: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('min_spread_p') || '20')) || 20
+      )),
+      minSpreadK2OKgPerHa: Math.max(0, Math.min(100,
+        parseFloat(String(formData.get('min_spread_k') || '25')) || 25
+      )),
     },
     timingDefaults: {
       nDueAfterCutDays: Math.max(0, Math.min(30,

@@ -48,7 +48,6 @@ export default async function FertPlanPage({
       const seasonApps = applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
       );
-      const applied = sumNutrients(seasonApps, products);
 
       // Applied since the last cut — used for NITROGEN, which is a per-cut
       // recommendation. Each cut removes the crop N, so N starts fresh: only
@@ -59,29 +58,28 @@ export default async function FertPlanPage({
       const sinceCutApps = seasonApps.filter((a) => a.date_applied >= nWindowStart);
       const appliedNSinceCut = sumNutrients(sinceCutApps, products).n;
 
-      // P & K supply, split into "carryover" (applied BEFORE this cut window,
-      // released over time per material type, net of offtake) and "this cut"
-      // (applied since the cut window — logged organics + bag fert).
+      // P & K supply split into "carryover" (pre-cut applications, released
+      // over time per material type, net of offtake from cuts taken) and "this
+      // cut" (applied since the cut window). Per-cut model — the carryover band
+      // shrinks as successive cuts remove offtake, so a near-covered shortfall
+      // naturally grows over the season until it's worth spreading.
       const productTypeById = new Map(products.map((p) => [p.id, p.type]));
-
-      // Carryover: pre-cut-window applications, each released by months elapsed.
+      const releaseParams = {
+        releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
+        releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
+        releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
+        releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
+        releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
+      };
       const preCutApps = seasonApps.filter((a) => a.date_applied < nWindowStart);
       let carryPRaw = 0, carryKRaw = 0;
       for (const a of preCutApps) {
         const t = (productTypeById.get(a.product_id) ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
-        const months = monthsBetween(a.date_applied, todayIso);
-        const frac = organicReleaseFraction(t, months, {
-          releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
-          releaseSlurryPerMonthPct: settings.reportDefaults.releaseSlurryPerMonthPct,
-          releaseFymStartPct: settings.reportDefaults.releaseFymStartPct,
-          releaseFymPerMonthPct: settings.reportDefaults.releaseFymPerMonthPct,
-          releaseFymCapPct: settings.reportDefaults.releaseFymCapPct,
-        });
+        const frac = organicReleaseFraction(t, monthsBetween(a.date_applied, todayIso), releaseParams);
         const nut = sumNutrients([a], products);
         carryPRaw += nut.p * frac;
         carryKRaw += nut.k * frac;
       }
-      // Net off the crop offtake from cuts already taken this season.
       let pOff = 0, kOff = 0;
       for (const c of seasonCuts) {
         const o = getOfftakeForCut(f.cut_profile, c.cut_number, c.yield_class, settings, c.cut_type);
@@ -90,7 +88,6 @@ export default async function FertPlanPage({
       const carryP = Math.max(0, carryPRaw - pOff);
       const carryK = Math.max(0, carryKRaw - kOff);
 
-      // Already-applied-this-cut, split organic vs granular (for the bands).
       const sinceCutOrganic = sinceCutApps.filter((a) => {
         const t = productTypeById.get(a.product_id);
         return t === 'slurry' || t === 'solid_manure';
@@ -99,20 +96,28 @@ export default async function FertPlanPage({
       const loggedOrganic = sumNutrients(sinceCutOrganic, products);
       const loggedGranular = sumNutrients(sinceCutGranular, products);
 
-      // RB209 P & K recommendation for this cut (the gross need).
+      // Per-cut RB209 need (the familiar figure on the bars).
       const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts);
       const pGrossNeed = rec.p2o5;
       const kGrossNeed = rec.k2o + rec.extraKAfterCut;
 
-      // ONE consistent P/K model: the shortfall the granular planner must
-      // cover = gross need − carryover (pre-cut, released, net of offtake)
-      // − what's already gone on since the cut (logged organic + granular).
-      // This replaces the old whole-season "applied" subtraction, which
-      // double-counted pre-cut slurry and made MOP read far too low.
+      // Shortfall the granular plan must cover this cut.
       const pSupplyBeforePlan = carryP + loggedOrganic.p + loggedGranular.p;
       const kSupplyBeforePlan = carryK + loggedOrganic.k + loggedGranular.k;
-      const p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
-      const k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
+      let p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
+      let k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
+
+      // Minimum-rate cut-off: a shortfall too small to spread is held this cut.
+      // It isn't lost — the carryover that's nearly covering it gets eaten by
+      // each cut's offtake, so the shortfall grows and re-presents on a later
+      // cut once it crosses the threshold and is worth applying.
+      const minP = settings.reportDefaults.minSpreadP2O5KgPerHa;
+      const minK = settings.reportDefaults.minSpreadK2OKgPerHa;
+      const pHeld = p2o5ToApply > 0 && p2o5ToApply < minP;
+      const kHeld = k2oToApply > 0 && k2oToApply < minK;
+      if (pHeld) p2o5ToApply = 0;
+      if (kHeld) k2oToApply = 0;
+
       const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
       const nToApply = Math.max(0, Math.round(nRec.n - appliedNSinceCut));
 
@@ -139,6 +144,8 @@ export default async function FertPlanPage({
         p2o5ToApply,
         k2oToApply,
         nToApply,
+        pHeld,
+        kHeld,
         // P/K supply split into bands (kg/ha, before unit conversion in shell):
         carryP: Math.round(carryP),
         carryK: Math.round(carryK),
@@ -147,11 +154,12 @@ export default async function FertPlanPage({
         loggedGranularP: Math.round(loggedGranular.p),
         loggedGranularK: Math.round(loggedGranular.k),
         nNeed: Math.round(nRec.n),
-        pNeed: rec.p2o5,
-        kNeed: rec.k2o + rec.extraKAfterCut,
+        // Per-cut RB209 need (familiar figures on the bars).
+        pNeed: Math.round(pGrossNeed),
+        kNeed: Math.round(kGrossNeed),
         appliedN: Math.round(appliedNSinceCut),
-        appliedP: Math.round(applied.p),
-        appliedK: Math.round(applied.k),
+        appliedP: Math.round(pSupplyBeforePlan),
+        appliedK: Math.round(kSupplyBeforePlan),
       };
     });
 

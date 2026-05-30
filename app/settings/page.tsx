@@ -396,6 +396,37 @@ export default async function SettingsPage() {
               <span style={{ fontSize: 12, color: 'var(--muted)', width: 14 }}>%</span>
             </div>
           </div>
+
+          {/* Minimum spread rate (fert plan) */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 4 }}>Minimum spread rate</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+              The fert plan won&apos;t recommend a granular rate below this — too small to spread
+              accurately. A shortfall under the threshold is held and carried forward, then shows
+              once it builds up enough to be worth applying. Set in kg of nutrient per hectare.
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>
+                P₂O₅ minimum
+                <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)' }}>
+                  ≈ {Math.round(s.reportDefaults.minSpreadP2O5KgPerHa / 2.4711)} kg/ac
+                </span>
+              </div>
+              <input type="number" min="0" max="100" step="5" name="min_spread_p" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.minSpreadP2O5KgPerHa} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 38 }}>kg/ha</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink)' }}>
+                K₂O minimum
+                <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)' }}>
+                  ≈ {Math.round(s.reportDefaults.minSpreadK2OKgPerHa / 2.4711)} kg/ac
+                </span>
+              </div>
+              <input type="number" min="0" max="100" step="5" name="min_spread_k" className="input" style={{ width: 64, textAlign: 'right' }} defaultValue={s.reportDefaults.minSpreadK2OKgPerHa} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', width: 38 }}>kg/ha</span>
+            </div>
+          </div>
             </div>
           </details>
         </div>

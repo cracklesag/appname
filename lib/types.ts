@@ -236,6 +236,15 @@ export interface Settings {
     releaseFymStartPct: number;
     releaseFymPerMonthPct: number;
     releaseFymCapPct: number;        // FYM never exceeds this (soft cap)
+    /**
+     * Minimum granular spread rate (kg of NUTRIENT per ha) below which the
+     * fert plan won't recommend a dribble — too small to calibrate a spreader
+     * for. When this cut's P (or K) shortfall is under the threshold, it's
+     * held and rolled into the next cut's need, surfacing once it's worth
+     * spreading. Set per nutrient. 0 disables (always recommend any rate).
+     */
+    minSpreadP2O5KgPerHa: number;
+    minSpreadK2OKgPerHa: number;
   };
   /**
    * Timing parameters for the home-screen "Coming up" prompts. All in days
@@ -284,6 +293,8 @@ export const DEFAULT_SETTINGS: Settings = {
     releaseFymStartPct: 35,
     releaseFymPerMonthPct: 10,
     releaseFymCapPct: 95,
+    minSpreadP2O5KgPerHa: 20,
+    minSpreadK2OKgPerHa: 25,
   },
   timingDefaults: {
     nDueAfterCutDays: 0,
