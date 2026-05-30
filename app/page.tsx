@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout, ClipboardList, Repeat, Mountain } from 'lucide-react';
+import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout, ClipboardList, Repeat, Mountain, Wheat } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -173,6 +173,10 @@ export default async function HomePage() {
               <Link href="/reports/lime?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Mountain size={21} style={{ color: '#8a7a4a' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Lime status</span>
+              </Link>
+              <Link href="/crops?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Wheat size={21} style={{ color: '#b8902f' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Crop guide</span>
               </Link>
             </div>
           </>
