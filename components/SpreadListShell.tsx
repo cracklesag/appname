@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer, Map as MapIcon } from 'lucide-react';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
 import { nutrientPerArea } from '@/lib/rules';
 import { Product } from '@/lib/types';
@@ -115,7 +115,13 @@ export function SpreadListShell({
       </div>
 
       <div style={{ padding: '14px 16px' }}>
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+          <Link
+            href={`/reports/spread-map?mode=${mode}&from=${encodeURIComponent(`/reports/spread-list?mode=${mode}&from=${encodeURIComponent(fromHref)}`)}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 13px', fontSize: 13, fontWeight: 700, color: 'var(--ink-soft)', textDecoration: 'none' }}
+          >
+            <MapIcon size={15} /> Map sheet
+          </Link>
           <button
             type="button"
             onClick={() => window.print()}
