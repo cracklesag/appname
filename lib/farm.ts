@@ -41,9 +41,26 @@ export async function getFarmContext(): Promise<FarmContext | null> {
     return { userId: user.id, ownerId: user.id, role: 'admin', isAdmin: true };
   }
 
-  // Prefer the farm where this user is admin (their own farm).
+  // Choose which farm to resolve to. A user can be BOTH admin of their own
+  // farm (auto-created at signup) AND staff on someone else's. Someone who
+  // signed up only to join a farm has an empty, never-onboarded own-farm — in
+  // that case prefer the farm they're staff on, so they land on real data
+  // instead of their empty shell. A genuine admin (own farm set up) stays on
+  // their own farm even if they're also staff somewhere.
   const adminMembership = memberships.find((m) => m.role === 'admin');
-  const chosen = adminMembership ?? memberships[0];
+  const staffMembership = memberships.find((m) => m.role === 'staff');
+
+  let chosen = adminMembership ?? memberships[0];
+  if (adminMembership && staffMembership) {
+    // Both: keep the admin farm only if it's actually been set up.
+    const { data: ownSettings } = await supabase
+      .from('settings')
+      .select('data')
+      .eq('user_id', adminMembership.owner_id as string)
+      .maybeSingle();
+    const onboarded = !!(ownSettings?.data as { onboarded?: boolean } | null)?.onboarded;
+    chosen = onboarded ? adminMembership : staffMembership;
+  }
 
   return {
     userId: user.id,

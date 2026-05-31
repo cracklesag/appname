@@ -91,21 +91,38 @@ export async function loadSettings(): Promise<Settings> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return DEFAULT_SETTINGS;
 
-  // Resolve to the farm owner's settings: staff inherit their admin's farm
-  // settings (units, targets, timing) rather than their own empty row. Falls
-  // back to the user's own id if no membership (admin of their own farm).
+  // Resolve which farm's settings to load. A user can be admin of their own
+  // (auto-created) farm AND staff on someone else's. If their own farm has
+  // never been set up, prefer the farm they're staff on — otherwise they'd see
+  // an empty shell and get bounced to /welcome. Mirrors getFarmContext().
   let ownerId = user.id;
   let isStaff = false;
   const { data: memberships } = await supabase
     .from('farm_members')
     .select('owner_id, role')
     .eq('member_id', user.id);
+
   if (memberships && memberships.length > 0) {
-    const admin = memberships.find((m) => m.role === 'admin');
-    if (admin) {
-      ownerId = admin.owner_id as string;
+    const adminM = memberships.find((m) => m.role === 'admin');
+    const staffM = memberships.find((m) => m.role === 'staff');
+
+    if (adminM && staffM) {
+      // Keep the own (admin) farm only if it's actually been onboarded.
+      const { data: ownSettings } = await supabase
+        .from('settings')
+        .select('data')
+        .eq('user_id', adminM.owner_id as string)
+        .maybeSingle();
+      const ownOnboarded = !!(ownSettings?.data as { onboarded?: boolean } | null)?.onboarded;
+      if (ownOnboarded) {
+        ownerId = adminM.owner_id as string;
+      } else {
+        ownerId = staffM.owner_id as string;
+        isStaff = true;
+      }
+    } else if (adminM) {
+      ownerId = adminM.owner_id as string;
     } else {
-      // No admin row → this user is staff on someone else's farm.
       ownerId = memberships[0].owner_id as string;
       isStaff = true;
     }
