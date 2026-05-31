@@ -9,6 +9,7 @@
 // Esri World Imagery for preview. maplibre-gl is imported dynamically (it touches `window`).
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import type {
   Map as MlMap,
   GeoJSONSource,
@@ -43,6 +44,8 @@ export type MapField = {
   centroid_lng: number | null;
   area_ha_mapped: number | null;
   boundary_source: string | null;
+  rpa_sheet_id: string | null;
+  rpa_parcel_id: string | null;
 };
 
 type MapSettings = {
@@ -123,18 +126,28 @@ function fieldsToFC(fields: MapField[], mode: ColourMode) {
   };
 }
 
-function parcelsToFC(parcels: RpaParcel[]) {
+/** Key identifying an RPA parcel: sheet + parcel id. */
+function parcelKey(sheetId: string | null, parcelId: string | null): string {
+  return `${sheetId ?? ""}|${parcelId ?? ""}`;
+}
+
+function parcelsToFC(parcels: RpaParcel[], allocated: Map<string, string>) {
   return {
     type: "FeatureCollection" as const,
-    features: parcels.map((p) => ({
-      type: "Feature" as const,
-      geometry: p.geometry,
-      properties: {
-        rpaId: p.rpaId,
-        ref: `${p.sheetId} ${p.parcelId}`,
-        areaHa: p.areaHa,
-      },
-    })),
+    features: parcels.map((p) => {
+      const fieldName = allocated.get(parcelKey(p.sheetId, p.parcelId)) ?? null;
+      return {
+        type: "Feature" as const,
+        geometry: p.geometry,
+        properties: {
+          rpaId: p.rpaId,
+          ref: `${p.sheetId} ${p.parcelId}`,
+          areaHa: p.areaHa,
+          allocated: fieldName ? 1 : 0,
+          fieldName: fieldName ?? "",
+        },
+      };
+    }),
   };
 }
 
@@ -232,6 +245,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   // adopt
   const [parcels, setParcels] = useState<RpaParcel[]>([]);
   const [selectedParcel, setSelectedParcel] = useState<RpaParcel | null>(null);
+  const router = useRouter();
   const [adoptTarget, setAdoptTarget] = useState<string>(""); // "" = new field
   const [newFieldName, setNewFieldName] = useState("");
 
@@ -271,6 +285,21 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   );
 
   const unmappedFields = useMemo(() => fields.filter((f) => !f.boundary), [fields]);
+
+  // Map of already-adopted parcels: "sheetId|parcelId" -> field name. Lets the
+  // adopt overlay show which registered parcels are already saved as fields, so
+  // re-pulling the SBI doesn't look like a fresh slate.
+  const allocatedParcels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of fields) {
+      if (f.boundary_source === "rpa" && (f.rpa_sheet_id || f.rpa_parcel_id)) {
+        m.set(parcelKey(f.rpa_sheet_id, f.rpa_parcel_id), f.name);
+      }
+    }
+    return m;
+  }, [fields]);
+  const allocatedRef = useRef(allocatedParcels);
+  allocatedRef.current = allocatedParcels;
 
   const flash = useCallback((m: string) => {
     setMessage(m);
@@ -323,7 +352,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
       map.on("load", () => {
         // Sources
         map.addSource("fields", { type: "geojson", data: fieldsToFC(fields, "none") as any });
-        map.addSource("parcels", { type: "geojson", data: parcelsToFC([]) as any });
+        map.addSource("parcels", { type: "geojson", data: parcelsToFC([], new Map()) as any });
         map.addSource("draw", { type: "geojson", data: drawToFC([]) as any });
 
         // Field layers
@@ -340,20 +369,28 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
           paint: { "line-color": ["get", "colour"], "line-width": 2 },
         });
 
-        // Parcel layers (hidden until adopt mode)
+        // Parcel layers (hidden until adopt mode). Allocated parcels (already
+        // saved as a field) shade green; available ones stay cyan.
         map.addLayer({
           id: "parcels-fill",
           type: "fill",
           source: "parcels",
           layout: { visibility: "none" },
-          paint: { "fill-color": COLOURS.parcel, "fill-opacity": 0.18 },
+          paint: {
+            "fill-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.good, COLOURS.parcel],
+            "fill-opacity": ["case", ["==", ["get", "allocated"], 1], 0.28, 0.18],
+          },
         });
         map.addLayer({
           id: "parcels-line",
           type: "line",
           source: "parcels",
           layout: { visibility: "none" },
-          paint: { "line-color": COLOURS.parcel, "line-width": 2, "line-dasharray": [2, 1] },
+          paint: {
+            "line-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.good, COLOURS.parcel],
+            "line-width": 2,
+            "line-dasharray": [2, 1],
+          },
         });
 
         // Draw layers (hidden until draw mode)
@@ -408,13 +445,19 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
       // Parcel selection (adopt mode)
       map.on("click", "parcels-fill", (e: MapMouseEvent & { features?: any[] }) => {
         if (modeRef.current !== "adopt") return;
-        const id = e.features?.[0]?.properties?.rpaId;
+        const props = e.features?.[0]?.properties ?? {};
+        const id = props.rpaId;
         const parcel = parcelsRef.current.find((pp) => pp.rpaId === String(id));
-        if (parcel) {
-          setSelectedParcel(parcel);
-          setAdoptTarget("");
-          setNewFieldName("");
+        if (!parcel) return;
+        // Already a field? Tell the user rather than offering to adopt it again.
+        const allocatedName = allocatedRef.current.get(parcelKey(parcel.sheetId, parcel.parcelId));
+        if (allocatedName) {
+          flash(`Already saved as “${allocatedName}”.`);
+          return;
         }
+        setSelectedParcel(parcel);
+        setAdoptTarget("");
+        setNewFieldName("");
       });
 
       // Draw: add a vertex on any click while drawing
@@ -469,8 +512,8 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    (map.getSource("parcels") as GeoJSONSource | undefined)?.setData(parcelsToFC(parcels) as any);
-  }, [parcels, ready]);
+    (map.getSource("parcels") as GeoJSONSource | undefined)?.setData(parcelsToFC(parcels, allocatedParcels) as any);
+  }, [parcels, allocatedParcels, ready]);
 
   // --- draw source ---------------------------------------------------------
   useEffect(() => {
@@ -517,7 +560,13 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
     setParcels(list);
     if (list.length === 0) flash("No registered parcels found for that SBI.");
     else {
-      flash(`Found ${list.length} parcels — tap one to adopt.`);
+      const done = list.filter((p) => allocatedRef.current.has(parcelKey(p.sheetId, p.parcelId))).length;
+      const available = list.length - done;
+      flash(
+        done > 0
+          ? `${list.length} parcels — ${available} to adopt, ${done} already saved (green).`
+          : `Found ${list.length} parcels — tap one to adopt.`
+      );
       fitToParcels(mapRef.current, list);
     }
   }
@@ -578,10 +627,13 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   }
 
   function softRefresh() {
-    // Re-run the server page so the new boundary flows back as props.
-    // Using a full navigation keeps this component dependency-free of next/navigation typing
-    // quirks; the map itself is not re-created (its init effect has an empty dep array).
-    window.location.reload();
+    // Re-run the server page so the newly saved boundary flows back as props,
+    // WITHOUT a full page reload — that would wipe the in-memory parcel list
+    // and force a re-pull before adopting the next field. router.refresh()
+    // re-fetches the server component while preserving this client component's
+    // state, so the remaining parcels stay on screen and you can loop straight
+    // to the next one.
+    router.refresh();
   }
 
   // --- render --------------------------------------------------------------

@@ -30,6 +30,8 @@ export default async function MapPage() {
     centroid_lng: f.centroid_lng ?? null,
     area_ha_mapped: f.area_ha_mapped ?? null,
     boundary_source: f.boundary_source ?? null,
+    rpa_sheet_id: f.rpa_sheet_id ?? null,
+    rpa_parcel_id: f.rpa_parcel_id ?? null,
   }));
 
   return (
