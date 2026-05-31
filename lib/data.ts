@@ -95,17 +95,29 @@ export async function loadSettings(): Promise<Settings> {
   // settings (units, targets, timing) rather than their own empty row. Falls
   // back to the user's own id if no membership (admin of their own farm).
   let ownerId = user.id;
+  let isStaff = false;
   const { data: memberships } = await supabase
     .from('farm_members')
     .select('owner_id, role')
     .eq('member_id', user.id);
   if (memberships && memberships.length > 0) {
     const admin = memberships.find((m) => m.role === 'admin');
-    ownerId = (admin ?? memberships[0]).owner_id as string;
+    if (admin) {
+      ownerId = admin.owner_id as string;
+    } else {
+      // No admin row → this user is staff on someone else's farm.
+      ownerId = memberships[0].owner_id as string;
+      isStaff = true;
+    }
   }
 
   const { data, error } = await supabase.from('settings').select('data').eq('user_id', ownerId).maybeSingle();
-  if (error || !data) return DEFAULT_SETTINGS;
+  if (error || !data) {
+    // A staff member has joined a farm and is past onboarding by definition —
+    // never bounce them to /welcome even if the admin's settings row is
+    // momentarily unreadable (e.g. read-after-write right after joining).
+    return isStaff ? { ...DEFAULT_SETTINGS, onboarded: true } : DEFAULT_SETTINGS;
+  }
   const saved = (data.data || {}) as Partial<Settings>;
   const merged: Settings = {
     ...DEFAULT_SETTINGS,
@@ -126,6 +138,10 @@ export async function loadSettings(): Promise<Settings> {
   if (!('unitSystem' in saved)) {
     merged.unitSystem = merged.slurryUnit === 'gal/ac' ? 'acres' : 'hectares';
   }
+  // Staff are onboarded by virtue of belonging to a farm — the unit-picker
+  // welcome is an admin-only, first-run step. Guard against the (rare) case of
+  // an admin whose own settings somehow lack the flag.
+  if (isStaff) merged.onboarded = true;
   return merged;
 }
 
