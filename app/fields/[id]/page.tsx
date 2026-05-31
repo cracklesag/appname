@@ -8,6 +8,7 @@ import {
 } from '@/components/FieldDetailCards';
 import { FieldGroupPicker } from '@/components/FieldGroupPicker';
 import { NextActionPicker } from '@/components/NextActionPicker';
+import { DeleteFieldSection } from '@/components/DeleteFieldSection';
 import {
   loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups,
 } from '@/lib/data';
@@ -462,6 +463,10 @@ export default async function FieldDetailPage({
               Update via the field's soil sample screen.
             </div>
           </div>
+
+          {isAdmin && (
+            <DeleteFieldSection fieldId={field.id} fieldName={field.name} />
+          )}
         </div>
       )}
 
