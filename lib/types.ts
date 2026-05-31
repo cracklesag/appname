@@ -64,6 +64,18 @@ export interface Field {
   /** Soil magnesium index (decimal, e.g. 1.0). Drives Mg-based lime type
    *  (magnesian vs calcium) on the lime report. Null = not sampled for Mg. */
   mg_idx: number | null;
+  /** Visual mapping (all nullable; populated via the /map area). boundary is a
+   *  GeoJSON Polygon/MultiPolygon in [lng,lat]. area_ha_mapped is the official
+   *  RPA area or the computed drawn area; it stays separate from `ha` until the
+   *  user accepts it. */
+  boundary: unknown | null;
+  centroid_lat: number | null;
+  centroid_lng: number | null;
+  area_ha_mapped: number | null;
+  boundary_source: string | null;
+  rpa_sheet_id: string | null;
+  rpa_parcel_id: string | null;
+  boundary_updated_at: string | null;
   sampled: boolean;
   sample_date: string | null;
   soil_type: SoilType;
