@@ -19,7 +19,7 @@ import type {
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type { RpaParcel } from "@/lib/rpa";
-import { locateFieldAtPoint, type FieldGeometry, type LocatableField } from "@/lib/geo";
+import { locateFieldAtPoint, snapPoint, ringsOfGeometry, type FieldGeometry, type LocatableField, type SnapRing } from "@/lib/geo";
 import {
   saveFarmMapSettings,
   getAdoptableParcels,
@@ -252,6 +252,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   // draw
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [drawFinished, setDrawFinished] = useState<FieldGeometry | null>(null);
+  const [snapEnabled, setSnapEnabled] = useState(false);
   const [drawName, setDrawName] = useState("");
   const [drawTarget, setDrawTarget] = useState<string>("");
 
@@ -300,6 +301,22 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   }, [fields]);
   const allocatedRef = useRef(allocatedParcels);
   allocatedRef.current = allocatedParcels;
+
+  // Boundary rings the draw tool can snap to: every mapped field's boundary
+  // plus every pulled parcel. Rebuilt when fields/parcels change; read via a
+  // ref inside the (init-once) click handler.
+  const snapRings = useMemo<SnapRing[]>(() => {
+    const rings: SnapRing[] = [];
+    for (const f of fields) rings.push(...ringsOfGeometry(f.boundary as FieldGeometry | null));
+    for (const p of parcels) rings.push(...ringsOfGeometry(p.geometry as FieldGeometry));
+    return rings;
+  }, [fields, parcels]);
+  const snapRingsRef = useRef(snapRings);
+  snapRingsRef.current = snapRings;
+  const snapEnabledRef = useRef(snapEnabled);
+  snapEnabledRef.current = snapEnabled;
+  const drawPointsRef = useRef(drawPoints);
+  drawPointsRef.current = drawPoints;
 
   const flash = useCallback((m: string) => {
     setMessage(m);
@@ -463,7 +480,17 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
       // Draw: add a vertex on any click while drawing
       map.on("click", (e: MapMouseEvent) => {
         if (modeRef.current !== "draw" || drawFinishedRef.current) return;
-        setDrawPoints((pts) => [...pts, [e.lngLat.lng, e.lngLat.lat]]);
+        let pt: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+        if (snapEnabledRef.current) {
+          // Snap to known boundaries (parcels + mapped fields) and to the
+          // user's own drawing so far, within tolerance.
+          const ownRing = drawPointsRef.current.length
+            ? [drawPointsRef.current as [number, number][]]
+            : [];
+          const res = snapPoint(pt, [...snapRingsRef.current, ...ownRing], 14);
+          pt = res.point;
+        }
+        setDrawPoints((pts) => [...pts, pt]);
       });
 
       map.on("mouseenter", "fields-fill", () => {
@@ -824,6 +851,19 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
                   <p className="text-sm text-stone-600">
                     Tap the map to drop corners around the field. Add at least 3, then finish.
                   </p>
+                  <label className="mt-2 flex items-center gap-2 text-[13px] text-stone-600">
+                    <input
+                      type="checkbox"
+                      checked={snapEnabled}
+                      onChange={(e) => setSnapEnabled(e.target.checked)}
+                    />
+                    <span>
+                      Snap to boundaries
+                      <span className="text-stone-400">
+                        {" "}— locks corners onto nearby parcels &amp; mapped fields
+                      </span>
+                    </span>
+                  </label>
                   <div className="mt-3 flex items-center gap-2">
                     <span className="text-sm text-stone-500">{drawPoints.length} points</span>
                     <button

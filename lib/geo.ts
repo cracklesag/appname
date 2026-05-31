@@ -137,3 +137,101 @@ export function locateFieldAtPoint(point: Position, fields: LocatableField[]): F
   }
   return { insideId, nearestId, nearestMeters };
 }
+
+// ---------------------------------------------------------------------------
+// Snap-to-boundary (draw assist)
+// ---------------------------------------------------------------------------
+// When hand-drawing a field on a phone, snap each tapped vertex onto a nearby
+// boundary the app already knows: the edges/corners of pulled RPA parcels and
+// of fields already mapped, plus the user's own in-progress drawing. This is
+// pure geometry against data we hold — it does NOT analyse the satellite image
+// (detecting a hedge from pixels isn't feasible client-side).
+
+/** A boundary as a flat list of rings, each ring a list of [lng,lat] points. */
+export type SnapRing = Position[];
+
+/** Local metres-per-degree at a latitude, for planar near-distance maths.
+ *  Good enough at field scale; we use haversine for the final accept test. */
+function metresPerDegree(lat: number): { x: number; y: number } {
+  const latRad = (lat * Math.PI) / 180;
+  return {
+    x: 111320 * Math.cos(latRad), // lng
+    y: 110540,                    // lat
+  };
+}
+
+/** Closest point on segment a→b to point p, all [lng,lat], plus its distance
+ *  in metres. Planar projection around p's latitude (fine at field scale). */
+function closestOnSegment(
+  p: Position,
+  a: Position,
+  b: Position,
+): { point: Position; meters: number } {
+  const m = metresPerDegree(p[1]);
+  const px = p[0] * m.x, py = p[1] * m.y;
+  const ax = a[0] * m.x, ay = a[1] * m.y;
+  const bx = b[0] * m.x, by = b[1] * m.y;
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx, cy = ay + t * dy;
+  const meters = Math.hypot(px - cx, py - cy);
+  const point: Position = [(ax + t * dx) / m.x, (ay + t * dy) / m.y];
+  return { point, meters };
+}
+
+/**
+ * Snap a tapped point to the nearest known boundary within `toleranceMeters`.
+ * Prefers snapping to a VERTEX (corner) when one is within tolerance — corners
+ * are what people aim for — otherwise to the nearest point along an edge.
+ * Returns the snapped point and what it locked onto, or the original point with
+ * `snapped: false` if nothing's near.
+ */
+export function snapPoint(
+  point: Position,
+  rings: SnapRing[],
+  toleranceMeters = 12,
+): { point: Position; snapped: boolean; kind: "vertex" | "edge" | null } {
+  let bestVertex: { point: Position; meters: number } | null = null;
+  let bestEdge: { point: Position; meters: number } | null = null;
+
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const v = ring[i];
+      // Vertex distance
+      const vd = haversineMeters(point, v);
+      if (vd <= toleranceMeters && (!bestVertex || vd < bestVertex.meters)) {
+        bestVertex = { point: v, meters: vd };
+      }
+      // Edge distance (segment to the next vertex)
+      if (i < ring.length - 1) {
+        const seg = closestOnSegment(point, v, ring[i + 1]);
+        if (seg.meters <= toleranceMeters && (!bestEdge || seg.meters < bestEdge.meters)) {
+          bestEdge = seg;
+        }
+      }
+    }
+  }
+
+  // Vertices win ties / take priority when comparably close.
+  if (bestVertex && (!bestEdge || bestVertex.meters <= bestEdge.meters + 1)) {
+    return { point: bestVertex.point, snapped: true, kind: "vertex" };
+  }
+  if (bestEdge) {
+    return { point: bestEdge.point, snapped: true, kind: "edge" };
+  }
+  return { point, snapped: false, kind: null };
+}
+
+/** Pull every ring out of a polygon / multipolygon geometry for snapping. */
+export function ringsOfGeometry(geometry: FieldGeometry | null | undefined): SnapRing[] {
+  if (!geometry) return [];
+  if (geometry.type === "Polygon") return geometry.coordinates as SnapRing[];
+  if (geometry.type === "MultiPolygon") {
+    const out: SnapRing[] = [];
+    for (const poly of geometry.coordinates) for (const ring of poly) out.push(ring as SnapRing);
+    return out;
+  }
+  return [];
+}
