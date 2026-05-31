@@ -617,10 +617,17 @@ export async function deleteField(formData: FormData) {
     .maybeSingle();
   if (fetchErr || !field) throw new Error('Field not found');
 
-  // Tolerant confirmation: compare case-insensitively and with collapsed
-  // whitespace, so an invisible trailing space, a non-breaking space, or a
-  // phone auto-capitalising the first letter doesn't block a genuine match.
-  const normalise = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+  // Tolerant confirmation: ignore case, collapse whitespace, and treat smart
+  // quotes the same as straight ones — so an invisible trailing space, a
+  // non-breaking space, a phone auto-capitalising, or a curly-vs-straight
+  // apostrophe (e.g. "Bernard's beck side") doesn't block a genuine match.
+  const normalise = (s: string) =>
+    s
+      .replace(/[\u2018\u2019\u201B\u02BC]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
   if (normalise(field.name) !== normalise(confirmName)) {
     throw new Error(`Name didn't match. Type "${field.name}" exactly to confirm.`);
   }

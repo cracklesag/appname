@@ -11,7 +11,18 @@ export function DeleteFieldSection({ fieldId, fieldName }: { fieldId: string; fi
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const matches = confirmName.trim() === fieldName.trim();
+  // Tolerant match: ignore case, collapse whitespace, and treat smart quotes
+  // the same as straight ones. A field like "Bernard's beck side" displays a
+  // curly apostrophe (’) but most keyboards type a straight one ('), which a
+  // strict === would reject — leaving the button stuck greyed out.
+  const normalise = (s: string) =>
+    s
+      .replace(/[\u2018\u2019\u201B\u02BC]/g, "'") // curly/odd apostrophes → '
+      .replace(/[\u201C\u201D]/g, '"')             // curly double quotes → "
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  const matches = normalise(confirmName) === normalise(fieldName);
 
   async function handleDelete(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
