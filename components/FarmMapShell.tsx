@@ -75,6 +75,7 @@ const COLOURS = {
   neutral: "#2f7d6a",
   parcel: "#22d3ee",
   draw: "#f59e0b",
+  allocated: "#f97316", // already-adopted parcels — strong orange, reads clearly on satellite
 };
 
 const UK_DEFAULT: { center: [number, number]; zoom: number } = {
@@ -387,15 +388,15 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
         });
 
         // Parcel layers (hidden until adopt mode). Allocated parcels (already
-        // saved as a field) shade green; available ones stay cyan.
+        // saved as a field) shade orange; available ones stay cyan.
         map.addLayer({
           id: "parcels-fill",
           type: "fill",
           source: "parcels",
           layout: { visibility: "none" },
           paint: {
-            "fill-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.good, COLOURS.parcel],
-            "fill-opacity": ["case", ["==", ["get", "allocated"], 1], 0.28, 0.18],
+            "fill-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.allocated, COLOURS.parcel],
+            "fill-opacity": ["case", ["==", ["get", "allocated"], 1], 0.4, 0.18],
           },
         });
         map.addLayer({
@@ -404,7 +405,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
           source: "parcels",
           layout: { visibility: "none" },
           paint: {
-            "line-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.good, COLOURS.parcel],
+            "line-color": ["case", ["==", ["get", "allocated"], 1], COLOURS.allocated, COLOURS.parcel],
             "line-width": 2,
             "line-dasharray": [2, 1],
           },
@@ -591,7 +592,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
       const available = list.length - done;
       flash(
         done > 0
-          ? `${list.length} parcels — ${available} to adopt, ${done} already saved (green).`
+          ? `${list.length} parcels — ${available} to adopt, ${done} already saved (orange).`
           : `Found ${list.length} parcels — tap one to adopt.`
       );
       fitToParcels(mapRef.current, list);
