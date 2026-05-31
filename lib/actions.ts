@@ -599,28 +599,50 @@ export async function createField(formData: FormData) {
 
 export async function deleteField(formData: FormData) {
   const supabase = createClient();
-  await requireAdmin();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await requireAdmin();
+  const ownerId = ctx.ownerId;
 
   const fieldId = String(formData.get('field_id'));
   const confirmName = String(formData.get('confirm_name') || '').trim();
   if (!fieldId) throw new Error('Missing field id');
   if (!confirmName) throw new Error('Type the field name to confirm');
 
-  // Verify the name matches before we cascade-delete
+  // Load the field, scoped to the farm owner so we never match a field from a
+  // different farm the user might also belong to.
   const { data: field, error: fetchErr } = await supabase
     .from('fields')
     .select('name')
     .eq('id', fieldId)
+    .eq('user_id', ownerId)
     .maybeSingle();
   if (fetchErr || !field) throw new Error('Field not found');
-  if (field.name.trim() !== confirmName) {
+
+  // Tolerant confirmation: compare case-insensitively and with collapsed
+  // whitespace, so an invisible trailing space, a non-breaking space, or a
+  // phone auto-capitalising the first letter doesn't block a genuine match.
+  const normalise = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (normalise(field.name) !== normalise(confirmName)) {
     throw new Error(`Name didn't match. Type "${field.name}" exactly to confirm.`);
   }
 
-  // FK constraints on applications and cuts have ON DELETE CASCADE
-  const { error } = await supabase.from('fields').delete().eq('id', fieldId);
+  // Clear dependent rows explicitly before deleting the field. Applications and
+  // cuts cascade via FK, but soil-sample links (from the import feature) may
+  // not, and a non-cascading FK would otherwise block the delete with an
+  // opaque constraint error. Best-effort: ignore "table doesn't exist" so this
+  // stays robust across environments.
+  await supabase.from('applications').delete().eq('field_id', fieldId).eq('user_id', ownerId);
+  await supabase.from('cuts').delete().eq('field_id', fieldId).eq('user_id', ownerId);
+  await supabase.from('soil_sample_fields').delete().eq('field_id', fieldId).then(
+    () => undefined,
+    () => undefined,
+  );
+
+  // Delete the field itself, scoped to the owner as belt-and-braces over RLS.
+  const { error } = await supabase
+    .from('fields')
+    .delete()
+    .eq('id', fieldId)
+    .eq('user_id', ownerId);
   if (error) throw new Error(error.message);
 
   revalidatePath('/');
