@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Droplets, Sprout, Mountain, Save, Tractor } from 'lucide-react';
+import { Droplets, Sprout, Mountain, Save, Tractor, Trash2 } from 'lucide-react';
 import {
   Application, Field, Product, ProductType, Settings, SlurryMethod, SolidMethod,
   ApplicationMethod,
@@ -12,7 +12,7 @@ import {
   calcNutrients, displayBagAmount, displayFieldArea, fmt,
   METHOD_LABELS, SOLID_METHOD_LABELS, CATEGORY_LABELS,
 } from '@/lib/rules';
-import { saveApplication, updateApplication, saveBatchApplications } from '@/lib/actions';
+import { saveApplication, updateApplication, saveBatchApplications, deleteApplication } from '@/lib/actions';
 import { validateApplicationRate, validateDate } from '@/lib/validation';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
@@ -182,6 +182,9 @@ export function LogApplicationForm({
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Set true once the user has acknowledged a likely-duplicate warning, so the
+  // next submit goes through. Reset whenever the date/field/type changes.
+  const [dupeAcknowledged, setDupeAcknowledged] = useState(false);
 
   // Batch mode state: which fields are ticked, and any per-field rate
   // overrides (field id -> rate string). A field absent from overrides uses
@@ -439,6 +442,10 @@ export function LogApplicationForm({
     return { kind: 'warning' as const, message: `${typeLabel} was already logged within a week on ${hits.length} of these fields. Sure these aren't duplicates?` };
   }, [isEdit, recentByField, date, isBatch, picked, field.id, field.name, batchFields, type]);
 
+  // Re-arm the duplicate warning if the date, type, or selection changes after
+  // an acknowledgement — a new choice deserves a fresh check.
+  useEffect(() => { setDupeAcknowledged(false); }, [date, type, picked]);
+
   // In per-field batch mode the shared rate box is optional, so an empty/zero
   // shared rate must NOT count as a blocking error — each field carries its
   // own rate. Only treat the shared-rate error as blocking outside that mode.
@@ -489,6 +496,12 @@ export function LogApplicationForm({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitError(null);
+    // Duplicate guard: if the same product type was logged on this field within
+    // a week and the user hasn't yet confirmed, stop and ask first.
+    if (dupWarning && !dupeAcknowledged) {
+      setDupeAcknowledged(true); // next submit (the confirm) goes through
+      return;
+    }
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
     try {
@@ -527,6 +540,7 @@ export function LogApplicationForm({
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
       {isEdit && returnTo && <input type="hidden" name="return_to" value={returnTo} />}
@@ -1066,13 +1080,43 @@ export function LogApplicationForm({
 
       <div style={{ position: 'sticky', bottom: 0, padding: '0 16px 16px', background: 'linear-gradient(to top, var(--paper) 70%, transparent)' }}>
         <ErrorBanner error={submitError} />
+        {dupWarning && dupeAcknowledged && !submitting && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            background: '#FBF1D9', border: '1px solid #E8D08A', borderRadius: 8,
+            padding: '10px 12px', marginBottom: 10,
+          }}>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
+            <span style={{ fontSize: 12.5, color: '#6B5616', lineHeight: 1.45 }}>
+              {dupWarning.message} Tap again to log it anyway, or change the date.
+            </span>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10 }}>
           <Link href={isBatch ? '/' : `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
           <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
-            <Save size={18} /> {submitting ? 'Saving…' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
+            <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
           </button>
         </div>
       </div>
     </form>
+
+    {isEdit && existing && (
+      <div style={{ padding: '0 16px 32px', marginTop: -8 }}>
+        <form action={deleteApplication}>
+          <input type="hidden" name="id" value={existing.id} />
+          <input type="hidden" name="field_id" value={field.id} />
+          {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
+          <button
+            type="submit"
+            className="btn-ghost"
+            style={{ width: '100%', padding: '11px', fontSize: 13, fontWeight: 700, color: 'var(--red, #b00)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px solid var(--red-soft, #e3c4ba)', borderRadius: 8 }}
+          >
+            <Trash2 size={15} /> Delete this application
+          </button>
+        </form>
+      </div>
+    )}
+    </>
   );
 }

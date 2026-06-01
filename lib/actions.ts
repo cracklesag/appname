@@ -245,7 +245,9 @@ export async function deleteApplication(formData: FormData) {
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   revalidatePath('/activity');
-  redirect(`/fields/${fieldId}`);
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function saveCut(formData: FormData) {
