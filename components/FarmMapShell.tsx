@@ -39,6 +39,7 @@ export type MapField = {
   ph: number | null;
   p_idx: number | null;
   k_idx: number | null;
+  limeStatus?: 'ok' | 'low' | 'due' | 'unknown';
   boundary: any | null; // GeoJSON geometry, [lng,lat]
   centroid_lat: number | null;
   centroid_lng: number | null;
@@ -98,10 +99,11 @@ function indexColour(v: number | null): string {
 function statusColourFor(f: MapField, mode: ColourMode): string {
   if (mode === "none") return COLOURS.neutral;
   if (mode === "ph") {
-    if (f.ph == null) return COLOURS.unknown;
-    if (f.ph < 6.0) return COLOURS.bad;
-    if (f.ph < 6.2) return COLOURS.warn;
-    return COLOURS.good;
+    // Lime status from the recommendation engine (server-computed).
+    if (!f.limeStatus || f.limeStatus === "unknown") return COLOURS.unknown;
+    if (f.limeStatus === "ok") return COLOURS.good;
+    if (f.limeStatus === "low") return COLOURS.warn;
+    return COLOURS.bad; // 'due'
   }
   if (mode === "p") return indexColour(f.p_idx);
   return indexColour(f.k_idx);
@@ -684,7 +686,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
           className="mt-1 w-36 rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm"
         >
           <option value="none">No status</option>
-          <option value="ph">pH / lime</option>
+          <option value="ph">Lime status</option>
           <option value="p">P index</option>
           <option value="k">K index</option>
         </select>

@@ -592,25 +592,63 @@ export function limeRecommendation(
     };
   }
 
-  const deficit = targetPh - measuredPh;
-  let tha = deficit * limingFactor;
-  if (stonePct > 0) tha *= (1 - Math.min(95, stonePct) / 100);
-  tha = Math.round(tha * 10) / 10;   // 0.1 t/ha precision
+  // --- Simple, practical grassland banding (per ACRE, expressed in t/ha) -----
+  // The farmer spreads in plain amounts: 1, 1.5 or 2 t/ac, never finer, with a
+  // 1 t/ac floor (anything needing lime gets at least 1 t/ac) and a 2 t/ac
+  // practical single-dressing cap for top-dressed grass — lime only migrates
+  // ~6 mm/yr when not incorporated, so a bigger one-pass dose is wasted. RB209's
+  // hard ceiling is 3 t/ac (7.5 t/ha); 2 t/ac is the sensible working cap, with
+  // the balance applied in a later year (then re-sample). Bands are derived
+  // from the RB209 figure rounded to the nearest 0.5 t/ac so the rate still
+  // tracks the actual soil need.
+  const THA_PER_TAC = 2.4711;
+  const MIN_TAC = 1;
+  const STEP_TAC = 0.5;
+  const CAP_TAC = 2;
 
-  // Split into yearly dressings if over the single-application cap.
+  const rawTha = (() => {
+    let t = deficitTha(targetPh, measuredPh, limingFactor);
+    if (stonePct > 0) t *= (1 - Math.min(95, stonePct) / 100);
+    return t;
+  })();
+  const rawTac = rawTha / THA_PER_TAC;
+
+  // Round a t/ac need to the nearest 0.5 step, clamped to [MIN, CAP].
+  const bandTac = (tac: number) => {
+    const stepped = Math.round(tac / STEP_TAC) * STEP_TAC;
+    return Math.min(CAP_TAC, Math.max(MIN_TAC, stepped));
+  };
+
+  // Build staged dressings (in t/ha), each capped at 2 t/ac. The first dressing
+  // is the banded need up to the cap; any remainder becomes later dressings.
   const dressings: number[] = [];
-  let remaining = tha;
-  while (remaining > LIME_MAX_SINGLE_THA + 0.05) {
-    dressings.push(LIME_MAX_SINGLE_THA);
-    remaining = Math.round((remaining - LIME_MAX_SINGLE_THA) * 10) / 10;
+  let remainingTac = rawTac;
+  // First pass — what we'd actually put on now (banded, capped).
+  const firstTac = bandTac(remainingTac);
+  dressings.push(Math.round(firstTac * THA_PER_TAC * 100) / 100);
+  remainingTac -= firstTac;
+  // Further yearly dressings for the balance, each ≥ the floor and ≤ the cap.
+  // Guard the loop so tiny residuals don't add a spurious extra tonne.
+  let guard = 0;
+  while (remainingTac >= MIN_TAC - 0.01 && guard < 6) {
+    const nextTac = Math.min(CAP_TAC, Math.max(MIN_TAC, Math.round(remainingTac / STEP_TAC) * STEP_TAC));
+    dressings.push(Math.round(nextTac * THA_PER_TAC * 100) / 100);
+    remainingTac -= nextTac;
+    guard++;
   }
-  if (remaining > 0.05) dressings.push(remaining);
+
+  const tha = Math.round(dressings.reduce((s, d) => s + d, 0) * 100) / 100;
 
   return {
-    needsLime: tha > 0.05, measuredPh, targetPh,
+    needsLime: true, measuredPh, targetPh,
     totalTha: tha, dressings, limeType,
     note: dressings.length > 1
-      ? `Split over ${dressings.length} years — max ${LIME_MAX_SINGLE_THA} t/ha per dressing on grassland.`
+      ? `Spread ${(dressings[0] / THA_PER_TAC).toFixed(1)} t/ac now, then the balance in a later year (max 2 t/ac per dressing on grass). Re-sample before the next pass.`
       : null,
   };
+}
+
+/** RB209 lime need in t/ha: pH deficit × soil liming factor. */
+function deficitTha(targetPh: number, measuredPh: number, limingFactor: number): number {
+  return (targetPh - measuredPh) * limingFactor;
 }

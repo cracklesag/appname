@@ -6,33 +6,47 @@
 //   - `loadFields` and `Header` should resolve to the app's existing modules.
 //   - Header props used here (title/subtitle/backHref) match the documented Header API; adjust if needed.
 
-import { loadFields } from "@/lib/data";
+import { loadFields, loadSettings } from "@/lib/data";
 import { loadMapSettings } from "@/lib/map-data";
+import { getFieldLimeRecommendation } from "@/lib/rules";
 import { Header } from "@/components/Header";
 import FarmMapShell from "@/components/FarmMapShell";
 
 export const dynamic = "force-dynamic";
 
 export default async function MapPage() {
-  const [fields, mapSettings] = await Promise.all([loadFields(), loadMapSettings()]);
+  const [fields, mapSettings, settings] = await Promise.all([
+    loadFields(), loadMapSettings(), loadSettings(),
+  ]);
 
   // Keep the payload small — send only what the map needs.
-  const mapFields = fields.map((f) => ({
-    id: f.id,
-    name: f.name,
-    ha: f.ha ?? 0,
-    acres: f.acres ?? 0,
-    ph: f.ph ?? null,
-    p_idx: f.p_idx ?? null,
-    k_idx: f.k_idx ?? null,
-    boundary: (f.boundary as object | null) ?? null,
-    centroid_lat: f.centroid_lat ?? null,
-    centroid_lng: f.centroid_lng ?? null,
-    area_ha_mapped: f.area_ha_mapped ?? null,
-    boundary_source: f.boundary_source ?? null,
-    rpa_sheet_id: f.rpa_sheet_id ?? null,
-    rpa_parcel_id: f.rpa_parcel_id ?? null,
-  }));
+  const mapFields = fields.map((f) => {
+    // Lime status for the heatmap: reflects the real recommendation (each
+    // field's soil-specific target pH and whether lime is actually due), not a
+    // flat threshold. 'unknown' = no pH on record.
+    const lime = getFieldLimeRecommendation(f, settings);
+    const limeStatus: 'ok' | 'low' | 'due' | 'unknown' =
+      f.ph == null ? 'unknown'
+        : !lime.needsLime ? 'ok'
+          : (lime.targetPh - (f.ph ?? 0)) >= 0.5 ? 'due' : 'low';
+    return {
+      id: f.id,
+      name: f.name,
+      ha: f.ha ?? 0,
+      acres: f.acres ?? 0,
+      ph: f.ph ?? null,
+      p_idx: f.p_idx ?? null,
+      k_idx: f.k_idx ?? null,
+      limeStatus,
+      boundary: (f.boundary as object | null) ?? null,
+      centroid_lat: f.centroid_lat ?? null,
+      centroid_lng: f.centroid_lng ?? null,
+      area_ha_mapped: f.area_ha_mapped ?? null,
+      boundary_source: f.boundary_source ?? null,
+      rpa_sheet_id: f.rpa_sheet_id ?? null,
+      rpa_parcel_id: f.rpa_parcel_id ?? null,
+    };
+  });
 
   return (
     <div className="min-h-screen bg-stone-50">
