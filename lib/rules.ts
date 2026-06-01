@@ -1,5 +1,5 @@
 import {
-  Application, Cut, CutType, Field, GrassSystem, Group, NextAction, PlateReading, Product, ProductCategory, ProductType, Settings,
+  Application, Cut, CutType, Field, GrassSystem, Group, GrazingEvent, NextAction, PlateReading, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 import * as rb209 from './rb209';
@@ -1714,14 +1714,25 @@ export function todayMd(): string {
 export interface FieldGrazingHistory {
   fieldId: string;
   name: string;
+  groupId: string | null;
   groupName: string | null;
   areaHa: number;
   /** Total N applied this season, kg/ha (from logged applications). */
   nKgPerHa: number;
   /** Number of plate readings logged this season. */
   readings: number;
-  /** Indicative grass grown this season, kg DM/ha (sum of positive cover steps). */
+  /** Number of grazing events logged this season. */
+  grazings: number;
+  /** Measured grass grown this season, kg DM/ha. Prefers the offtake method
+   *  (sum of pre−post across grazings + net standing-cover change) when grazing
+   *  events exist; falls back to the plate-reading-rise estimate; null if
+   *  neither is available. */
   grassGrownKgDmHa: number | null;
+  /** True if grassGrownKgDmHa came from measured grazing offtake (more solid)
+   *  rather than the plate-reading estimate. */
+  measured: boolean;
+  /** Total grass removed by grazing this season, kg DM/ha (sum of pre−post). */
+  grazedOfftakeKgDmHa: number | null;
   /** Latest measured cover, kg DM/ha. */
   latestCover: number | null;
   latestCoverDate: string | null;
@@ -1740,6 +1751,7 @@ export function buildGrazingHistory(
   applications: Application[],
   products: Product[],
   readings: PlateReading[],
+  grazings: GrazingEvent[],
   groups: Group[],
   settings: Settings,
   seasonStartISO: string,
@@ -1762,12 +1774,16 @@ export function buildGrazingHistory(
       }
       nKgPerHa = Math.round(nKgPerHa);
 
-      // Plate readings this season, oldest→newest.
+      // Plate readings this season, oldest→newest (for standing cover & growth).
       const rs = readings
         .filter((r) => r.field_id === f.id && r.reading_date >= seasonStartISO)
         .sort((a, b) => a.reading_date.localeCompare(b.reading_date));
 
-      let grassGrown: number | null = null;
+      // Grazing events this season.
+      const ge = grazings
+        .filter((g) => g.field_id === f.id && g.graze_date >= seasonStartISO)
+        .sort((a, b) => a.graze_date.localeCompare(b.graze_date));
+
       let avgGrowth: number | null = null;
       let latestCover: number | null = null;
       let latestCoverDate: string | null = null;
@@ -1777,20 +1793,41 @@ export function buildGrazingHistory(
         latestCoverDate = rs[rs.length - 1].reading_date;
       }
       if (rs.length >= 2) {
-        let grown = 0;
         let growthSum = 0;
         let growthDays = 0;
         for (let i = 1; i < rs.length; i++) {
           const delta = rs[i].cover_kg_dm_ha - rs[i - 1].cover_kg_dm_ha;
           const days = daysBetweenISO(rs[i - 1].reading_date, rs[i].reading_date);
-          if (delta > 0 && days > 0) {
-            grown += delta;
-            growthSum += delta;
-            growthDays += days;
-          }
+          if (delta > 0 && days > 0) { growthSum += delta; growthDays += days; }
+        }
+        avgGrowth = growthDays > 0 ? Math.round(growthSum / growthDays) : null;
+      }
+
+      // Measured grass grown — offtake method when grazings exist.
+      // grown = Σ(pre − post) + net standing-cover change over the season.
+      let grassGrown: number | null = null;
+      let measured = false;
+      let grazedOfftake: number | null = null;
+
+      if (ge.length > 0) {
+        let offtake = 0;
+        for (const g of ge) offtake += Math.max(0, g.pre_cover_kg_dm_ha - g.post_cover_kg_dm_ha);
+        grazedOfftake = Math.round(offtake);
+        // Net standing change: from the first known cover of the season to the
+        // last. Use plate readings if present, else the grazing covers.
+        const firstCover = rs.length ? rs[0].cover_kg_dm_ha : ge[0].pre_cover_kg_dm_ha;
+        const lastCover = rs.length ? rs[rs.length - 1].cover_kg_dm_ha : ge[ge.length - 1].post_cover_kg_dm_ha;
+        grassGrown = Math.round(offtake + (lastCover - firstCover));
+        measured = true;
+      } else if (rs.length >= 2) {
+        // Fallback: indicative sum of plate-reading rises.
+        let grown = 0;
+        for (let i = 1; i < rs.length; i++) {
+          const delta = rs[i].cover_kg_dm_ha - rs[i - 1].cover_kg_dm_ha;
+          if (delta > 0) grown += delta;
         }
         grassGrown = Math.round(grown);
-        avgGrowth = growthDays > 0 ? Math.round(growthSum / growthDays) : null;
+        measured = false;
       }
 
       const dmPerKgN = (grassGrown != null && grassGrown > 0 && nKgPerHa > 0)
@@ -1800,17 +1837,68 @@ export function buildGrazingHistory(
       return {
         fieldId: f.id,
         name: f.name,
+        groupId: f.group_id,
         groupName: groupName(f.group_id),
         areaHa: f.ha || 0,
         nKgPerHa,
         readings: rs.length,
+        grazings: ge.length,
         grassGrownKgDmHa: grassGrown,
+        measured,
+        grazedOfftakeKgDmHa: grazedOfftake,
         latestCover,
         latestCoverDate,
         avgGrowthRate: avgGrowth,
         dmPerKgN,
       };
     });
+}
+
+/** Aggregate field histories into per-block (group) totals. Area-weighted for
+ *  per-ha figures; ungrouped fields collected under a null block. */
+export interface BlockGrazingSummary {
+  groupId: string | null;
+  groupName: string;
+  fields: number;
+  areaHa: number;
+  nKgPerHa: number;            // area-weighted mean
+  grassGrownKgDmHa: number | null; // area-weighted mean over fields with data
+  measured: boolean;           // true if any field's figure is measured
+  dmPerKgN: number | null;
+}
+
+export function summariseBlocks(history: FieldGrazingHistory[]): BlockGrazingSummary[] {
+  const byGroup = new Map<string, FieldGrazingHistory[]>();
+  for (const h of history) {
+    const key = h.groupId ?? '__ungrouped__';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push(h);
+  }
+  const out: BlockGrazingSummary[] = [];
+  for (const [key, list] of byGroup) {
+    const areaHa = list.reduce((s, h) => s + h.areaHa, 0);
+    const wMean = (pick: (h: FieldGrazingHistory) => number | null) => {
+      let num = 0, den = 0;
+      for (const h of list) {
+        const v = pick(h);
+        if (v != null && h.areaHa > 0) { num += v * h.areaHa; den += h.areaHa; }
+      }
+      return den > 0 ? Math.round(num / den) : null;
+    };
+    const grown = wMean((h) => h.grassGrownKgDmHa);
+    const n = wMean((h) => h.nKgPerHa) ?? 0;
+    out.push({
+      groupId: key === '__ungrouped__' ? null : key,
+      groupName: key === '__ungrouped__' ? 'Ungrouped' : (list[0].groupName ?? 'Block'),
+      fields: list.length,
+      areaHa: Math.round(areaHa * 10) / 10,
+      nKgPerHa: n,
+      grassGrownKgDmHa: grown,
+      measured: list.some((h) => h.measured),
+      dmPerKgN: (grown != null && grown > 0 && n > 0) ? Math.round(grown / n) : null,
+    });
+  }
+  return out.sort((a, b) => (b.grassGrownKgDmHa ?? -1) - (a.grassGrownKgDmHa ?? -1));
 }
 
 function daysBetweenISO(a: string, b: string): number {

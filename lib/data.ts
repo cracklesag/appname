@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, PlateReading, Product, Settings } from './types';
+import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -239,4 +239,15 @@ export async function loadPlateReadings(): Promise<PlateReading[]> {
     .order('reading_date', { ascending: false });
   if (error) return [];
   return (data || []) as PlateReading[];
+}
+
+/** All grazing events for the farm, newest first. [] if table absent. */
+export async function loadGrazingEvents(): Promise<GrazingEvent[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('grazing_events')
+    .select('*')
+    .order('graze_date', { ascending: false });
+  if (error) return [];
+  return (data || []) as GrazingEvent[];
 }

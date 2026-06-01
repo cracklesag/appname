@@ -1253,6 +1253,60 @@ export async function deletePlateReading(formData: FormData) {
   revalidatePath('/reports/grazing-history');
 }
 
+/** Log a grazing event — pre-grazing cover and post-grazing residual (kg DM/ha).
+ *  pre − post is the grass removed, the basis for measured yield. */
+export async function logGrazingEvent(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireMember();
+
+  const field_id = String(formData.get('field_id') ?? '').trim();
+  if (!field_id) throw new Error('Pick a field');
+
+  const graze_date = String(formData.get('graze_date') ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(graze_date)) throw new Error('Enter a valid date');
+
+  const preRaw = String(formData.get('pre_cover_kg_dm_ha') ?? '').trim();
+  const postRaw = String(formData.get('post_cover_kg_dm_ha') ?? '').trim();
+  const pre = preRaw ? Math.round(parseFloat(preRaw)) : NaN;
+  const post = postRaw ? Math.round(parseFloat(postRaw)) : NaN;
+  if (!isFinite(pre) || pre < 0) throw new Error('Enter the pre-grazing cover (kg DM/ha)');
+  if (!isFinite(post) || post < 0) throw new Error('Enter the post-grazing residual (kg DM/ha)');
+  if (post > pre) throw new Error('Residual is higher than the pre-grazing cover — check the figures.');
+
+  const note = String(formData.get('note') ?? '').trim() || null;
+
+  const { error } = await supabase.from('grazing_events').insert({
+    user_id: ctx.ownerId,
+    field_id,
+    graze_date,
+    pre_cover_kg_dm_ha: pre,
+    post_cover_kg_dm_ha: post,
+    note,
+    created_by: ctx.userId,
+  });
+  if (error) throw new Error(`Could not save grazing: ${error.message}`);
+
+  revalidatePath('/grazing');
+  revalidatePath(`/fields/${field_id}`);
+  revalidatePath('/reports/grazing-history');
+}
+
+/** Delete a grazing event. */
+export async function deleteGrazingEvent(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireMember();
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('Missing event id');
+  const { error } = await supabase
+    .from('grazing_events')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not delete grazing: ${error.message}`);
+  revalidatePath('/grazing');
+  revalidatePath('/reports/grazing-history');
+}
+
 export async function deleteGroup(formData: FormData) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
