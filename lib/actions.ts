@@ -1147,6 +1147,52 @@ export async function renameGroup(formData: FormData) {
   revalidatePath('/', 'layout');
 }
 
+/**
+ * Save a group's optional management profile. All fields optional — clearing
+ * them removes the profile. Admin-only (groups are farm-level). Drives soft
+ * warnings only; never changes recommended numbers.
+ */
+export async function saveGroupProfile(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('Group id is required');
+
+  const rawType = String(formData.get('management_type') ?? '').trim();
+  const management_type =
+    rawType === 'silage' || rawType === 'rotational' || rawType === 'maintenance' ? rawType : null;
+
+  const rawMd = String(formData.get('earliest_fert_md') ?? '').trim();
+  // Accept a full date (from <input type="date">) or an MM-DD; store MM-DD.
+  let earliest_fert_md: string | null = null;
+  if (rawMd) {
+    const m = rawMd.match(/^\d{4}-(\d{2})-(\d{2})$/) || rawMd.match(/^(\d{2})-(\d{2})$/);
+    if (m) earliest_fert_md = `${m[1]}-${m[2]}`;
+  }
+
+  const low_input = String(formData.get('low_input') ?? '') === 'on'
+    || String(formData.get('low_input') ?? '') === 'true';
+
+  const rawMaxN = String(formData.get('max_n_kg_per_ha') ?? '').trim();
+  const max_n_kg_per_ha = rawMaxN ? Math.max(0, Math.round(parseFloat(rawMaxN))) : null;
+
+  const nvz = String(formData.get('nvz') ?? '') === 'on'
+    || String(formData.get('nvz') ?? '') === 'true';
+
+  const profile_note = String(formData.get('profile_note') ?? '').trim() || null;
+
+  const { error } = await supabase
+    .from('groups')
+    .update({ management_type, earliest_fert_md, low_input, max_n_kg_per_ha, nvz, profile_note })
+    .eq('id', id)
+    .eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not save group profile: ${error.message}`);
+
+  revalidatePath('/settings/groups');
+  revalidatePath('/', 'layout');
+}
+
 export async function deleteGroup(formData: FormData) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

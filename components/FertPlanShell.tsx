@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { fmt, nutrientPerArea } from '@/lib/rules';
+import { fmt, nutrientPerArea, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
 import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
-import { Product, RateUnit } from '@/lib/types';
+import { Product, RateUnit, Group } from '@/lib/types';
 
 export type { FertPlanRow };
 
@@ -75,7 +75,7 @@ export function FertPlanShell({
   minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
 }: {
   rows: FertPlanRow[];
-  groups: { id: string; name: string }[];
+  groups: Group[];
   initialGroup: string;
   unitSystem: 'acres' | 'hectares';
   products: Product[];
@@ -184,9 +184,27 @@ export function FertPlanShell({
     [visible, planState, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa],
   );
 
-  /** Save the current toggles/overrides and open a spread list. The current
-   *  group filter is carried through so the report contains only the fields in
-   *  view (the chosen block), minus anything toggled off — not every field. */
+  // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
+  // reads its current group's profile live, so moving a field between groups
+  // changes which warnings apply with nothing copied.
+  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+  const today = useMemo(() => todayMd(), []);
+
+  // Total planned N (kg/ha) for a planned field — granular N plus slurry N if
+  // the row carries it — used to check a low-input cap.
+  const warningsFor = (c: typeof computed[number]): GroupWarning[] => {
+    const grp = c.row.groupId ? groupById.get(c.row.groupId) : null;
+    if (!grp) return [];
+    let nKgPerHa = 0;
+    for (const p of c.planProducts) {
+      const prod = granular.find((x) => x.id === p.productId);
+      if (prod && prod.n_pct) nKgPerHa += (p.rateKgPerHa * prod.n_pct) / 100;
+    }
+    return groupProfileWarnings(grp, { dateMd: today, nKgPerHa });
+  };
+
+  /** Save the current toggles/overrides and open a spread list, carrying the
+   *  current group filter so the report contains only the block in view. */
   const openSpreadList = (mode: 'granular' | 'slurry') => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
     const groupParam = groupFilter && groupFilter !== 'all' ? `&group=${encodeURIComponent(groupFilter)}` : '';
@@ -473,7 +491,28 @@ export function FertPlanShell({
               )}
             </div>
 
-            {/* Soil heat bars */}
+            {/* Group-profile warnings (soft — never change the numbers). */}
+            {!excluded && (() => {
+              const ws = warningsFor(c);
+              if (ws.length === 0) return null;
+              return (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {ws.map((w, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                      background: w.severity === 'warn' ? '#FBF1D9' : 'var(--paper-deep, #F4EFE2)',
+                      border: `1px solid ${w.severity === 'warn' ? '#E8D08A' : 'var(--line)'}`,
+                      borderRadius: 7, padding: '6px 9px',
+                    }}>
+                      <span style={{ fontSize: 12, lineHeight: 1 }}>{w.severity === 'warn' ? '⚠️' : 'ℹ️'}</span>
+                      <span style={{ fontSize: 11, color: w.severity === 'warn' ? '#6B5616' : 'var(--ink-soft)', lineHeight: 1.4 }}>
+                        {w.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {row.sampled ? (
               <div style={{ marginTop: 9 }}>
                 <SoilHeatBar label="pH" value={row.ph} target={SOIL_TARGET.ph} max={7.5} />

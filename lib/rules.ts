@@ -1,5 +1,5 @@
 import {
-  Application, Cut, CutType, Field, GrassSystem, NextAction, Product, ProductCategory, ProductType, Settings,
+  Application, Cut, CutType, Field, GrassSystem, Group, NextAction, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 import * as rb209 from './rb209';
@@ -1613,4 +1613,90 @@ export function soilMetricColor(value: number | null | undefined, target: number
   if (value >= target) return 'var(--forest)';
   if (value >= target * 0.8) return 'var(--amber)';
   return 'var(--red)';
+}
+
+// ---------------------------------------------------------------------------
+// Group management profiles — soft warnings
+// ---------------------------------------------------------------------------
+// A group can carry an optional profile (management type, earliest fertiliser
+// date, low-input N cap, NVZ flag). These produce WARNINGS only — they never
+// change a recommended number. A field reads its current group's profile, so
+// moving a field between groups changes which warnings apply, live.
+
+export interface GroupWarning {
+  kind: 'too_early' | 'over_cap' | 'nvz' | 'note' | 'management';
+  severity: 'info' | 'warn';
+  text: string;
+}
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function mdToLabel(md: string): string {
+  const m = md.match(/^(\d{2})-(\d{2})$/);
+  if (!m) return md;
+  const month = MONTHS[parseInt(m[1], 10) - 1] ?? '';
+  return `${parseInt(m[2], 10)} ${month}`;
+}
+
+export function managementLabel(t: Group['management_type']): string | null {
+  if (t === 'rotational') return 'Rotational grazing';
+  if (t === 'maintenance') return 'Maintenance / low input';
+  if (t === 'silage') return 'Silage';
+  return null;
+}
+
+/**
+ * Warnings for a planned action on a field, given its group's profile.
+ * @param group       the field's group (or null/undefined if ungrouped)
+ * @param opts.dateMd 'MM-DD' of the planned spread date (optional)
+ * @param opts.nKgPerHa planned nitrogen for the dressing, kg/ha (optional)
+ */
+export function groupProfileWarnings(
+  group: Pick<Group, 'management_type' | 'earliest_fert_md' | 'low_input' | 'max_n_kg_per_ha' | 'nvz' | 'profile_note'> | null | undefined,
+  opts: { dateMd?: string | null; nKgPerHa?: number | null } = {},
+): GroupWarning[] {
+  if (!group) return [];
+  const out: GroupWarning[] = [];
+
+  // Earliest fertiliser date.
+  if (group.earliest_fert_md && opts.dateMd) {
+    if (opts.dateMd < group.earliest_fert_md) {
+      out.push({
+        kind: 'too_early', severity: 'warn',
+        text: `Before this block's earliest fertiliser date (${mdToLabel(group.earliest_fert_md)}).`,
+      });
+    }
+  }
+
+  // Low-input N cap.
+  if (group.low_input && group.max_n_kg_per_ha != null && opts.nKgPerHa != null) {
+    if (opts.nKgPerHa > group.max_n_kg_per_ha + 0.5) {
+      out.push({
+        kind: 'over_cap', severity: 'warn',
+        text: `Over this block's low-input cap (${Math.round(opts.nKgPerHa)} vs ${group.max_n_kg_per_ha} kg N/ha).`,
+      });
+    }
+  }
+
+  // NVZ flag — informational reminder (closed-period dates vary by region/year,
+  // so we flag rather than hard-block).
+  if (group.nvz) {
+    out.push({
+      kind: 'nvz', severity: 'info',
+      text: 'NVZ block — check closed-period rules before spreading N or slurry.',
+    });
+  }
+
+  // Free-text note.
+  if (group.profile_note) {
+    out.push({ kind: 'note', severity: 'info', text: group.profile_note });
+  }
+
+  return out;
+}
+
+/** Current date as 'MM-DD' for comparing against a group's earliest date. */
+export function todayMd(): string {
+  const d = new Date();
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

@@ -374,14 +374,14 @@ export function GrazingReportShell({
       {groupChipOpts && (
         <div style={{ marginBottom: 12 }}>
           <div className="label" style={{ marginBottom: 6 }}>Group</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
             {groupChipOpts.map((o) => (
               <button
                 key={o.value}
                 type="button"
                 className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
                 onClick={() => writeUrl({ group: o.value })}
-                style={{ fontSize: 13, padding: '6px 12px' }}
+                style={{ fontSize: 13, padding: '6px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}
               >
                 {o.label}
               </button>

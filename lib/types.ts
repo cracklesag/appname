@@ -129,6 +129,14 @@ export interface Group {
   name: string;
   sort_order: number;
   created_at: string;
+  /** Optional management profile (drives soft warnings only; all nullable so a
+   *  group can have no profile and behave as a plain block). */
+  management_type: 'silage' | 'rotational' | 'maintenance' | null;
+  earliest_fert_md: string | null;   // 'MM-DD', repeats yearly
+  low_input: boolean;
+  max_n_kg_per_ha: number | null;
+  nvz: boolean;
+  profile_note: string | null;
 }
 
 export interface Product {

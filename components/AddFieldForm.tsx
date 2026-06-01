@@ -107,6 +107,12 @@ export function AddFieldForm({
         name: newGroup.name,
         sort_order: prev.length,
         created_at: new Date().toISOString(),
+        management_type: null,
+        earliest_fert_md: null,
+        low_input: false,
+        max_n_kg_per_ha: null,
+        nvz: false,
+        profile_note: null,
       }]);
       setGroupId(newGroup.id);
       setNewGroupName('');
