@@ -21,7 +21,7 @@ import {
   getFieldPKRecommendation, organicReleaseFraction, monthsBetween,
   NEXT_CUT_LABELS,
   resolveGrassSystem,
-  soilMetricColor, sumNutrients, YIELD_CLASS_LABELS,
+  soilMetricColor, sumNutrients, calcNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
@@ -132,6 +132,13 @@ export default async function FieldDetailPage({
   };
 
   const seasonTotals = sumNutrients(seasonApps, products);
+  // The most recent application (seasonApps is date-desc) and what IT supplied —
+  // this is what the headline figure shows, not a running season total.
+  const latestApp = seasonApps[0] ?? null;
+  const latestProduct = latestApp ? products.find((p) => p.id === latestApp.product_id) : undefined;
+  const latestNut = latestApp
+    ? calcNutrients(latestProduct, latestApp.rate_value, latestApp.rate_unit, latestApp.date_applied, latestApp.method)
+    : null;
 
   const lastSlurry = fApps.find((a) => products.find((p) => p.id === a.product_id)?.type === 'slurry');
   const lastFert   = fApps.find((a) => products.find((p) => p.id === a.product_id)?.type === 'bag_fert');
@@ -474,18 +481,23 @@ export default async function FieldDetailPage({
         <div style={{ padding: 16 }}>
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label">
-              {seasonLabel} applied{' '}
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>· since {fmtDate(seasonStart)}</span>
+              {latestApp ? 'Last application' : `${seasonLabel} applied`}{' '}
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>
+                {latestApp ? `· ${latestProduct?.name ?? ''} on ${fmtDate(latestApp.date_applied)}` : `· since ${fmtDate(seasonStart)}`}
+              </span>
             </div>
             <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
               {(() => {
                 const nUnit2 = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
                 const cv2 = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
-                const nView = { value: cv2(seasonTotals.n), unit: nUnit2 };
-                const pView = { value: cv2(seasonTotals.p), unit: nUnit2 };
-                const kView = { value: cv2(seasonTotals.k), unit: nUnit2 };
-                const sView = { value: cv2(seasonTotals.so3), unit: nUnit2 };
-                const mView = { value: cv2(seasonTotals.mgo), unit: nUnit2 };
+                // Headline = the most recent application's supply (falls back to
+                // season totals only if somehow there's no latest app).
+                const src = latestNut ?? { nPerHa: seasonTotals.n, p2o5PerHa: seasonTotals.p, k2oPerHa: seasonTotals.k, so3PerHa: seasonTotals.so3, mgoPerHa: seasonTotals.mgo };
+                const nView = { value: cv2(src.nPerHa), unit: nUnit2 };
+                const pView = { value: cv2(src.p2o5PerHa), unit: nUnit2 };
+                const kView = { value: cv2(src.k2oPerHa), unit: nUnit2 };
+                const sView = { value: cv2(src.so3PerHa), unit: nUnit2 };
+                const mView = { value: cv2(src.mgoPerHa), unit: nUnit2 };
                 return (
                   <>
                     <div style={{ flex: '1 1 60px' }}>
