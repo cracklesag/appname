@@ -1,11 +1,11 @@
 import Link from 'next/link';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { ProductPill } from '@/components/ProductPill';
 import { Product } from '@/lib/types';
-import { deleteCustomProduct } from '@/lib/actions';
+import { DeleteProductButton } from '@/components/DeleteProductButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,17 +109,7 @@ function ProductRow({ product }: { product: Product }) {
             <div className="nutrient-num" style={{ fontSize: 12, color: 'var(--muted)' }}>{summary}</div>
           )}
         </div>
-        <form action={deleteCustomProduct}>
-          <input type="hidden" name="id" value={product.id} />
-          <button
-            type="submit"
-            className="btn-ghost"
-            style={{ padding: '6px 10px', fontSize: 12, color: 'var(--red, #b00)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            title="Delete this product"
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-        </form>
+        <DeleteProductButton productId={product.id} />
       </div>
     </div>
   );

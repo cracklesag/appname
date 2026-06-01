@@ -1052,20 +1052,32 @@ export async function createCustomProduct(formData: FormData) {
 
 export async function deleteCustomProduct(formData: FormData) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await requireAdmin();
 
   const id = parseInt(String(formData.get('id')), 10);
   if (!Number.isFinite(id)) throw new Error('Invalid product id');
 
-  // RLS already prevents deleting shared rows (user_id IS NULL) or other
-  // users' rows, but we double-belt by filtering user_id explicitly so a
-  // missing RLS policy doesn't silently allow it.
+  // A product can't be deleted while any logged application still references it
+  // (the application needs the product for its nutrient values, and the FK has
+  // no cascade — deleting would either fail at the database or destroy spreading
+  // history). Check first and return a clear message instead of crashing.
+  const { count, error: countErr } = await supabase
+    .from('applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('product_id', id);
+  if (countErr) throw new Error(`Could not check product usage: ${countErr.message}`);
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      `This product is used on ${count} logged application${count === 1 ? '' : 's'}, so it can't be deleted (its spreading history needs it). You can stop using it on the plan instead.`,
+    );
+  }
+
+  // Scope to the farm owner. RLS also enforces admin-of-owner.
   const { error } = await supabase
     .from('products')
     .delete()
     .eq('id', id)
-    .eq('user_id', user.id);
+    .eq('user_id', ctx.ownerId);
   if (error) throw new Error(`Could not delete product: ${error.message}`);
 
   revalidatePath('/products');
