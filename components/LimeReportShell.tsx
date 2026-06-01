@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Printer, Layers } from 'lucide-react';
+import { ArrowLeft, Printer, Layers, AlertTriangle } from 'lucide-react';
 
 export interface LimeRow {
   id: string;
@@ -13,6 +13,9 @@ export interface LimeRow {
   areaUnit: 'ac' | 'ha';
   ha: number;
   sampled: boolean;
+  sampleDate: string | null;
+  limeSinceSample: boolean;
+  limeSinceDate: string | null;
   ph: number | null;
   mgIdx: number | null;
   targetPh: number;
@@ -30,6 +33,14 @@ const RED = 'var(--red, #b85b3a)';
 const AMBER = 'var(--amber, #c98a2b)';
 const GREEN = 'var(--forest, #5a7a3a)';
 const MUTED = 'var(--muted)';
+
+/** Short, readable date (e.g. "14 Mar 2025") from an ISO/date string. */
+function fmtDate(d: string | null): string {
+  if (!d) return '';
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return d;
+  return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 /** Severity for sorting/colour: how far below target. */
 function severity(r: LimeRow): { sev: number; color: string; label: string } {
@@ -259,7 +270,22 @@ export function LimeReportShell({
               <div style={{ fontSize: 10, color: MUTED, marginBottom: row.needsLime ? 9 : 0, paddingLeft: 30 }}>
                 target {row.targetPh.toFixed(1)}
                 {row.mgIdx != null && <> · Mg index {row.mgIdx.toFixed(1)}</>}
+                {' · '}
+                {row.sampleDate ? `sampled ${fmtDate(row.sampleDate)}` : (row.sampled ? 'sample date not recorded' : 'not sampled')}
               </div>
+
+              {row.limeSinceSample && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 6,
+                  background: '#FBF1D9', border: '1px solid #E8D08A', borderRadius: 8,
+                  padding: '7px 9px', marginBottom: row.needsLime ? 9 : 0, marginTop: 2,
+                }}>
+                  <AlertTriangle size={13} style={{ color: '#9A7B16', flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ fontSize: 11, color: '#6B5616', lineHeight: 1.45 }}>
+                    Lime spread {fmtDate(row.limeSinceDate)} — after this sample. The pH above predates it, so this field may now be closer to target than shown. Re-sample before liming again.
+                  </span>
+                </div>
+              )}
 
               {row.needsLime ? (
                 <div style={{ borderTop: '1px solid var(--line)', paddingTop: 9, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>

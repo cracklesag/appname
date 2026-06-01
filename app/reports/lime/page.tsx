@@ -1,4 +1,4 @@
-import { loadFields, loadGroups, loadSettings } from '@/lib/data';
+import { loadFields, loadGroups, loadSettings, loadAllApplications, loadAllProducts } from '@/lib/data';
 import { getFieldLimeRecommendation, resolveTargetPh, displayFieldArea } from '@/lib/rules';
 import { LimeReportShell, LimeRow } from '@/components/LimeReportShell';
 
@@ -9,14 +9,19 @@ export default async function LimeReportPage({
 }: {
   searchParams: { group?: string; from?: string };
 }) {
-  const [fields, groups, settings] = await Promise.all([
+  const [fields, groups, settings, applications, products] = await Promise.all([
     loadFields(),
     loadGroups(),
     loadSettings(),
+    loadAllApplications(),
+    loadAllProducts(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
   const fromHref = searchParams.from || '/';
+
+  // Lime products, so we can tell whether lime has been spread since sampling.
+  const limeProductIds = new Set(products.filter((p) => p.type === 'lime').map((p) => p.id));
 
   // t/ha → t/ac when the user works in acres (lime is a rate per area too).
   const THA_PER_TAC = 2.4711;
@@ -34,6 +39,21 @@ export default async function LimeReportPage({
       // Total tonnes of product over the whole field (physical lorry load).
       const totalProductT = Math.round(rec.totalTha * (f.ha || 0) * 10) / 10;
 
+      // Lime spread since the last soil sample? If the stored pH predates a
+      // liming, the recommendation is based on out-of-date pH and should be
+      // read with caution. Compare lime applications' dates to sample_date.
+      const sampleDate = f.sample_date;
+      let limeSinceDate: string | null = null;
+      if (sampleDate) {
+        for (const a of applications) {
+          if (a.field_id !== f.id) continue;
+          if (!limeProductIds.has(a.product_id)) continue;
+          if (a.date_applied > sampleDate) {
+            if (!limeSinceDate || a.date_applied > limeSinceDate) limeSinceDate = a.date_applied;
+          }
+        }
+      }
+
       return {
         id: f.id,
         name: f.name,
@@ -43,6 +63,9 @@ export default async function LimeReportPage({
         areaUnit: area.unit,
         ha: f.ha || 0,
         sampled: f.sampled,
+        sampleDate,
+        limeSinceSample: limeSinceDate != null,
+        limeSinceDate,
         ph: f.ph,
         mgIdx: f.mg_idx,
         targetPh: rec.targetPh,
