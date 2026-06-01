@@ -72,7 +72,7 @@ export function ApplicationCard({
       {canEdit && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--line-soft)', display: 'flex', justifyContent: 'flex-end' }}>
         <EditDeleteControls
-          editHref={`/fields/${fieldId}/applications/${app.id}/edit`}
+          editHref={`/fields/${fieldId}/applications/${app.id}/edit?from=${encodeURIComponent(`/fields/${fieldId}?tab=season`)}`}
           deleteAction={deleteApplication}
           hiddenInputs={{ id: app.id, field_id: fieldId }}
           label="application"

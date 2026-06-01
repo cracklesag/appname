@@ -106,7 +106,7 @@ function findPoultry(products: Product[], source: PoultrySource): Product | null
 }
 
 export function LogApplicationForm({
-  field, products, settings, existing, initialType: initialTypeProp, batchFields, groups, usage, recentByField,
+  field, products, settings, existing, initialType: initialTypeProp, batchFields, groups, usage, recentByField, returnTo,
 }: {
   field: Field;
   products: Product[];
@@ -120,6 +120,8 @@ export function LogApplicationForm({
   usage?: Record<number, number>;
   /** fieldId -> { productType -> latest application date } for double-entry warning. */
   recentByField?: Record<string, Record<string, string>>;
+  /** Where to return after saving an edit (e.g. the activity feed). */
+  returnTo?: string;
 }) {
   const isBatch = Array.isArray(batchFields) && batchFields.length > 0;
   const today = new Date().toISOString().slice(0, 10);
@@ -527,6 +529,7 @@ export function LogApplicationForm({
   return (
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
+      {isEdit && returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       {!isBatch && <input type="hidden" name="field_id" value={field.id} />}
       <input type="hidden" name="product_id" value={productId} />
       {isBatch && <input type="hidden" name="log_type" value={type} />}

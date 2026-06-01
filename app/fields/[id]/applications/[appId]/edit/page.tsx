@@ -35,6 +35,7 @@ export default async function EditApplicationPage({
         products={products}
         settings={settings}
         existing={existing}
+        returnTo={searchParams.from}
       />
     </div>
   );

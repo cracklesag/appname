@@ -223,7 +223,11 @@ export async function updateApplication(formData: FormData) {
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
   revalidatePath('/activity');
-  redirect(`/fields/${fieldId}`);
+  // Return to wherever the edit was launched from (activity feed or a field
+  // tab), falling back to the field view. Only accept internal relative paths.
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function deleteApplication(formData: FormData) {
