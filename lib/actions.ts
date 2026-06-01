@@ -1253,8 +1253,9 @@ export async function deletePlateReading(formData: FormData) {
   revalidatePath('/reports/grazing-history');
 }
 
-/** Log a grazing event — pre-grazing cover and post-grazing residual (kg DM/ha).
- *  pre − post is the grass removed, the basis for measured yield. */
+/** Log a grazing event (weekly-walk model). You record the residual the paddock
+ *  was grazed to; the pre-grazing cover is taken from the latest plate reading
+ *  in the report. Members (admin or staff) can log. */
 export async function logGrazingEvent(formData: FormData) {
   const supabase = createClient();
   const ctx = await requireMember();
@@ -1265,13 +1266,13 @@ export async function logGrazingEvent(formData: FormData) {
   const graze_date = String(formData.get('graze_date') ?? '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(graze_date)) throw new Error('Enter a valid date');
 
-  const preRaw = String(formData.get('pre_cover_kg_dm_ha') ?? '').trim();
   const postRaw = String(formData.get('post_cover_kg_dm_ha') ?? '').trim();
-  const pre = preRaw ? Math.round(parseFloat(preRaw)) : NaN;
   const post = postRaw ? Math.round(parseFloat(postRaw)) : NaN;
-  if (!isFinite(pre) || pre < 0) throw new Error('Enter the pre-grazing cover (kg DM/ha)');
-  if (!isFinite(post) || post < 0) throw new Error('Enter the post-grazing residual (kg DM/ha)');
-  if (post > pre) throw new Error('Residual is higher than the pre-grazing cover — check the figures.');
+  if (!isFinite(post) || post < 0) throw new Error('Enter the residual left after grazing (kg DM/ha)');
+
+  // Optional measured pre-cover; normally omitted and derived from readings.
+  const preRaw = String(formData.get('pre_cover_kg_dm_ha') ?? '').trim();
+  const pre = preRaw ? Math.round(parseFloat(preRaw)) : null;
 
   const note = String(formData.get('note') ?? '').trim() || null;
 
@@ -1279,8 +1280,8 @@ export async function logGrazingEvent(formData: FormData) {
     user_id: ctx.ownerId,
     field_id,
     graze_date,
-    pre_cover_kg_dm_ha: pre,
     post_cover_kg_dm_ha: post,
+    pre_cover_kg_dm_ha: pre,
     note,
     created_by: ctx.userId,
   });

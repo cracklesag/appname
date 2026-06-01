@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ClipboardList, BarChart3, ChevronRight } from 'lucide-react';
-import { loadFields, loadSettings } from '@/lib/data';
+import { loadFields, loadSettings, loadPlateReadings } from '@/lib/data';
 import { GrazingMeasureCard } from '@/components/GrazingMeasureCard';
 
 export const dynamic = 'force-dynamic';
@@ -10,11 +10,20 @@ export default async function GrazingHubPage() {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const fields = await loadFields();
+  const [fields, readings] = await Promise.all([loadFields(), loadPlateReadings()]);
   const fieldOpts = fields
     .filter((f) => !f.needs_setup)
     .map((f) => ({ id: f.id, name: f.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Latest cover reading per field, for the grazing form to derive grass removed.
+  const latestCoverByField: Record<string, { cover: number; date: string }> = {};
+  for (const r of readings) {
+    const cur = latestCoverByField[r.field_id];
+    if (!cur || r.reading_date > cur.date) {
+      latestCoverByField[r.field_id] = { cover: r.cover_kg_dm_ha, date: r.reading_date };
+    }
+  }
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -53,7 +62,7 @@ export default async function GrazingHubPage() {
         <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', margin: '8px 0 10px' }}>
           Measuring
         </h2>
-        <GrazingMeasureCard fields={fieldOpts} todayISO={todayISO} />
+        <GrazingMeasureCard fields={fieldOpts} todayISO={todayISO} latestCoverByField={latestCoverByField} />
       </div>
     </div>
   );

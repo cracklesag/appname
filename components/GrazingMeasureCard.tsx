@@ -5,8 +5,15 @@ import { GrazingEventForm } from '@/components/GrazingEventForm';
 import { PlateReadingForm } from '@/components/PlateReadingForm';
 
 interface FieldOpt { id: string; name: string; }
+interface LatestCover { cover: number; date: string; }
 
-export function GrazingMeasureCard({ fields, todayISO }: { fields: FieldOpt[]; todayISO: string }) {
+export function GrazingMeasureCard({
+  fields, todayISO, latestCoverByField,
+}: {
+  fields: FieldOpt[];
+  todayISO: string;
+  latestCoverByField: Record<string, LatestCover>;
+}) {
   const [tab, setTab] = useState<'graze' | 'cover'>('graze');
 
   return (
@@ -35,7 +42,7 @@ export function GrazingMeasureCard({ fields, todayISO }: { fields: FieldOpt[]; t
             Record what was on the paddock and what was left after grazing. The difference is the grass that
             grew and got eaten — this builds the measured “grass grown” figure for the field-history report.
           </p>
-          <GrazingEventForm fields={fields} todayISO={todayISO} />
+          <GrazingEventForm fields={fields} todayISO={todayISO} latestCoverByField={latestCoverByField} />
         </>
       ) : (
         <>

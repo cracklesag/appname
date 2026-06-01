@@ -5,40 +5,49 @@ import { Check } from 'lucide-react';
 import { logGrazingEvent } from '@/lib/actions';
 
 interface FieldOpt { id: string; name: string; }
+interface LatestCover { cover: number; date: string; }
 
-export function GrazingEventForm({ fields, todayISO }: { fields: FieldOpt[]; todayISO: string }) {
+const DEFAULT_RESIDUAL = 1550; // typical dairy post-grazing residual (~4 cm)
+
+function daysAgo(iso: string): number {
+  return Math.round((Date.now() - new Date(iso + 'T00:00:00').getTime()) / 86400000);
+}
+
+export function GrazingEventForm({
+  fields, todayISO, latestCoverByField,
+}: {
+  fields: FieldOpt[];
+  todayISO: string;
+  latestCoverByField: Record<string, LatestCover>;
+}) {
   const [pending, start] = useTransition();
   const [fieldId, setFieldId] = useState('');
   const [date, setDate] = useState(todayISO);
-  const [pre, setPre] = useState('');
-  const [post, setPost] = useState('');
+  const [residual, setResidual] = useState(String(DEFAULT_RESIDUAL));
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const preN = parseFloat(pre);
-  const postN = parseFloat(post);
-  const offtake = isFinite(preN) && isFinite(postN) && preN >= postN ? Math.round(preN - postN) : null;
+  const latest = fieldId ? latestCoverByField[fieldId] : undefined;
+  const resN = parseFloat(residual);
+  const removed = latest && isFinite(resN) && latest.cover >= resN
+    ? Math.round(latest.cover - resN)
+    : null;
 
   function submit() {
     setError(null);
     if (!fieldId) { setError('Pick a field'); return; }
-    if (!pre) { setError('Enter the pre-grazing cover'); return; }
-    if (!post) { setError('Enter the post-grazing residual'); return; }
-    if (isFinite(preN) && isFinite(postN) && postN > preN) {
-      setError('Residual is higher than pre-grazing cover — check the figures.'); return;
-    }
+    if (!residual) { setError('Enter the residual left after grazing'); return; }
     const fd = new FormData();
     fd.set('field_id', fieldId);
     fd.set('graze_date', date);
-    fd.set('pre_cover_kg_dm_ha', pre);
-    fd.set('post_cover_kg_dm_ha', post);
+    fd.set('post_cover_kg_dm_ha', residual);
     fd.set('note', note);
     start(async () => {
       try {
         await logGrazingEvent(fd);
         setSaved(true);
-        setPre(''); setPost(''); setNote('');
+        setNote('');
         setTimeout(() => setSaved(false), 2200);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not save');
@@ -61,23 +70,26 @@ export function GrazingEventForm({ fields, todayISO }: { fields: FieldOpt[]; tod
       <div className="label" style={{ marginBottom: 5 }}>Date grazed</div>
       <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 14, marginBottom: 12 }} />
 
-      <div style={{ display: 'flex', gap: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div className="label" style={{ marginBottom: 5 }}>Pre-grazing cover</div>
-          <input type="number" inputMode="numeric" className="input" placeholder="2800" value={pre} onChange={(e) => setPre(e.target.value)} style={{ fontSize: 14 }} />
-          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>kg DM/ha going in</div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div className="label" style={{ marginBottom: 5 }}>Residual left</div>
-          <input type="number" inputMode="numeric" className="input" placeholder="1600" value={post} onChange={(e) => setPost(e.target.value)} style={{ fontSize: 14 }} />
-          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>kg DM/ha after</div>
-        </div>
+      <div className="label" style={{ marginBottom: 5 }}>Residual left after grazing</div>
+      <input type="number" inputMode="numeric" className="input" placeholder={String(DEFAULT_RESIDUAL)} value={residual} onChange={(e) => setResidual(e.target.value)} style={{ fontSize: 14 }} />
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.45 }}>
+        kg DM/ha grazed down to. A typical dairy residual is ~1500–1600 (≈4 cm). Pre-set, change if needed.
       </div>
 
-      {offtake != null && (
-        <div style={{ fontSize: 12, color: 'var(--forest-dark)', background: 'var(--forest-soft, #e7efe2)', borderRadius: 7, padding: '7px 10px', marginTop: 10, fontWeight: 600 }}>
-          Grass removed: {offtake.toLocaleString()} kg DM/ha
-        </div>
+      {/* Derived pre-grazing cover from the latest walk */}
+      {fieldId && (
+        latest ? (
+          <div style={{ fontSize: 12, color: removed != null ? 'var(--forest-dark)' : 'var(--muted)', background: removed != null ? 'var(--forest-soft, #e7efe2)' : 'var(--paper-deep, #F4EFE2)', borderRadius: 7, padding: '8px 10px', marginTop: 10, lineHeight: 1.45 }}>
+            Last cover reading: <strong>{latest.cover.toLocaleString()} kg DM/ha</strong> ({daysAgo(latest.date) <= 0 ? 'today' : `${daysAgo(latest.date)} days ago`}).
+            {removed != null
+              ? <> Grass removed ≈ <strong>{removed.toLocaleString()} kg DM/ha</strong>.</>
+              : <> Residual is above the last reading — check the figures.</>}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11.5, color: '#6B5616', background: '#FBF1D9', border: '1px solid #E8D08A', borderRadius: 7, padding: '8px 10px', marginTop: 10, lineHeight: 1.45 }}>
+            No cover reading yet for this field. Log a cover reading (the “Log a cover reading” tab) so the grass-removed and growth figures can be worked out.
+          </div>
+        )
       )}
 
       <div className="label" style={{ margin: '12px 0 5px' }}>Note (optional)</div>

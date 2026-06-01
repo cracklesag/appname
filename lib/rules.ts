@@ -1803,24 +1803,46 @@ export function buildGrazingHistory(
         avgGrowth = growthDays > 0 ? Math.round(growthSum / growthDays) : null;
       }
 
-      // Measured grass grown — offtake method when grazings exist.
-      // grown = Σ(pre − post) + net standing-cover change over the season.
+      // Measured grass grown (weekly-walk model):
+      //   grown = (latest cover − earliest cover) + Σ removed
+      // where removed per grazing = (most recent reading BEFORE the graze) −
+      // residual. The pre-grazing cover comes from the weekly walk, not from a
+      // gate-side measurement — so this needs cover readings AND grazing marks.
       let grassGrown: number | null = null;
       let measured = false;
       let grazedOfftake: number | null = null;
 
-      if (ge.length > 0) {
+      const removalFor = (grazeDate: string, residual: number): number | null => {
+        // Latest reading on or before the graze date.
+        let pre: PlateReading | null = null;
+        for (const r of rs) {
+          if (r.reading_date <= grazeDate && (!pre || r.reading_date > pre.reading_date)) pre = r;
+        }
+        // Or an explicitly-measured pre-cover on the event, if provided.
+        if (pre == null) return null;
+        return Math.max(0, pre.cover_kg_dm_ha - residual);
+      };
+
+      if (ge.length > 0 && rs.length >= 1) {
         let offtake = 0;
-        for (const g of ge) offtake += Math.max(0, g.pre_cover_kg_dm_ha - g.post_cover_kg_dm_ha);
-        grazedOfftake = Math.round(offtake);
-        // Net standing change: from the first known cover of the season to the
-        // last. Use plate readings if present, else the grazing covers.
-        const firstCover = rs.length ? rs[0].cover_kg_dm_ha : ge[0].pre_cover_kg_dm_ha;
-        const lastCover = rs.length ? rs[rs.length - 1].cover_kg_dm_ha : ge[ge.length - 1].post_cover_kg_dm_ha;
-        grassGrown = Math.round(offtake + (lastCover - firstCover));
-        measured = true;
-      } else if (rs.length >= 2) {
-        // Fallback: indicative sum of plate-reading rises.
+        let counted = 0;
+        for (const g of ge) {
+          const pre = g.pre_cover_kg_dm_ha != null
+            ? Math.max(0, g.pre_cover_kg_dm_ha - g.post_cover_kg_dm_ha)
+            : removalFor(g.graze_date, g.post_cover_kg_dm_ha);
+          if (pre != null) { offtake += pre; counted++; }
+        }
+        if (counted > 0) {
+          grazedOfftake = Math.round(offtake);
+          const net = rs[rs.length - 1].cover_kg_dm_ha - rs[0].cover_kg_dm_ha;
+          grassGrown = Math.round(offtake + net);
+          measured = true;
+        }
+      }
+      if (!measured && rs.length >= 2) {
+        // Fallback estimate when there are no grazings to measure from: the sum
+        // of week-on-week rises (undercounts if the paddock was grazed, hence
+        // labelled an estimate).
         let grown = 0;
         for (let i = 1; i < rs.length; i++) {
           const delta = rs[i].cover_kg_dm_ha - rs[i - 1].cover_kg_dm_ha;

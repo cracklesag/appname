@@ -1,26 +1,32 @@
 -- =============================================================================
--- Migration: Grazing events — measured grass offtake
--- Purpose:   Log each grazing of a paddock with its pre-grazing cover and
---            post-grazing residual (kg DM/ha). The difference is the grass the
---            paddock actually grew and the stock removed — the rigorous basis
---            for "grass grown" (offtake method used by grazing platforms),
---            replacing the indicative plate-reading-delta estimate.
--- Optional:  Entirely opt-in. Fields/blocks with no events just don't show a
---            measured yield. Safe to re-run. RLS farm-aware (members read/write).
+-- Migration: Grazing events — weekly-walk model (CORRECTED)
+-- Purpose:   Log that a paddock was grazed on a date, down to a residual
+--            (post-grazing cover, kg DM/ha). The PRE-grazing cover is NOT
+--            entered — it's taken from the farm's most recent plate reading for
+--            that paddock. Grass removed = (last reading before graze) − residual,
+--            which feeds the measured "grass grown" calculation:
+--               grass grown = (latest cover − earliest cover) + Σ removed
+--            This matches how rotational platforms actually meter: one weekly
+--            walk records covers; grazings are light marks that let the growth
+--            maths add back what was eaten.
+-- Optional:  Entirely opt-in. Safe to re-run. Supersedes the earlier version
+--            of this file — makes pre_cover_kg_dm_ha nullable if it exists.
 -- =============================================================================
 
 create table if not exists public.grazing_events (
   id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references auth.users (id) on delete cascade, -- farm owner
+  user_id       uuid not null references auth.users (id) on delete cascade,
   field_id      uuid not null references public.fields (id) on delete cascade,
   graze_date    date not null,
-  -- Cover entering the paddock and the residual left behind, kg DM/ha.
-  pre_cover_kg_dm_ha  numeric not null,
   post_cover_kg_dm_ha numeric not null,
+  pre_cover_kg_dm_ha  numeric,
   note          text,
   created_by    uuid,
   created_at    timestamptz not null default now()
 );
+
+-- If an earlier version created this table with pre_cover NOT NULL, relax it.
+alter table public.grazing_events alter column pre_cover_kg_dm_ha drop not null;
 
 create index if not exists grazing_events_field_date_idx
   on public.grazing_events (field_id, graze_date desc);

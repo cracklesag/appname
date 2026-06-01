@@ -154,15 +154,16 @@ export interface PlateReading {
   created_at: string;
 }
 
-/** A grazing event: pre-grazing cover and post-grazing residual (kg DM/ha).
- *  pre − post = grass removed (the offtake), the basis for measured yield. */
+/** A grazing event in the weekly-walk model: the paddock was grazed on a date,
+ *  down to a residual (post_cover). The pre-grazing cover is normally derived
+ *  from the latest plate reading, not entered — so pre_cover is optional. */
 export interface GrazingEvent {
   id: string;
   user_id: string;
   field_id: string;
   graze_date: string;         // YYYY-MM-DD
-  pre_cover_kg_dm_ha: number;
-  post_cover_kg_dm_ha: number;
+  post_cover_kg_dm_ha: number;  // residual left after grazing
+  pre_cover_kg_dm_ha: number | null; // optional measured pre-cover (rarely used)
   note: string | null;
   created_by: string | null;
   created_at: string;
