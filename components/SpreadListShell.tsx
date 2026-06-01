@@ -21,7 +21,7 @@ const DEFAULT_STATE: PlanState = {
 };
 
 export function SpreadListShell({
-  rows, products, unitSystem, slurryUnit, mode, fromHref,
+  rows, products, unitSystem, slurryUnit, mode, fromHref, groupName, group,
   minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
 }: {
   rows: FertPlanRow[];
@@ -30,6 +30,8 @@ export function SpreadListShell({
   slurryUnit: 'gal/ac' | 'm3/ha';
   mode: 'granular' | 'slurry';
   fromHref: string;
+  groupName: string | null;
+  group: string | null;
   minSpreadP2O5KgPerHa: number;
   minSpreadK2OKgPerHa: number;
 }) {
@@ -110,14 +112,14 @@ export function SpreadListShell({
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>{title}</h1>
         <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', margin: 0 }}>
-          {isSlurry ? 'Intended slurry / digestate by field' : 'Granular fertiliser by field'} · {dateStr}
+          {groupName ? `${groupName} · ` : ''}{isSlurry ? 'Intended slurry / digestate by field' : 'Granular fertiliser by field'} · {dateStr}
         </p>
       </div>
 
       <div style={{ padding: '14px 16px' }}>
         <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
           <Link
-            href={`/reports/spread-map?mode=${mode}&from=${encodeURIComponent(`/reports/spread-list?mode=${mode}&from=${encodeURIComponent(fromHref)}`)}`}
+            href={`/reports/spread-map?mode=${mode}${group ? `&group=${encodeURIComponent(group)}` : ''}&from=${encodeURIComponent(`/reports/spread-list?mode=${mode}${group ? `&group=${encodeURIComponent(group)}` : ''}&from=${encodeURIComponent(fromHref)}`)}`}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 13px', fontSize: 13, fontWeight: 700, color: 'var(--ink-soft)', textDecoration: 'none' }}
           >
             <MapIcon size={15} /> Map sheet

@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function SpreadMapPage({
   searchParams,
 }: {
-  searchParams: { mode?: string; from?: string };
+  searchParams: { mode?: string; from?: string; group?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
@@ -26,17 +26,27 @@ export default async function SpreadMapPage({
     loadMapSettings(),
   ]);
 
-  const rows = buildFertPlanRows(fields, applications, cuts, products, settings, groups);
+  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups);
+
+  // Respect the same block filter the spread list used, so the map sheets show
+  // only the block's fields.
+  const group = searchParams.group;
+  const rows = !group
+    ? allRows
+    : group === 'ungrouped'
+      ? allRows.filter((r) => !r.groupId)
+      : allRows.filter((r) => r.groupId === group);
 
   const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
   const planProducts = products.filter((p) => p.type === 'bag_fert' || isOrganic(p));
 
   const mode = (searchParams.mode === 'slurry' ? 'slurry' : 'granular') as 'granular' | 'slurry';
 
-  // Geometry the map needs — only fields that actually have a boundary can be
-  // drawn. Keyed by id so the shell can match them to planned rows.
+  // Only fields appearing in the (possibly filtered) rows are eligible, and
+  // only those with a boundary can actually be drawn.
+  const rowIds = new Set(rows.map((r) => r.id));
   const geometry: SpreadMapField[] = fields
-    .filter((f) => f.boundary)
+    .filter((f) => f.boundary && rowIds.has(f.id))
     .map((f) => ({
       id: f.id,
       name: f.name,

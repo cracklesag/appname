@@ -184,10 +184,13 @@ export function FertPlanShell({
     [visible, planState, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa],
   );
 
-  /** Save the current toggles/overrides and open a spread list. */
+  /** Save the current toggles/overrides and open a spread list. The current
+   *  group filter is carried through so the report contains only the fields in
+   *  view (the chosen block), minus anything toggled off — not every field. */
   const openSpreadList = (mode: 'granular' | 'slurry') => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
-    router.push(`/reports/spread-list?mode=${mode}&from=/reports/fert-plan`);
+    const groupParam = groupFilter && groupFilter !== 'all' ? `&group=${encodeURIComponent(groupFilter)}` : '';
+    router.push(`/reports/spread-list?mode=${mode}&from=/reports/fert-plan${groupParam}`);
   };
 
   // Order totals: granular products + planned organic volume.
