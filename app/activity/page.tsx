@@ -51,6 +51,19 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const groupFilter = searchParams.group || 'all';
   const sortKey: SortKey = searchParams.sort || 'date_desc';
 
+  // Reconstruct this page's own URL (with the active filters/tab) so that
+  // editing an entry returns to the exact filtered view, not a bare /activity.
+  const currentUrl = (() => {
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) {
+      // Skip transient flash params so we don't re-trigger the banner on return.
+      if (k === 'flash' || k === 'count') continue;
+      if (typeof v === 'string' && v) sp.set(k, v);
+    }
+    const qs = sp.toString();
+    return qs ? `/activity?${qs}` : '/activity';
+  })();
+
   const [applications, products, fields, cuts, settings, groups] = await Promise.all([
     loadAllApplications(),
     loadAllProducts(),
@@ -531,7 +544,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
 
           const editable = canEditEntry(a.created_by);
           const rowHref = editable
-            ? `/fields/${f.id}/applications/${a.id}/edit?from=/activity`
+            ? `/fields/${f.id}/applications/${a.id}/edit?from=${encodeURIComponent(currentUrl)}`
             : `/fields/${f.id}`;
 
           return (
