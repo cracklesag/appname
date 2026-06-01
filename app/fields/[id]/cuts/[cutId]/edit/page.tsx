@@ -10,8 +10,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function EditCutPage({
   params,
+  searchParams,
 }: {
   params: { id: string; cutId: string };
+  searchParams: { from?: string };
 }) {
   const supabase = createClient();
   const [field, settings, cutRes] = await Promise.all([
@@ -25,16 +27,18 @@ export default async function EditCutPage({
   const existing = cutRes.data as Cut;
   const plannedCuts = getPlannedCuts(field);
   const plannedType = plannedCuts[existing.cut_number - 1] || 'silage';
+  const backHref = searchParams.from || `/fields/${field.id}`;
 
   return (
     <div>
-      <Header title="Edit cut" subtitle={field.name} backHref={`/fields/${field.id}`} />
+      <Header title="Edit cut" subtitle={field.name} backHref={backHref} />
       <LogCutForm
         field={field}
         settings={settings}
         nextCutNumber={existing.cut_number}
         plannedType={plannedType}
         existing={existing}
+        returnTo={searchParams.from}
       />
     </div>
   );

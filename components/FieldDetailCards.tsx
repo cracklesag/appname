@@ -83,8 +83,11 @@ export function ApplicationCard({
   );
 }
 
-export function CutEntry({ cut, field, settings, canEdit = true }: { cut: Cut; field: Field; settings: Settings; canEdit?: boolean }) {
+export function CutEntry({ cut, field, settings, canEdit = true, from }: { cut: Cut; field: Field; settings: Settings; canEdit?: boolean; from?: string }) {
   const off = getOfftakeForCut(field.cut_profile, cut.cut_number, cut.yield_class, settings, cut.cut_type);
+  // Where to return after editing — caller passes its own URL (filtered activity
+  // view or a field tab); default to the field's season tab.
+  const editFrom = from || `/fields/${field.id}?tab=season`;
   return (
     <div className="card" style={{ padding: 12, marginBottom: 8, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -106,7 +109,7 @@ export function CutEntry({ cut, field, settings, canEdit = true }: { cut: Cut; f
       {canEdit && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end' }}>
         <EditDeleteControls
-          editHref={`/fields/${field.id}/cuts/${cut.id}/edit`}
+          editHref={`/fields/${field.id}/cuts/${cut.id}/edit?from=${encodeURIComponent(editFrom)}`}
           deleteAction={deleteCut}
           hiddenInputs={{ id: cut.id, field_id: field.id }}
           label="cut"

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Droplets, Sprout, Mountain, Tractor, SlidersHorizontal } from 'lucide-react';
+import { Droplets, Sprout, Mountain, Tractor, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import { FilterChips } from '@/components/FilterChips';
 import {
   loadAllApplications,
@@ -270,6 +270,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
     <div style={{ paddingBottom: 80 }}>
       {/* Branded hero — matches Fields/home for continuity */}
       <div style={{ background: 'var(--forest-dark)', padding: '16px 18px 18px' }}>
+        <Link href="/" className="hero-back" style={{ color: 'rgba(239,231,214,0.85)' }}>
+          <ArrowLeft size={15} /> Home
+        </Link>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -400,7 +403,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             return (
               <div key={c.id} style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, margin: '0 2px 2px' }}>{f.name}</div>
-                <CutEntry cut={c} field={f} settings={settings} canEdit={canEditEntry(c.created_by)} />
+                <CutEntry cut={c} field={f} settings={settings} canEdit={canEditEntry(c.created_by)} from={currentUrl} />
               </div>
             );
           })}

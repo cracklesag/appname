@@ -47,13 +47,14 @@ const NEXT_ACTION_HINTS: Record<NextAction, string> = {
 };
 
 export function LogCutForm({
-  field, settings, nextCutNumber, plannedType, existing,
+  field, settings, nextCutNumber, plannedType, existing, returnTo,
 }: {
   field: Field;
   settings: Settings;
   nextCutNumber: number;
   plannedType: CutType;
   existing?: Cut;
+  returnTo?: string;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const isEdit = !!existing;
@@ -101,6 +102,7 @@ export function LogCutForm({
   return (
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} /> }
+      {isEdit && returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       <input type="hidden" name="field_id" value={field.id} />
       <input type="hidden" name="cut_number" value={cutNumberForRules} />
       <input type="hidden" name="cut_type" value={cutType} />

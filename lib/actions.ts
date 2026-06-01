@@ -327,7 +327,13 @@ export async function updateCut(formData: FormData) {
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
-  redirect(`/fields/${fieldId}`);
+  revalidatePath('/activity');
+
+  // Return to where the edit was launched from (a filtered activity view or a
+  // field tab), falling back to the field view. Internal relative paths only.
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function deleteCut(formData: FormData) {
