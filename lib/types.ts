@@ -129,14 +129,29 @@ export interface Group {
   name: string;
   sort_order: number;
   created_at: string;
-  /** Optional management profile (drives soft warnings only; all nullable so a
-   *  group can have no profile and behave as a plain block). */
   management_type: 'silage' | 'rotational' | 'maintenance' | null;
   earliest_fert_md: string | null;   // 'MM-DD', repeats yearly
   low_input: boolean;
   max_n_kg_per_ha: number | null;
   nvz: boolean;
   profile_note: string | null;
+  /** Optional flat grazing maintenance schedule: this much N every N days.
+   *  Advisory (a reminder) — never auto-applied. */
+  graze_n_kg_per_ha: number | null;
+  graze_interval_days: number | null;
+}
+
+/** A rising-plate-meter reading: a field's grass cover (kg DM/ha) on a date. */
+export interface PlateReading {
+  id: string;
+  user_id: string;
+  field_id: string;
+  reading_date: string;       // YYYY-MM-DD
+  cover_kg_dm_ha: number;
+  height_cm: number | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface Product {

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getFarmContext, requireAdmin } from '@/lib/farm';
+import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
 
 /**
@@ -1182,15 +1182,75 @@ export async function saveGroupProfile(formData: FormData) {
 
   const profile_note = String(formData.get('profile_note') ?? '').trim() || null;
 
+  const rawGrazeN = String(formData.get('graze_n_kg_per_ha') ?? '').trim();
+  const graze_n_kg_per_ha = rawGrazeN ? Math.max(0, Math.round(parseFloat(rawGrazeN))) : null;
+  const rawGrazeInt = String(formData.get('graze_interval_days') ?? '').trim();
+  const graze_interval_days = rawGrazeInt ? Math.max(1, Math.round(parseFloat(rawGrazeInt))) : null;
+
   const { error } = await supabase
     .from('groups')
-    .update({ management_type, earliest_fert_md, low_input, max_n_kg_per_ha, nvz, profile_note })
+    .update({
+      management_type, earliest_fert_md, low_input, max_n_kg_per_ha, nvz, profile_note,
+      graze_n_kg_per_ha, graze_interval_days,
+    })
     .eq('id', id)
     .eq('user_id', ctx.ownerId);
   if (error) throw new Error(`Could not save group profile: ${error.message}`);
 
   revalidatePath('/settings/groups');
   revalidatePath('/', 'layout');
+}
+
+/** Log a plate-meter reading for a field. Members (admin or staff) can log. */
+export async function logPlateReading(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireMember();
+
+  const field_id = String(formData.get('field_id') ?? '').trim();
+  if (!field_id) throw new Error('Pick a field');
+
+  const reading_date = String(formData.get('reading_date') ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reading_date)) throw new Error('Enter a valid date');
+
+  const coverRaw = String(formData.get('cover_kg_dm_ha') ?? '').trim();
+  const cover_kg_dm_ha = coverRaw ? Math.round(parseFloat(coverRaw)) : NaN;
+  if (!isFinite(cover_kg_dm_ha) || cover_kg_dm_ha < 0) throw new Error('Enter the cover in kg DM/ha');
+
+  const heightRaw = String(formData.get('height_cm') ?? '').trim();
+  const height_cm = heightRaw ? parseFloat(heightRaw) : null;
+
+  const note = String(formData.get('note') ?? '').trim() || null;
+
+  const { error } = await supabase.from('plate_readings').insert({
+    user_id: ctx.ownerId,
+    field_id,
+    reading_date,
+    cover_kg_dm_ha,
+    height_cm,
+    note,
+    created_by: ctx.userId,
+  });
+  if (error) throw new Error(`Could not save reading: ${error.message}`);
+
+  revalidatePath('/grazing');
+  revalidatePath(`/fields/${field_id}`);
+  revalidatePath('/reports/grazing-history');
+}
+
+/** Delete a plate-meter reading. */
+export async function deletePlateReading(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireMember();
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) throw new Error('Missing reading id');
+  const { error } = await supabase
+    .from('plate_readings')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not delete reading: ${error.message}`);
+  revalidatePath('/grazing');
+  revalidatePath('/reports/grazing-history');
 }
 
 export async function deleteGroup(formData: FormData) {

@@ -166,9 +166,9 @@ export default async function HomePage() {
                 <Flame size={21} style={{ color: 'var(--amber)' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Field snapshot</span>
               </Link>
-              <Link href="/reports/grazing?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+              <Link href="/grazing" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Repeat size={21} style={{ color: 'var(--slurry, #6a90b5)' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Grazing top-up</span>
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Grazing</span>
               </Link>
               <Link href="/reports/lime?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Mountain size={21} style={{ color: '#8a7a4a' }} />

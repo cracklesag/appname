@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, Product, Settings } from './types';
+import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, PlateReading, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -227,4 +227,16 @@ export async function loadProductUsage(): Promise<Record<number, number>> {
     counts[pid] = (counts[pid] ?? 0) + 1;
   }
   return counts;
+}
+
+/** All plate-meter readings for the farm, newest first. RLS scopes to the
+ *  member's farm. Returns [] if the table doesn't exist yet (pre-migration). */
+export async function loadPlateReadings(): Promise<PlateReading[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('plate_readings')
+    .select('*')
+    .order('reading_date', { ascending: false });
+  if (error) return [];
+  return (data || []) as PlateReading[];
 }

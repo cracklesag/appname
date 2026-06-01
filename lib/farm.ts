@@ -84,3 +84,11 @@ export async function requireAdmin(): Promise<FarmContext> {
   }
   return ctx;
 }
+
+/** Any signed-in farm member (admin or staff). For field-worker tasks like
+ *  logging a plate-meter reading, which staff are allowed to do. */
+export async function requireMember(): Promise<FarmContext> {
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  return ctx;
+}

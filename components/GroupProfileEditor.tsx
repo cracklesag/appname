@@ -53,6 +53,8 @@ function GroupProfileRow({ group }: { group: Group }) {
   const [maxN, setMaxN] = useState<string>(group.max_n_kg_per_ha != null ? String(group.max_n_kg_per_ha) : '');
   const [nvz, setNvz] = useState<boolean>(group.nvz);
   const [note, setNote] = useState<string>(group.profile_note ?? '');
+  const [grazeN, setGrazeN] = useState<string>(group.graze_n_kg_per_ha != null ? String(group.graze_n_kg_per_ha) : '');
+  const [grazeInt, setGrazeInt] = useState<string>(group.graze_interval_days != null ? String(group.graze_interval_days) : '');
 
   const profiled = hasProfile(group);
 
@@ -65,6 +67,8 @@ function GroupProfileRow({ group }: { group: Group }) {
     fd.set('max_n_kg_per_ha', maxN);
     fd.set('nvz', nvz ? 'true' : 'false');
     fd.set('profile_note', note);
+    fd.set('graze_n_kg_per_ha', grazeN);
+    fd.set('graze_interval_days', grazeInt);
     start(async () => {
       await saveGroupProfile(fd);
       setSaved(true);
@@ -150,6 +154,28 @@ function GroupProfileRow({ group }: { group: Group }) {
             <input type="checkbox" checked={nvz} onChange={(e) => setNvz(e.target.checked)} />
             <span><AlertTriangle size={13} style={{ verticalAlign: -2, color: '#c98a2b' }} /> In an NVZ (flag closed-period reminders)</span>
           </label>
+
+          {/* Grazing maintenance schedule — relevant for grazing blocks */}
+          {(type === 'rotational' || type === 'maintenance') && (
+            <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--paper-deep, #F4EFE2)', borderRadius: 8 }}>
+              <Label text="Grazing top-up schedule (optional)" />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number" inputMode="numeric" min={0} className="input"
+                  placeholder="40" value={grazeN} onChange={(e) => setGrazeN(e.target.value)}
+                  style={{ fontSize: 14, width: 80 }}
+                />
+                <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>kg N/ha every</span>
+                <input
+                  type="number" inputMode="numeric" min={1} className="input"
+                  placeholder="28" value={grazeInt} onChange={(e) => setGrazeInt(e.target.value)}
+                  style={{ fontSize: 14, width: 70 }}
+                />
+                <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>days</span>
+              </div>
+              <Hint>A simple flat plan for this block (e.g. 40 kg N/ha every 28 days). Advisory only — it’s a reminder, it doesn’t auto-apply.</Hint>
+            </div>
+          )}
 
           {/* Note */}
           <div style={{ marginTop: 14 }}>

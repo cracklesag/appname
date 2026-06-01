@@ -1,5 +1,5 @@
 import {
-  Application, Cut, CutType, Field, GrassSystem, Group, NextAction, Product, ProductCategory, ProductType, Settings,
+  Application, Cut, CutType, Field, GrassSystem, Group, NextAction, PlateReading, Product, ProductCategory, ProductType, Settings,
   SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
 } from './types';
 import * as rb209 from './rb209';
@@ -1699,4 +1699,129 @@ export function groupProfileWarnings(
 export function todayMd(): string {
   const d = new Date();
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Grazing / growth — field history & performance (Phase 1)
+// ---------------------------------------------------------------------------
+// Combines what we already track (N applied, from applications) with optional
+// plate-meter cover readings to give a per-field season summary and a
+// performance comparison. Honest about its limits: "grass grown" is the sum of
+// positive change between consecutive cover readings (a drop means the paddock
+// was grazed/cut, which we can't measure across, so those intervals are
+// skipped). It's an indicative total, not a rigorous farm-cover budget.
+
+export interface FieldGrazingHistory {
+  fieldId: string;
+  name: string;
+  groupName: string | null;
+  areaHa: number;
+  /** Total N applied this season, kg/ha (from logged applications). */
+  nKgPerHa: number;
+  /** Number of plate readings logged this season. */
+  readings: number;
+  /** Indicative grass grown this season, kg DM/ha (sum of positive cover steps). */
+  grassGrownKgDmHa: number | null;
+  /** Latest measured cover, kg DM/ha. */
+  latestCover: number | null;
+  latestCoverDate: string | null;
+  /** Average growth over measured ungrazed intervals, kg DM/ha/day. */
+  avgGrowthRate: number | null;
+  /** kg DM grown per kg N applied — rough efficiency. Null if no N or no grass. */
+  dmPerKgN: number | null;
+}
+
+/**
+ * Per-field grazing history for a season.
+ * @param seasonStartISO inclusive lower bound (e.g. getSeasonStart()).
+ */
+export function buildGrazingHistory(
+  fields: Field[],
+  applications: Application[],
+  products: Product[],
+  readings: PlateReading[],
+  groups: Group[],
+  settings: Settings,
+  seasonStartISO: string,
+): FieldGrazingHistory[] {
+  const prodById = new Map(products.map((p) => [p.id, p]));
+  const groupName = (id: string | null) => id ? (groups.find((g) => g.id === id)?.name ?? null) : null;
+
+  return fields
+    .filter((f) => !f.needs_setup)
+    .map((f) => {
+      // N applied this season (kg/ha) — sum of N across this field's applications.
+      let nKgPerHa = 0;
+      for (const a of applications) {
+        if (a.field_id !== f.id) continue;
+        if (a.date_applied < seasonStartISO) continue;
+        const prod = prodById.get(a.product_id);
+        if (!prod) continue;
+        const n = calcNutrients(prod, a.rate_value, a.rate_unit, a.date_applied, a.method);
+        nKgPerHa += n.nPerHa;
+      }
+      nKgPerHa = Math.round(nKgPerHa);
+
+      // Plate readings this season, oldest→newest.
+      const rs = readings
+        .filter((r) => r.field_id === f.id && r.reading_date >= seasonStartISO)
+        .sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+
+      let grassGrown: number | null = null;
+      let avgGrowth: number | null = null;
+      let latestCover: number | null = null;
+      let latestCoverDate: string | null = null;
+
+      if (rs.length > 0) {
+        latestCover = Math.round(rs[rs.length - 1].cover_kg_dm_ha);
+        latestCoverDate = rs[rs.length - 1].reading_date;
+      }
+      if (rs.length >= 2) {
+        let grown = 0;
+        let growthSum = 0;
+        let growthDays = 0;
+        for (let i = 1; i < rs.length; i++) {
+          const delta = rs[i].cover_kg_dm_ha - rs[i - 1].cover_kg_dm_ha;
+          const days = daysBetweenISO(rs[i - 1].reading_date, rs[i].reading_date);
+          if (delta > 0 && days > 0) {
+            grown += delta;
+            growthSum += delta;
+            growthDays += days;
+          }
+        }
+        grassGrown = Math.round(grown);
+        avgGrowth = growthDays > 0 ? Math.round(growthSum / growthDays) : null;
+      }
+
+      const dmPerKgN = (grassGrown != null && grassGrown > 0 && nKgPerHa > 0)
+        ? Math.round(grassGrown / nKgPerHa)
+        : null;
+
+      return {
+        fieldId: f.id,
+        name: f.name,
+        groupName: groupName(f.group_id),
+        areaHa: f.ha || 0,
+        nKgPerHa,
+        readings: rs.length,
+        grassGrownKgDmHa: grassGrown,
+        latestCover,
+        latestCoverDate,
+        avgGrowthRate: avgGrowth,
+        dmPerKgN,
+      };
+    });
+}
+
+function daysBetweenISO(a: string, b: string): number {
+  const da = new Date(a + 'T00:00:00Z').getTime();
+  const db = new Date(b + 'T00:00:00Z').getTime();
+  return Math.round((db - da) / 86400000);
+}
+
+/** Standard plate-meter height→cover (kg DM/ha). Region calibrations vary a lot;
+ *  this is a common UK/Irish linear default (≈ 250/cm + 500) for users whose
+ *  meter shows height not cover. Adjustable later; cover entry is preferred. */
+export function coverFromHeightCm(heightCm: number): number {
+  return Math.round(heightCm * 250 + 500);
 }

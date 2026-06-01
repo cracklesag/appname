@@ -113,6 +113,8 @@ export function AddFieldForm({
         max_n_kg_per_ha: null,
         nvz: false,
         profile_note: null,
+        graze_n_kg_per_ha: null,
+        graze_interval_days: null,
       }]);
       setGroupId(newGroup.id);
       setNewGroupName('');
