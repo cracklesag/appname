@@ -16,7 +16,7 @@ export default function CropsPage({
     <div style={{ paddingBottom: 80 }}>
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, #6b5b2e 0%, #4a3f1f 100%)', color: 'var(--brand-cream, #efe7d6)', padding: '18px 16px 20px' }}>
-        <Link href={fromHref} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgba(239,231,214,0.85)', textDecoration: 'none', marginBottom: 10 }}>
+        <Link href={fromHref} className="hero-back" style={{ color: 'rgba(239,231,214,0.85)' }}>
           <ArrowLeft size={15} /> Back
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>Crop nutrition guide</h1>

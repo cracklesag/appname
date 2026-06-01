@@ -70,7 +70,7 @@ export default async function SpreadingReportPage({
       {/* Branded hero — matches the rest of the app */}
       <div style={{ background: 'var(--forest-dark)', padding: '14px 16px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Link href={searchParams.from || '/'} aria-label="Back" style={{ color: 'var(--brand-cream)', display: 'inline-flex', marginLeft: -4 }}>
+          <Link href={searchParams.from || '/'} aria-label="Back" className="hero-back-icon" style={{ color: 'var(--brand-cream)' }}>
             <ArrowLeft size={22} />
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

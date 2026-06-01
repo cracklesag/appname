@@ -107,7 +107,7 @@ export function SpreadListShell({
     <div style={{ paddingBottom: 60 }}>
       {/* Hero */}
       <div style={{ background: accent, padding: '16px 16px 18px', color: '#fff' }} className="no-print">
-        <Link href={fromHref} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgba(255,255,255,0.9)', textDecoration: 'none', marginBottom: 10 }}>
+        <Link href={fromHref} className="hero-back" style={{ color: 'rgba(255,255,255,0.9)' }}>
           <ArrowLeft size={15} /> Back to plan
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>{title}</h1>

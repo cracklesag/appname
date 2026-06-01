@@ -290,11 +290,59 @@ a { color: inherit; text-decoration: none; }
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 4px;
+  /* Tap target at least 44x44 (Apple/Google guideline). The icon stays the
+     same size; the padding/min-size grows the hit area so a slightly-off tap
+     on a phone (or gloved finger) still registers first time. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  margin: -4px;
   color: var(--ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease, transform 0.06s ease;
+}
+.icon-btn:active {
+  background: rgba(0, 0, 0, 0.08);
+  transform: scale(0.94);
+}
+
+/* Text "Back" links in page heroes. Inline links with tiny text are easy to
+   miss-tap; this gives them a comfortable vertical hit area and press feedback
+   without changing the look much. */
+.hero-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  text-decoration: none;
+  padding: 8px 8px 8px 0;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.12s ease;
+}
+.hero-back:active { opacity: 0.6; }
+
+/* Icon-only "Back" links in coloured page heroes. Same 44px hit-area fix as
+   .icon-btn but tuned for a hero (inherits the hero's light colour). */
+.hero-back-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px 0 -8px -10px;
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease, transform 0.06s ease;
+}
+.hero-back-icon:active {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(0.94);
 }
 
 .sticky-footer {

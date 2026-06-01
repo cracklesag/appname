@@ -210,7 +210,7 @@ export function SpreadMapShell({
     <div style={{ paddingBottom: 40 }}>
       {/* Controls (hidden in print) */}
       <div className="no-print" style={{ background: 'var(--forest-dark)', color: 'var(--brand-cream)', padding: '14px 16px' }}>
-        <Link href={fromHref} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgba(239,231,214,0.85)', textDecoration: 'none', marginBottom: 8 }}>
+        <Link href={fromHref} className="hero-back" style={{ color: 'rgba(239,231,214,0.85)' }}>
           <ArrowLeft size={15} /> Back to list
         </Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
