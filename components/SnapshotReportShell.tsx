@@ -35,6 +35,7 @@ import {
   SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
 } from '@/lib/rules';
+import { meteredApps, fieldAreaHa } from '@/lib/partials';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 
@@ -156,7 +157,7 @@ export function SnapshotReportShell({
     const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
     return fields.map((f) => {
       const system = resolveGrassSystem(f, grassSystems);
-      const fApps = applications.filter((a) => a.field_id === f.id);
+      const fApps = meteredApps(applications.filter((a) => a.field_id === f.id), () => fieldAreaHa(f));
       const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
       const fCuts = cuts
         .filter((c) => c.field_id === f.id && c.cut_date >= seasonStart)

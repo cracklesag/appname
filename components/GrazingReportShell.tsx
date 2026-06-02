@@ -27,6 +27,7 @@ import {
   SOIL_TYPE_SHORT_LABELS,
   sumNutrients,
 } from '@/lib/rules';
+import { meteredApps, fieldAreaHa } from '@/lib/partials';
 import { setGroupToGrazing } from '@/lib/actions';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 
@@ -143,8 +144,8 @@ export function GrazingReportShell({
         // Filter to N-bearing season applications. Slurry/manure N is the
         // crop-available fraction (calcNutrients already applies the factor),
         // bag fert N is full content. Sum N per ha per application.
-        const fApps = applications
-          .filter((a) => a.field_id === f.id && a.date_applied >= seasonStart);
+        const fApps = meteredApps(applications
+          .filter((a) => a.field_id === f.id && a.date_applied >= seasonStart), () => fieldAreaHa(f));
         // Pick the most recent N-bearing application — i.e. one where the
         // product delivers any N at all. Avoids treating a lime application
         // as a "top-up".

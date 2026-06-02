@@ -30,6 +30,7 @@ import {
   fmt,
   NextCutType,
 } from '@/lib/rules';
+import { meteredApps, fieldAreaHa } from '@/lib/partials';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +82,7 @@ export default async function FieldsPage({
 
   const fieldStates: FieldState[] = fields.map((f) => {
     const system = resolveGrassSystem(f, grassSystems);
-    const fApps = applications.filter((a) => a.field_id === f.id);
+    const fApps = meteredApps(applications.filter((a) => a.field_id === f.id), () => fieldAreaHa(f));
     const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
     const fCuts = cuts.filter((c) => c.field_id === f.id && c.cut_date >= seasonStart);
     const cutsDone = fCuts.length;

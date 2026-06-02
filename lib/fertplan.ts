@@ -4,6 +4,7 @@ import {
   getFieldNRecommendation, getOfftakeForCut, organicReleaseFraction, monthsBetween,
   calcNutrients, planFieldFertiliser,
 } from './rules';
+import { meteredApps, fieldAreaHa } from './partials';
 
 export interface FertPlanRow {
   id: string;
@@ -71,9 +72,9 @@ export function buildFertPlanRows(
       const lastCut = seasonCuts[0];
       const cutNumber = Math.min((f.cut_profile || 1), seasonCuts.length + 1);
 
-      const seasonApps = applications.filter(
+      const seasonApps = meteredApps(applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
-      );
+      ), () => fieldAreaHa(f));
       const nWindowStart = lastCut ? lastCut.cut_date : seasonStart;
       const sinceCutApps = seasonApps.filter((a) => a.date_applied >= nWindowStart);
       const appliedNSinceCut = sumNutrients(sinceCutApps, products).n;

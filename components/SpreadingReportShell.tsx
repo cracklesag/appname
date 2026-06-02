@@ -44,6 +44,7 @@ import {
   getSoilType,
   sumNutrients,
 } from '@/lib/rules';
+import { meteredApps, fieldAreaHa } from '@/lib/partials';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 
@@ -191,7 +192,7 @@ export function SpreadingReportShell({
       // Maintenance threshold check — only meaningful when the field is
       // currently maintenance-flagged. Cheap when not.
       const maintenanceSatisfied = resolved === 'maintenance_grazing'
-        ? maintenanceDoseSatisfied(f, applications, products, fCuts, settings)
+        ? maintenanceDoseSatisfied(f, meteredApps(applications, () => fieldAreaHa(f)), products, fCuts, settings)
         : false;
       return {
         field: f,
@@ -1008,7 +1009,7 @@ function ReportSection(props: {
       // Match the field detail page's logic: spring mode treats season
       // start as the window; post-cut/mid-season modes use the last cut
       // date and compute P/K carryover from pre-cut applications.
-      const fApps = applications.filter((a) => a.field_id === f.id);
+      const fApps = meteredApps(applications.filter((a) => a.field_id === f.id), () => fieldAreaHa(f));
       const seasonApps = fApps.filter((a) => a.date_applied >= seasonStart);
       const windowStart = (mode === 'spring' || !s.lastCut)
         ? seasonStart

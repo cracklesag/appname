@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Droplets, Sprout, Mountain, Save, Tractor, Trash2 } from 'lucide-react';
+import { Droplets, Sprout, Mountain, Save, Tractor, Trash2, Pencil } from 'lucide-react';
 import {
   Application, Field, Product, ProductType, Settings, SlurryMethod, SolidMethod,
   ApplicationMethod,
@@ -14,6 +14,9 @@ import {
 } from '@/lib/rules';
 import { saveApplication, updateApplication, saveBatchApplications, deleteApplication } from '@/lib/actions';
 import { validateApplicationRate, validateDate } from '@/lib/validation';
+import PartApplicationDraw from './PartApplicationDraw';
+import type { FieldGeometry } from '@/lib/geo';
+import { KG_PER_HA_TO_KG_PER_AC } from '@/lib/partials';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
 const LIME_RATES = [1, 1.5, 2, 2.5, 3] as const;
@@ -182,6 +185,11 @@ export function LogApplicationForm({
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Part-application drawing: a drawn sub-area marks this as a partial
+  // application (slurry / solid manure only, single-field only).
+  const [drawing, setDrawing] = useState(false);
+  const [drawnGeo, setDrawnGeo] = useState<FieldGeometry | null>(null);
+  const [drawnHa, setDrawnHa] = useState<number>(0);
   // Set true once the user has acknowledged a likely-duplicate warning, so the
   // next submit goes through. Reset whenever the date/field/type changes.
   const [dupeAcknowledged, setDupeAcknowledged] = useState(false);
@@ -539,6 +547,22 @@ export function LogApplicationForm({
     }
   }
 
+  const boundaryGeo = (field.boundary ?? null) as FieldGeometry | null;
+  const canDrawPartial = !isBatch && (type === 'slurry' || type === 'solid_manure') && !!boundaryGeo;
+
+  if (drawing && boundaryGeo) {
+    return (
+      <PartApplicationDraw
+        boundary={boundaryGeo}
+        productName={product?.name ?? 'Application'}
+        k2oPerHa={nut.k2oPerHa}
+        unitSystem={settings.unitSystem}
+        onCancel={() => setDrawing(false)}
+        onDone={(geo, ha) => { setDrawnGeo(geo); setDrawnHa(ha); setDrawing(false); }}
+      />
+    );
+  }
+
   return (
     <>
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
@@ -549,6 +573,8 @@ export function LogApplicationForm({
       {isBatch && <input type="hidden" name="log_type" value={type} />}
       {!isBatch && <input type="hidden" name="rate_value" value={numericRate} />}
       <input type="hidden" name="rate_unit" value={storedUnit} />
+      {!isBatch && drawnGeo && <input type="hidden" name="coverage" value="partial" />}
+      {!isBatch && drawnGeo && <input type="hidden" name="application_area" value={JSON.stringify(drawnGeo)} />}
       {(type === 'slurry' || type === 'solid_manure') && (
         <input type="hidden" name="method" value={methodForForm} />
       )}
@@ -1078,6 +1104,34 @@ export function LogApplicationForm({
         )}
       </div>
 
+      {canDrawPartial && (
+        <div style={{ padding: '0 16px 8px' }}>
+          {drawnGeo ? (
+            <div className="card" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Pencil size={16} style={{ color: 'var(--forest-dark)' }} />
+              <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.35 }}>
+                <strong style={{ color: 'var(--ink)' }}>Part application</strong> ·{' '}
+                {settings.unitSystem === 'acres' ? `${(drawnHa * 2.47105).toFixed(2)} ac` : `${drawnHa.toFixed(2)} ha`} drawn ·{' '}
+                ~{Math.round(nut.k2oPerHa * KG_PER_HA_TO_KG_PER_AC)} kg K₂O/ac
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => setDrawing(true)} style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 9px', fontSize: 12, fontWeight: 700, color: 'var(--forest-dark)' }}>Redraw</button>
+                <button type="button" onClick={() => { setDrawnGeo(null); setDrawnHa(0); }} style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 9px', fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>Clear</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { if (numericRate > 0) setDrawing(true); else setSubmitError('Enter a rate first, then draw the spread area.'); }}
+              className="btn-ghost"
+              style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            >
+              <Pencil size={16} /> Part application — draw the spread area
+            </button>
+          )}
+        </div>
+      )}
+
       <div style={{ position: 'sticky', bottom: 0, padding: '0 16px 16px', background: 'linear-gradient(to top, var(--paper) 70%, transparent)' }}>
         <ErrorBanner error={submitError} />
         {dupWarning && dupeAcknowledged && !submitting && (
@@ -1095,7 +1149,7 @@ export function LogApplicationForm({
         <div style={{ display: 'flex', gap: 10 }}>
           <Link href={isBatch ? '/' : `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
           <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
-            <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
+            <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : (drawnGeo ? 'Save part application' : 'Save entry')}
           </button>
         </div>
       </div>

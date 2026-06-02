@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
+import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 
 /**
  * UK grass season starts 1st Jan effectively — getSeasonStart() in
@@ -79,24 +81,110 @@ export async function saveApplication(formData: FormData) {
     throw new Error('Missing required fields');
   }
 
-  const { error } = await supabase.from('applications').insert({
-    user_id: ctx.ownerId,        // farm owner owns the row
-    created_by: ctx.userId,      // who actually entered it
-    field_id: fieldId,
-    product_id: productId,
-    date_applied: dateApplied,
-    rate_value: rateValue,
-    rate_unit: rateUnit,
-    method,
-    notes,
-    applied_by: 'me',
-  });
+  // Partial (part-field) application: a drawn sub-area is posted as a GeoJSON
+  // polygon. Such an application is held PENDING — excluded from the field's
+  // nutrient metrics — until the field reconciles (see reconcileFieldPartials).
+  const isPartial = String(formData.get('coverage')) === 'partial';
+  const areaJson = formData.get('application_area') ? String(formData.get('application_area')) : null;
+  let drawnGeometry: FieldGeometry | null = null;
+  let drawnHa: number | null = null;
+  if (isPartial) {
+    if (!areaJson) throw new Error('A part application needs a drawn area');
+    try {
+      drawnGeometry = JSON.parse(areaJson) as FieldGeometry;
+    } catch {
+      throw new Error('Could not read the drawn area');
+    }
+    drawnHa = polygonAreaHectares(drawnGeometry);
+    if (!(drawnHa > 0)) throw new Error('The drawn area is empty — draw the spread area and try again');
+  }
+
+  const { data: inserted, error } = await supabase
+    .from('applications')
+    .insert({
+      user_id: ctx.ownerId,        // farm owner owns the row
+      created_by: ctx.userId,      // who actually entered it
+      field_id: fieldId,
+      product_id: productId,
+      date_applied: dateApplied,
+      rate_value: rateValue,
+      rate_unit: rateUnit,
+      method,
+      notes,
+      applied_by: 'me',
+      coverage: isPartial ? 'partial' : 'whole',
+      drawn_ha: drawnHa,
+    })
+    .select('id')
+    .single();
   if (error) throw new Error(error.message);
 
+  if (isPartial && inserted && drawnGeometry) {
+    const { error: areaErr } = await supabase.from('application_areas').insert({
+      user_id: ctx.ownerId,
+      created_by: ctx.userId,
+      application_id: inserted.id,
+      field_id: fieldId,
+      polygon: drawnGeometry,
+      area_ha: drawnHa,
+    });
+    if (areaErr) throw new Error(areaErr.message);
+    // Re-evaluate whether the field's partials now cover it (fold into metrics).
+    await reconcileFieldPartials(fieldId);
+  }
+
   revalidatePath(`/fields/${fieldId}`);
+  revalidatePath(`/fields/${fieldId}/part-applications`);
   revalidatePath('/');
   revalidatePath('/activity');
   redirect(`/fields/${fieldId}`);
+}
+
+/**
+ * Recompute whether a field's PARTIAL applications together cover it (within
+ * the coverage threshold) and stamp/clear reconciled_at accordingly. Idempotent
+ * and self-correcting: call after adding a partial area or after deleting any
+ * application. Reconciliation is field-level — all of the field's partials flip
+ * together (per the spec). Does nothing if the field has no boundary.
+ */
+async function reconcileFieldPartials(fieldId: string) {
+  const supabase = createClient();
+
+  const { data: partials } = await supabase
+    .from('applications')
+    .select('id, reconciled_at')
+    .eq('field_id', fieldId)
+    .eq('coverage', 'partial');
+  if (!partials || partials.length === 0) return;
+
+  const { data: field } = await supabase
+    .from('fields')
+    .select('boundary')
+    .eq('id', fieldId)
+    .maybeSingle();
+  const boundary = (field?.boundary ?? null) as FieldGeometry | null;
+
+  const { data: areas } = await supabase
+    .from('application_areas')
+    .select('polygon')
+    .eq('field_id', fieldId);
+  const geoms = (areas || [])
+    .map((a) => a.polygon as FieldGeometry)
+    .filter((g): g is FieldGeometry => !!g);
+
+  // No boundary (or no drawn areas) → cannot reconcile; leave everything pending.
+  const reconciled =
+    !!boundary && geoms.length > 0 &&
+    coverageFraction(boundary, geoms) >= RECONCILE_COVERAGE_THRESHOLD;
+
+  const stampNeeded = partials.filter((p) => !!p.reconciled_at !== reconciled);
+  if (stampNeeded.length === 0) return;
+
+  const { error } = await supabase
+    .from('applications')
+    .update({ reconciled_at: reconciled ? new Date().toISOString() : null })
+    .in('id', stampNeeded.map((p) => p.id));
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -242,7 +330,12 @@ export async function deleteApplication(formData: FormData) {
   const { error } = await supabase.from('applications').delete().eq('id', id);
   if (error) throw new Error(error.message);
 
+  // Deleting an application (its application_areas cascade) can change a
+  // field's partial coverage — re-evaluate so reconciled_at stays honest.
+  if (fieldId) await reconcileFieldPartials(fieldId);
+
   revalidatePath(`/fields/${fieldId}`);
+  revalidatePath(`/fields/${fieldId}/part-applications`);
   revalidatePath('/');
   revalidatePath('/activity');
   const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';

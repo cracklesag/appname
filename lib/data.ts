@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -250,4 +250,29 @@ export async function loadGrazingEvents(): Promise<GrazingEvent[]> {
     .order('graze_date', { ascending: false });
   if (error) return [];
   return (data || []) as GrazingEvent[];
+}
+
+/** Drawn sub-areas of partial applications for one field (oldest first).
+ *  Returns [] if the table doesn't exist yet (pre-migration). RLS scopes to
+ *  the member's farm. */
+export async function loadApplicationAreasForField(fieldId: string): Promise<ApplicationArea[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('application_areas')
+    .select('*')
+    .eq('field_id', fieldId)
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return (data || []) as ApplicationArea[];
+}
+
+/** All drawn sub-areas for the farm. [] if table absent. */
+export async function loadAllApplicationAreas(): Promise<ApplicationArea[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('application_areas')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) return [];
+  return (data || []) as ApplicationArea[];
 }

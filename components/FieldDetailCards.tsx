@@ -32,6 +32,11 @@ export function ApplicationCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div>
           <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>{fmtDate(app.date_applied)}</div>
+          {app.coverage === 'partial' && (
+            <span style={{ display: 'inline-block', marginTop: 4, fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: app.reconciled_at ? 'var(--forest-soft)' : 'var(--amber-soft)', color: app.reconciled_at ? 'var(--forest-dark)' : 'var(--amber)' }}>
+              {app.reconciled_at ? 'Partial · counted' : 'Partial · pending'}
+            </span>
+          )}
           <div style={{ marginTop: 4 }}><ProductPill product={product} /></div>
         </div>
         <div style={{ textAlign: 'right' }}>

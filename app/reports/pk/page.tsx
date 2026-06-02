@@ -9,6 +9,7 @@ import {
   getOfftakeForCut, organicReleaseFraction, monthsBetween,
   nutrientPerArea, nutrientUnitLabel,
 } from '@/lib/rules';
+import { meteredApps, fieldAreaHa } from '@/lib/partials';
 import * as rb209 from '@/lib/rb209';
 import { PKStatusShell, PKFieldRow } from '@/components/PKStatusShell';
 
@@ -35,9 +36,9 @@ export default async function PKStatusPage({
     .filter((f) => !f.needs_setup)
     .map((f) => {
       // Applications this season for this field.
-      const fieldApps = applications.filter(
+      const fieldApps = meteredApps(applications.filter(
         (a) => a.field_id === f.id && a.date_applied >= seasonStart,
-      );
+      ), () => fieldAreaHa(f));
 
       // Which cut number are we at (cuts done this season + 1)?
       const fieldCuts = cuts.filter((c) => c.field_id === f.id);

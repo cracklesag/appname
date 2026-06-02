@@ -23,6 +23,7 @@ import {
   resolveGrassSystem,
   soilMetricColor, sumNutrients, calcNutrients, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
+import { meteredApps, isPendingPartial, fieldAreaHa } from '@/lib/partials';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +88,7 @@ export default async function FieldDetailPage({
   } : null;
 
   const appsSinceCut = seasonApps.filter((a) => a.date_applied >= windowStart);
-  const sinceCutTotals = sumNutrients(appsSinceCut, products);
+  const sinceCutTotals = sumNutrients(meteredApps(appsSinceCut, () => fieldAreaHa(field)), products);
 
   // Carryover from before last cut (within season) — P and K only. Each pre-cut
   // application is released over time by material type (slurry fast, FYM slow),
@@ -104,7 +105,7 @@ export default async function FieldDetailPage({
   if (lastCut) {
     const preCutApps = seasonApps.filter((a) => a.date_applied < windowStart);
     let carryPRaw = 0, carryKRaw = 0;
-    for (const a of preCutApps) {
+    for (const a of meteredApps(preCutApps, () => fieldAreaHa(field))) {
       const t = (products.find((p) => p.id === a.product_id)?.type ?? 'bag_fert') as 'slurry' | 'solid_manure' | 'bag_fert' | 'lime';
       const months = monthsBetween(a.date_applied, todayIso);
       const frac = organicReleaseFraction(t, months, releaseParams);
@@ -131,10 +132,11 @@ export default async function FieldDetailPage({
     mgo: sinceCutTotals.mgo,
   };
 
-  const seasonTotals = sumNutrients(seasonApps, products);
+  const seasonTotals = sumNutrients(meteredApps(seasonApps, () => fieldAreaHa(field)), products);
   // The most recent application (seasonApps is date-desc) and what IT supplied —
-  // this is what the headline figure shows, not a running season total.
-  const latestApp = seasonApps[0] ?? null;
+  // this is what the headline figure shows, not a running season total. Pending
+  // part applications are excluded — they haven't fed the whole field yet.
+  const latestApp = seasonApps.filter((a) => !isPendingPartial(a))[0] ?? null;
   const latestProduct = latestApp ? products.find((p) => p.id === latestApp.product_id) : undefined;
   const latestNut = latestApp
     ? calcNutrients(latestProduct, latestApp.rate_value, latestApp.rate_unit, latestApp.date_applied, latestApp.method)
@@ -532,6 +534,19 @@ export default async function FieldDetailPage({
           </div>
 
           <NAvailabilityStrip />
+
+          <Link
+            href={`/fields/${field.id}/part-applications`}
+            className="card"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, marginTop: 14, textDecoration: 'none' }}
+          >
+            <Droplets size={18} style={{ color: 'var(--slurry)' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 700 }}>Part applications</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>K loading heat map for part-field spreading</div>
+            </div>
+            <span style={{ color: 'var(--muted)', fontSize: 18 }}>›</span>
+          </Link>
 
           <div className="label" style={{ paddingLeft: 4, marginTop: 4 }}>
             Timeline ({seasonApps.length + fCuts.length})

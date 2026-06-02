@@ -215,6 +215,33 @@ export interface Application {
   notes: string | null;
   applied_by: string;
   created_at: string;
+  /** 'whole' (normal — applied across the field) | 'partial' (a drawn
+   *  sub-area only; see application_areas). Defaults to 'whole' for every
+   *  pre-existing row. */
+  coverage: 'whole' | 'partial';
+  /** Set when a partial application's field reaches full coverage and the
+   *  partial folds into the field's nutrient metrics. NULL = still pending
+   *  (excluded from all field-level nutrient figures). */
+  reconciled_at: string | null;
+  /** Total drawn area (ha) for a partial application = sum of its
+   *  application_areas.area_ha. Cached so nutrient sums can area-weight a
+   *  reconciled partial without loading application_areas. */
+  drawn_ha: number | null;
+}
+
+/** A drawn sub-area of a partial application (the finger-drawn spread shape). */
+export interface ApplicationArea {
+  id: string;
+  /** Farm owner (admin) — all shared data is owned by this id. */
+  user_id: string;
+  /** Who actually drew it (admin or staff). */
+  created_by: string | null;
+  application_id: string;
+  field_id: string;
+  /** GeoJSON Polygon/MultiPolygon, [lng,lat]. */
+  polygon: unknown;
+  area_ha: number;
+  created_at: string;
 }
 
 export interface Cut {
