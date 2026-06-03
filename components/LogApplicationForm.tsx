@@ -453,6 +453,9 @@ export function LogApplicationForm({
   // Re-arm the duplicate warning if the date, type, or selection changes after
   // an acknowledgement — a new choice deserves a fresh check.
   useEffect(() => { setDupeAcknowledged(false); }, [date, type, picked]);
+  // A drawn part-area belongs to the single ticked field; if the selection
+  // changes in the Log-tab flow, drop it so it can't bind to the wrong field.
+  useEffect(() => { if (isBatch) { setDrawnGeo(null); setDrawnHa(0); } }, [picked, isBatch]);
 
   // In per-field batch mode the shared rate box is optional, so an empty/zero
   // shared rate must NOT count as a blocking error — each field carries its
@@ -492,6 +495,17 @@ export function LogApplicationForm({
     type === 'solid_manure' ? solidMethod  :
     '';
 
+  // Part applications work on ONE field: the single-field form's field, or —
+  // in the batch (Log tab) flow — the single ticked field. Needs a boundary to
+  // draw on, and only makes sense for slurry / solid manure.
+  const singlePickedId = isBatch && picked.size === 1 ? Array.from(picked)[0] : null;
+  const partialField = isBatch
+    ? (singlePickedId ? (batchFields?.find((f) => f.id === singlePickedId) ?? null) : null)
+    : field;
+  const partialBoundary = (partialField?.boundary ?? null) as FieldGeometry | null;
+  const canDrawPartial =
+    (type === 'slurry' || type === 'solid_manure') && !!partialBoundary && (!isBatch || picked.size === 1);
+
   function toggleField(id: string) {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -513,6 +527,32 @@ export function LogApplicationForm({
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
     try {
+      if (drawnGeo) {
+        // Part application — always one partial row for one field, whichever
+        // flow we're in (the field's own log screen, or one ticked field in
+        // the Log tab). Build the payload explicitly so it doesn't depend on
+        // the batch form's hidden inputs.
+        const targetId = isBatch ? singlePickedId : field.id;
+        if (!targetId) {
+          setSubmitError('Pick exactly one field to draw a part application.');
+          setSubmitting(false);
+          return;
+        }
+        const ov = overrides[targetId];
+        const rate = (ov != null && ov !== '' && parseFloat(ov) > 0) ? parseFloat(ov) : numericRate;
+        const pfd = new FormData();
+        pfd.set('field_id', targetId);
+        pfd.set('product_id', String(productId));
+        pfd.set('date_applied', date);
+        pfd.set('rate_value', String(rate));
+        pfd.set('rate_unit', storedUnit);
+        if (methodForForm) pfd.set('method', methodForForm);
+        if (notes) pfd.set('notes', notes);
+        pfd.set('coverage', 'partial');
+        pfd.set('application_area', JSON.stringify(drawnGeo));
+        await saveApplication(pfd);
+        return;
+      }
       if (isBatch) {
         // Build rows: one per ticked field. In per-field mode each field uses
         // its own override rate; in shared mode all use the single rate. (When
@@ -547,13 +587,10 @@ export function LogApplicationForm({
     }
   }
 
-  const boundaryGeo = (field.boundary ?? null) as FieldGeometry | null;
-  const canDrawPartial = !isBatch && (type === 'slurry' || type === 'solid_manure') && !!boundaryGeo;
-
-  if (drawing && boundaryGeo) {
+  if (drawing && partialBoundary) {
     return (
       <PartApplicationDraw
-        boundary={boundaryGeo}
+        boundary={partialBoundary}
         productName={product?.name ?? 'Application'}
         k2oPerHa={nut.k2oPerHa}
         unitSystem={settings.unitSystem}
@@ -1149,7 +1186,7 @@ export function LogApplicationForm({
         <div style={{ display: 'flex', gap: 10 }}>
           <Link href={isBatch ? '/' : `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
           <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
-            <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : (drawnGeo ? 'Save part application' : 'Save entry')}
+            <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : drawnGeo ? 'Save part application' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
           </button>
         </div>
       </div>
