@@ -149,6 +149,14 @@ export function AssistantChat() {
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, []);
 
+  // Resize to fit the content whenever the text changes. Driven by `input` so it
+  // covers typing, dictation (Web Speech sets the value programmatically) and the
+  // reset to one line after sending alike — and it runs after the new value is in
+  // the DOM, so scrollHeight is measured correctly. (Dictation previously resized
+  // on the same frame it set the text, measuring the still-empty box, which is why
+  // it stayed one line tall.)
+  useEffect(() => { grow(); }, [input, grow]);
+
   const runTurn = useCallback(async (history: AssistantMessage[]) => {
     setLoading(true);
     setError(null);
@@ -202,7 +210,6 @@ export function AssistantChat() {
       }
       if (finalText) {
         setInput((prev) => (prev ? `${prev} ${finalText.trim()}` : finalText.trim()));
-        requestAnimationFrame(grow);
       }
     };
     rec.onend = () => setListening(false);
@@ -214,7 +221,7 @@ export function AssistantChat() {
     } catch {
       setListening(false);
     }
-  }, [listening, grow]);
+  }, [listening]);
 
   const empty = messages.length === 0;
 
