@@ -28,6 +28,7 @@ export interface FertPlanRow {
   carryP: number;
   carryK: number;
   loggedOrganicP: number;
+  loggedOrganicN: number;
   loggedOrganicK: number;
   loggedGranularP: number;
   loggedGranularK: number;
@@ -145,6 +146,7 @@ export function buildFertPlanRows(
         carryP: Math.round(carryP),
         carryK: Math.round(carryK),
         loggedOrganicP: Math.round(loggedOrganic.p),
+        loggedOrganicN: Math.round(loggedOrganic.n),
         loggedOrganicK: Math.round(loggedOrganic.k),
         loggedGranularP: Math.round(loggedGranular.p),
         loggedGranularK: Math.round(loggedGranular.k),
@@ -224,12 +226,21 @@ export function planField(
     ? (unitSystem === 'acres' ? 't/ac' : 't/ha')
     : slurryUnit;
 
+  // Intended planner slurry (the plan's default organic + rate), expressed as
+  // the slurry to apply OVER AND ABOVE what's already been logged since the
+  // cut. row.nToApply / p2o5ToApply / k2oToApply already net out logged
+  // organic (via appliedNSinceCut / pSupplyBeforePlan). If we then deducted the
+  // full intended rate again, a field whose slurry is already logged would have
+  // that slurry counted twice and the bag-fert rate would come out ~half size
+  // (the Deer Park N-rate bug). Netting against loggedOrganic{N,P,K} fixes it:
+  // a field with logged slurry >= intended adds 0 here (no double deduction),
+  // while a field with no logged slurry still deducts the full intended rate.
   let slurryN = 0, slurryP = 0, slurryK = 0;
   if (!slurryOff && organic && rate > 0) {
     const n = calcNutrients(organic, rate, unit, new Date().toISOString().slice(0, 10), 'splash_plate');
-    slurryN = Math.round(n.nPerHa);
-    slurryP = Math.round(n.p2o5PerHa);
-    slurryK = Math.round(n.k2oPerHa);
+    slurryN = Math.max(0, Math.round(n.nPerHa)    - row.loggedOrganicN);
+    slurryP = Math.max(0, Math.round(n.p2o5PerHa) - row.loggedOrganicP);
+    slurryK = Math.max(0, Math.round(n.k2oPerHa)  - row.loggedOrganicK);
   }
 
   let pAfter = Math.max(0, row.p2o5ToApply - slurryP);
