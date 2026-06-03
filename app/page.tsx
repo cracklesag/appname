@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon } from 'lucide-react';
+import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -128,6 +128,20 @@ export default async function HomePage() {
             <div style={{ marginBottom: 14 }}>
               <LogActionButton />
             </div>
+
+            {/* Ask Swardly — in-app assistant (available to staff and admins) */}
+            <Link href="/assistant" style={{ display: 'block', background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--forest)', color: 'var(--paper)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--forest-dark)' }}>Ask Swardly</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.4 }}>Your fields, soil and how the app works — just ask.</div>
+                </div>
+                <ChevronRight size={16} style={{ color: 'var(--stone)', flexShrink: 0 }} />
+              </div>
+            </Link>
 
             {/* Plan ahead — grazing dressings + gentle P/K review nudge */}
             {(grazingDue.length > 0 || pkReviewCount > 0) && (
