@@ -9,12 +9,15 @@ import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 
 /**
- * UK grass season starts 1st Jan effectively — getSeasonStart() in
- * lib/rules returns this. We inline the same logic here so server actions
- * don't have to import the rules module (which pulls product types etc.).
+ * Season start used for cut renumbering. Mirrors getSeasonStart() in
+ * lib/rules (the UK grass/fertiliser year runs 1st Oct → 30th Sep). Inlined
+ * here so server actions don't import the rules module (which pulls product
+ * types etc.). Keep these two in lock-step.
  */
 function getSeasonStartIso(): string {
-  return `${new Date().getFullYear()}-01-01`;
+  const now = new Date();
+  const startYear = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${startYear}-10-01`;
 }
 
 /**

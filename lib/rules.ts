@@ -1453,14 +1453,14 @@ export function sumNutrients(apps: Application[], products: Product[]): { n: num
 export function getSeasonStart(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = date.getMonth();
-  const startYear = m >= 8 ? y : y - 1;
-  return `${startYear}-09-01`;
+  const startYear = m >= 9 ? y : y - 1;
+  return `${startYear}-10-01`;
 }
 
 export function getSeasonLabel(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = date.getMonth();
-  const cropYear = m >= 8 ? y + 1 : y;
+  const cropYear = m >= 9 ? y + 1 : y;
   return `${cropYear} season`;
 }
 
