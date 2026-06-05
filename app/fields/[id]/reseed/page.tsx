@@ -1,12 +1,11 @@
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { SoilForm } from '@/components/SoilForm';
-import { DeleteFieldSection } from '@/components/DeleteFieldSection';
+import { FieldEventForm } from '@/components/FieldEventForm';
 import { loadField, loadGrassSystems, loadSettings } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SoilPage({ params, searchParams }: { params: { id: string }; searchParams: { from?: string } }) {
+export default async function FieldEventPage({ params, searchParams }: { params: { id: string }; searchParams: { from?: string } }) {
   const [field, grassSystems, settings] = await Promise.all([
     loadField(params.id),
     loadGrassSystems(),
@@ -16,16 +15,13 @@ export default async function SoilPage({ params, searchParams }: { params: { id:
 
   return (
     <div>
-      <Header title="Update field" subtitle={field.name} backHref={searchParams.from || `/fields/${field.id}`} />
-      <SoilForm
+      <Header title="Log field event" subtitle={field.name} backHref={searchParams.from || `/fields/${field.id}`} />
+      <FieldEventForm
         field={field}
         grassSystems={grassSystems}
         hiddenGrassSystemIds={settings.hiddenGrassSystemIds ?? []}
         returnTo={searchParams.from}
       />
-      <div style={{ padding: '0 16px 100px' }}>
-        <DeleteFieldSection fieldId={field.id} fieldName={field.name} />
-      </div>
     </div>
   );
 }

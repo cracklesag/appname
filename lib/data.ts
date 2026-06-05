@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -76,6 +76,18 @@ export async function loadCutsForField(fieldId: string): Promise<Cut[]> {
     .order('cut_date', { ascending: false });
   if (error) throw error;
   return (data || []) as Cut[];
+}
+
+export async function loadFieldEvents(fieldId: string): Promise<FieldEvent[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('field_events').select('*').eq('field_id', fieldId)
+    .order('event_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  // Degrade to empty rather than break the field page if the migration
+  // hasn't been applied yet (table missing).
+  if (error) return [];
+  return (data || []) as FieldEvent[];
 }
 
 export async function loadAllCuts(): Promise<Cut[]> {

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import {
-  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings,
+  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
 } from '@/lib/data';
 import { buildFertPlanRows } from '@/lib/fertplan';
 import { PlanShell } from '@/components/PlanShell';
@@ -18,17 +18,18 @@ export default async function PlanPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
     loadGroups(),
+    loadGrassSystems(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
 
-  const rows = buildFertPlanRows(fields, applications, cuts, products, settings, groups);
+  const rows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
 
   const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
   const planProducts = products.filter(
@@ -50,7 +51,7 @@ export default async function PlanPage({
         </div>
         <div style={{ marginTop: 12 }}>
           <div style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>Plan</div>
-          <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>RB209 — slurry first, then granular</div>
+          <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>Slurry first, then granular</div>
         </div>
       </div>
       <PlanShell

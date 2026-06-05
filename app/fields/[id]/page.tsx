@@ -9,8 +9,9 @@ import {
 import { FieldGroupPicker } from '@/components/FieldGroupPicker';
 import { NextActionPicker } from '@/components/NextActionPicker';
 import { DeleteFieldSection } from '@/components/DeleteFieldSection';
+import { DeleteFieldEventButton } from '@/components/DeleteFieldEventButton';
 import {
-  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups,
+  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups, loadFieldEvents,
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import {
@@ -48,10 +49,21 @@ export default async function FieldDetailPage({
 
   if (!field) notFound();
 
+  const fieldEvents = await loadFieldEvents(params.id);
+
   const isAdmin = farmCtx?.isAdmin ?? true;
   const myUserId = farmCtx?.userId ?? null;
   // Staff may edit/delete only entries they created; admins edit everything.
   const canEditEntry = (createdBy: string | null) => isAdmin || (createdBy != null && createdBy === myUserId);
+
+  // Back-navigation continuity: carry where the user came from through this
+  // field and its sub-screens so "back" returns to the origin (e.g. the
+  // filtered Plan) rather than the generic field list.
+  const fromParam = searchParams.from;
+  const selfHref = `/fields/${field.id}${fromParam ? `?from=${encodeURIComponent(fromParam)}` : ''}`;
+  const subFrom = `?from=${encodeURIComponent(selfHref)}`;
+  const tabFromQ = fromParam ? `&from=${encodeURIComponent(fromParam)}` : '';
+  const tabFromQ1 = fromParam ? `?from=${encodeURIComponent(fromParam)}` : '';
 
   const seasonStart = getSeasonStart();
   const seasonLabel = getSeasonLabel();
@@ -78,7 +90,7 @@ export default async function FieldDetailPage({
   // RB209 recommendation (build-up at low index + catch-up K) so the field
   // detail matches the fertiliser plan and P&K status exactly.
   const nTargetSrc = cutsRemaining > 0 ? getCutTargets(field, nextCutNumber, settings, grassSystem, fCuts) : null;
-  const pkRec = cutsRemaining > 0 ? getFieldPKRecommendation(field, nextCutNumber, fCuts) : null;
+  const pkRec = cutsRemaining > 0 ? getFieldPKRecommendation(field, nextCutNumber, fCuts, settings.agronomy) : null;
   const targets = (nTargetSrc && pkRec) ? {
     n: nTargetSrc.n,
     p2o5: pkRec.p2o5,
@@ -170,8 +182,8 @@ export default async function FieldDetailPage({
       />
 
       <div className="tabs">
-        <Link href={`/fields/${field.id}`} className={`tab ${tab === 'overview' ? 'active' : ''}`} scroll={false}>Overview</Link>
-        <Link href={`/fields/${field.id}?tab=season`} className={`tab ${tab === 'season' ? 'active' : ''}`} scroll={false}>This season</Link>
+        <Link href={`/fields/${field.id}${tabFromQ1}`} className={`tab ${tab === 'overview' ? 'active' : ''}`} scroll={false}>Overview</Link>
+        <Link href={`/fields/${field.id}?tab=season${tabFromQ}`} className={`tab ${tab === 'season' ? 'active' : ''}`} scroll={false}>This season</Link>
       </div>
 
       {tab === 'overview' && (
@@ -244,7 +256,7 @@ export default async function FieldDetailPage({
                 </div>
                 {isAdmin && (
                 <Link
-                  href={`/fields/${field.id}/soil`}
+                  href={`/fields/${field.id}/soil${subFrom}`}
                   style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <Edit3 size={12} /> Update
@@ -276,7 +288,7 @@ export default async function FieldDetailPage({
                 <div style={{ fontSize: 13, color: 'var(--amber)', fontWeight: 700 }}>No soil sample on record</div>
                 {isAdmin && (
                 <Link
-                  href={`/fields/${field.id}/soil`}
+                  href={`/fields/${field.id}/soil${subFrom}`}
                   className="btn-amber"
                   style={{ padding: '6px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
@@ -298,7 +310,7 @@ export default async function FieldDetailPage({
             <span style={{ color: 'var(--ink)' }}>{SOIL_TYPE_SHORT_LABELS[getSoilType(field)]}</span>
             {isAdmin && (
             <Link
-              href={`/fields/${field.id}/soil`}
+              href={`/fields/${field.id}/soil${subFrom}`}
               style={{ color: 'var(--forest-dark, #3d5b29)', textDecoration: 'underline', fontSize: 11 }}
             >
               edit
@@ -322,7 +334,7 @@ export default async function FieldDetailPage({
               </div>
               {isAdmin && (
               <Link
-                href={`/fields/${field.id}/plan`}
+                href={`/fields/${field.id}/plan${subFrom}`}
                 style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
                 <Edit3 size={12} /> Plan
@@ -352,7 +364,7 @@ export default async function FieldDetailPage({
                   <NutrientBar label="P₂O₅" applied={pView.value} target={pTgt} unit={pView.unit} carryover={pCarry} />
                   <NutrientBar label="K₂O"  applied={kView.value} target={kTgt} unit={kView.unit} carryover={kCarry} />
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
-                    N shown as crop-available (RB209) — slurry/manure already adjusted for typical losses.
+                    N shown as crop-available — slurry/manure already adjusted for typical losses.
                   </div>
                   {showSulphurMagnesium && (
                     <div style={{
@@ -418,7 +430,7 @@ export default async function FieldDetailPage({
               <div className="label" style={{ margin: 0 }}>Cuts taken ({cutsDone}/{field.cut_profile})</div>
               {cutsRemaining > 0 && (
                 <Link
-                  href={`/fields/${field.id}/cut`}
+                  href={`/fields/${field.id}/cut${subFrom}`}
                   style={{ background: 'transparent', border: '1px solid var(--amber)', color: 'var(--amber)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <Scissors size={12} /> Log cut
@@ -461,15 +473,54 @@ export default async function FieldDetailPage({
 
           {/* Field events */}
           <div className="card" style={{ padding: 14, marginTop: 14 }}>
-            <div className="label" style={{ marginBottom: 10 }}>Field events</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
-              {field.last_ploughed ? `Last ploughed: ${fmtDate(field.last_ploughed)}` : 'No ploughing event logged'}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div className="label" style={{ margin: 0 }}>Field events</div>
+              {isAdmin && (
+                <Link
+                  href={`/fields/${field.id}/reseed${subFrom}`}
+                  style={{ background: 'transparent', border: '1px solid var(--forest)', color: 'var(--forest)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <Plus size={12} /> Log event
+                </Link>
+              )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {field.last_reseeded ? `Last reseeded: ${fmtDate(field.last_reseeded)}` : 'No reseed event logged'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, fontStyle: 'italic' }}>
-              Update via the field's soil sample screen.
+            {fieldEvents.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>No reseed, oversow or plough events logged yet.</div>
+            ) : (
+              fieldEvents.map((ev) => {
+                const sys = ev.grass_system_id ? grassSystems.find((g) => g.id === ev.grass_system_id) : null;
+                const typeLabel = { reseed: 'Reseed', oversow: 'Oversow', plough: 'Plough' }[ev.event_type];
+                const rateBit = ev.seed_rate_value ? `${ev.seed_rate_value} ${ev.seed_rate_unit ?? 'kg/ac'}` : '';
+                const sub = [ev.seed_mix ?? '', rateBit].filter(Boolean).join(' · ');
+                return (
+                  <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid var(--line-soft)' }}>
+                    <Sprout size={14} style={{ color: ev.event_type === 'plough' ? 'var(--stone)' : 'var(--forest)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 700 }}>
+                        {typeLabel}{sys ? ` · ${sys.short_label}` : ''}
+                      </div>
+                      {sub && <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
+                    </div>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{fmtDate(ev.event_date)}</span>
+                    {isAdmin && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                        <Link
+                          href={`/fields/${field.id}/reseed/${ev.id}/edit${subFrom}`}
+                          className="btn-ghost"
+                          style={{ padding: 4, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center' }}
+                          title="Edit this event"
+                        >
+                          <Edit3 size={13} />
+                        </Link>
+                        <DeleteFieldEventButton eventId={ev.id} fieldId={field.id} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, fontStyle: 'italic' }}>
+              {'The most recent reseed or oversow with a grass system sets the field\u2019s current sward.'}
             </div>
           </div>
 
@@ -536,7 +587,7 @@ export default async function FieldDetailPage({
           <NAvailabilityStrip />
 
           <Link
-            href={`/fields/${field.id}/part-applications`}
+            href={`/fields/${field.id}/part-applications${subFrom}`}
             className="card"
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, marginTop: 14, textDecoration: 'none' }}
           >
@@ -600,7 +651,7 @@ export default async function FieldDetailPage({
       <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, padding: 16, background: 'linear-gradient(to top, var(--paper) 70%, transparent)', display: 'flex', gap: 8 }}>
         {cutsRemaining > 0 && (
           <Link
-            href={`/fields/${field.id}/cut`}
+            href={`/fields/${field.id}/cut${subFrom}`}
             className="btn-amber"
             style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none' }}
           >
@@ -608,7 +659,7 @@ export default async function FieldDetailPage({
           </Link>
         )}
         <Link
-          href={`/fields/${field.id}/log`}
+          href={`/fields/${field.id}/log${subFrom}`}
           className="btn-primary"
           style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none' }}
         >

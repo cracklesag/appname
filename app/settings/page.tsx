@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal } from 'lucide-react';
+import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical } from 'lucide-react';
 import { ResetDataSection } from '@/components/ResetDataSection';
+import { ExportDataSection } from '@/components/ExportDataSection';
+import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { loadSettings } from '@/lib/data';
+import { createClient } from '@/lib/supabase/server';
 import { getFarmContext } from '@/lib/farm';
 import { saveSettings, signOut } from '@/lib/actions';
 import { CUT_TYPE_LABELS } from '@/lib/rules';
@@ -14,6 +17,18 @@ export default async function SettingsPage() {
   const ctx = await getFarmContext();
   if (!ctx) redirect('/login');
   const isStaff = !ctx.isAdmin;
+
+  // For the admin delete-account warning: how many staff would lose access.
+  let staffCount = 0;
+  if (ctx.isAdmin) {
+    const sb = createClient();
+    const { count } = await sb
+      .from('farm_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('owner_id', ctx.ownerId)
+      .eq('role', 'staff');
+    staffCount = count ?? 0;
+  }
 
   function Segment({
     name, value, options,
@@ -61,6 +76,15 @@ export default async function SettingsPage() {
               Fields, soil, groups, products and settings are managed by the farm admin.
             </div>
           </div>
+          <div style={{
+            fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '0.06em', color: 'var(--muted)',
+            marginBottom: 8, paddingLeft: 2,
+          }}>
+            Account &amp; data
+          </div>
+          <ExportDataSection />
+          <DeleteAccountSection isAdmin={false} staffCount={0} farmName={s.farmName ?? null} />
           <form action={signOut}>
             <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <LogOut size={16} /> Sign out
@@ -246,7 +270,7 @@ export default async function SettingsPage() {
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label" style={{ marginBottom: 6 }}>N target per cut</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-              How much available N each cut should receive (kg/ha).
+              How much available N each cut should receive (kg/ha). This is the per-cut N target the fertiliser plan works to.
             </div>
             {[1, 2, 3, 4].map((n) => (
               <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -265,7 +289,7 @@ export default async function SettingsPage() {
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label" style={{ marginBottom: 6 }}>Soil targets</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-              Field cards colour-code each metric against these targets. RB209 grass-silage defaults: pH 6.0, P 2, K 2.
+              Field cards colour-code each metric against these targets. Grass-silage defaults: pH 6.0, P 2, K 2.
             </div>
             {[
               { name: 'target_ph',   label: 'pH',      value: s.soilTargets.pH,   step: '0.1' },
@@ -301,7 +325,7 @@ export default async function SettingsPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Annual N cap (kg N/ha)</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>RB209 default 320 for intensive cut+grazed grass. Lower for clover-rich swards.</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Default 320 for intensive cut+grazed grass. Lower for clover-rich swards.</div>
               </div>
               <input
                 type="number" min="100" max="400" step="10"
@@ -363,7 +387,7 @@ export default async function SettingsPage() {
             <div className="label" style={{ marginBottom: 4 }}>Carryover release model</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
               How much of an earlier slurry or muck application&apos;s P &amp; K the fertiliser plan
-              treats as available now, by months since spreading. An estimate, not an RB209 figure —
+              treats as available now, by months since spreading. An estimate, not a published figure —
               tune it to what you see on your ground.
             </div>
 
@@ -506,7 +530,7 @@ export default async function SettingsPage() {
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Custom products</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              Add or remove your own products on top of the RB209 catalogue
+              Add or remove your own products on top of the built-in catalogue
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
@@ -543,7 +567,35 @@ export default async function SettingsPage() {
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
+        <Link
+          href="/settings/agronomy"
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 14, marginBottom: 14, textDecoration: 'none', color: 'inherit',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <FlaskConical size={18} style={{ color: 'var(--amber)' }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Agronomy <span style={{ fontWeight: 400, color: 'var(--muted)' }}>· advanced</span></div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                P/K tables, offtakes, targets &amp; yields. Agronomist only.
+              </div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
         <ResetDataSection />
+        <div style={{
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '0.06em', color: 'var(--muted)',
+          marginBottom: 8, marginTop: 4, paddingLeft: 2,
+        }}>
+          Account &amp; data
+        </div>
+        <ExportDataSection />
+        <DeleteAccountSection isAdmin staffCount={staffCount} farmName={s.farmName ?? null} />
         <form action={signOut}>
           <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <LogOut size={16} /> Sign out

@@ -49,6 +49,28 @@ export type ProductCategory =
  */
 export type SoilType = 'light_sand' | 'medium_loam' | 'heavy_clay' | 'deep_silt';
 
+/** Sward-management event logged against a field. */
+export type FieldEventType = 'reseed' | 'oversow' | 'plough';
+export type SeedRateUnit = 'kg/ac' | 'kg/ha';
+
+export interface FieldEvent {
+  id: string;
+  user_id: string;
+  field_id: string;
+  /** Which user logged it (admin/staff). Null if the FK was cleared. */
+  created_by: string | null;
+  event_type: FieldEventType;
+  event_date: string;
+  /** Grass system sown (reseed/oversow). Null for a plough event, or if the
+   *  sown system wasn't recorded. */
+  grass_system_id: string | null;
+  seed_mix: string | null;
+  seed_rate_value: number | null;
+  seed_rate_unit: SeedRateUnit | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface Field {
   id: string;
   user_id: string;
@@ -262,6 +284,40 @@ export interface Cut {
   created_at: string;
 }
 
+/**
+ * Agronomist-editable RB209 reference values. Stored as a JSON block on the
+ * farm settings record (Settings.agronomy, a partial override). The engine
+ * merges any overrides over the built-in RB209 defaults via resolveAgronomy().
+ * String keys throughout so this type stays decoupled from the engine's index
+ * unions; the engine indexes with String(cut)/String(band).
+ */
+export interface AgronomyConfig {
+  /** Silage P₂O₅ recommendation, kg/ha: cut ('1'..'4') → P index ('0'..'4'). */
+  silageP: Record<string, Record<string, number>>;
+  /** Silage K₂O recommendation, kg/ha: cut ('1'..'4') → K band ('0','1','2-','2+','3','4'). */
+  silageK: Record<string, Record<string, number>>;
+  /** Grazing P₂O₅ recommendation, kg/ha: P index → value. */
+  grazingP: Record<string, number>;
+  /** Grazing K₂O recommendation, kg/ha: K band → value. */
+  grazingK: Record<string, number>;
+  /** First-cut potash to apply the PREVIOUS AUTUMN, kg/ha: K band → value. */
+  firstCutAutumnK: Record<string, number>;
+  /** Spring potash cap for the first cut, kg/ha. */
+  springCap: number;
+  /** Extra K₂O after cutting (index ≤2+), kg/ha: cuts-in-system ('1'..'4') → value. */
+  extraK: Record<string, number>;
+  /** Crop offtake per tonne of dry matter, kg: { n, p2o5, k2o }. */
+  offtakePerT: { n: number; p2o5: number; k2o: number };
+  /** Base modelled DM yield (t/ha) by cut profile ('1'..'4') → per-cut array. */
+  baseYields: Record<string, number[]>;
+  /** Recommendation target P index (RB209 maintenance target). */
+  targetPIndex: number;
+  /** Recommendation target K band (RB209 maintenance target). */
+  targetKBand: string;
+}
+
+export type AgronomyOverrides = Partial<AgronomyConfig>;
+
 export interface Settings {
   /** The farm's display name, e.g. "Mill Farm". Set during onboarding. */
   farmName?: string | null;
@@ -349,6 +405,11 @@ export interface Settings {
    * user-custom rows.
    */
   hiddenGrassSystemIds: string[];
+  /**
+   * Agronomist-editable RB209 overrides (partial — only the values changed
+   * from the built-in defaults are stored). Undefined = use RB209 defaults.
+   */
+  agronomy?: AgronomyOverrides;
   onboarded: boolean;
 }
 

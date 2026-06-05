@@ -210,6 +210,10 @@ export function LogApplicationForm({
     }
     return 'granular';
   });
+  // Sticky log preferences (product + group filter + bag form) persist across
+  // saves via localStorage, so logging field-by-field keeps the last product
+  // and the chosen block in view instead of resetting each time.
+  const [logHydrated, setLogHydrated] = useState(false);
 
   const product = products.find((p) => p.id === productId);
   const currentCategory = product?.category ?? null;
@@ -254,6 +258,52 @@ export function LogApplicationForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bagFormFilter, type, siblings]);
+
+  // Rehydrate sticky log preferences once on mount (skip when editing — an edit
+  // is locked to its existing product). The form remounts after every save
+  // (via the page key), so localStorage is what carries the last product and
+  // the group filter through to the next entry.
+  useEffect(() => {
+    if (isEdit) { setLogHydrated(true); return; }
+    try {
+      const raw = localStorage.getItem('swardly_log_state');
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.groupFilter === 'all' || s.groupFilter === 'ungrouped'
+          || (groups && groups.some((g) => g.id === s.groupFilter))) {
+          setGroupFilter(s.groupFilter);
+        }
+        if (s.bagFormFilter === 'granular' || s.bagFormFilter === 'liquid') {
+          setBagFormFilter(s.bagFormFilter);
+        }
+        if (typeof s.productId === 'number') {
+          const sp = products.find((p) => p.id === s.productId);
+          if (sp) {
+            if (initialTypeProp) {
+              // A type was forced by the entry point — only restore the product
+              // if it belongs to that type, otherwise keep that type's default.
+              if (sp.type === initialTypeProp) setProductId(sp.id);
+            } else {
+              setType(sp.type as ProductType);
+              setProductId(sp.id);
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    setLogHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist sticky log preferences whenever they change (after hydrate, new
+  // entries only). Product is global, so it carries between single-field and
+  // batch logging too.
+  useEffect(() => {
+    if (!logHydrated || isEdit) return;
+    try {
+      localStorage.setItem('swardly_log_state', JSON.stringify({ productId, groupFilter, bagFormFilter }));
+    } catch { /* ignore */ }
+  }, [productId, groupFilter, bagFormFilter, logHydrated, isEdit]);
 
   /** Select a category and default to the first product in it. */
   function selectCategory(category: string) {
@@ -782,7 +832,7 @@ export function LogApplicationForm({
               ))}
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-              NPK shifts with DM — RB209 values for {product?.dm_pct}% DM shown below.
+              NPK shifts with DM — typical values for {product?.dm_pct}% DM shown below.
             </div>
           </div>
         )}

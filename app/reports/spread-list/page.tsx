@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import {
-  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings,
+  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
 } from '@/lib/data';
 import { buildFertPlanRows } from '@/lib/fertplan';
 import { SpreadListShell } from '@/components/SpreadListShell';
@@ -16,15 +16,16 @@ export default async function SpreadListPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
     loadGroups(),
+    loadGrassSystems(),
   ]);
 
-  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups);
+  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
 
   // If the plan was filtered to a group/block when compiling, the report shows
   // only that block's fields — not every field. 'ungrouped' = fields with no
@@ -52,7 +53,7 @@ export default async function SpreadListPage({
       unitSystem={settings.unitSystem}
       slurryUnit={settings.slurryUnit}
       mode={mode}
-      fromHref={searchParams.from || '/reports/fert-plan'}
+      fromHref={searchParams.from || '/plan'}
       groupName={groupName}
       group={group ?? null}
       minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}

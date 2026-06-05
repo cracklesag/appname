@@ -102,7 +102,7 @@ export function LogCutForm({
   return (
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} /> }
-      {isEdit && returnTo && <input type="hidden" name="return_to" value={returnTo} />}
+      {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       <input type="hidden" name="field_id" value={field.id} />
       <input type="hidden" name="cut_number" value={cutNumberForRules} />
       <input type="hidden" name="cut_type" value={cutType} />

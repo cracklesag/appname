@@ -29,6 +29,8 @@
 // ---------------------------------------------------------------------
 
 /** P/Mg indices are whole numbers; K additionally splits 2 into 2-/2+. */
+import type { AgronomyOverrides } from './types';
+
 export type PIndex = 0 | 1 | 2 | 3 | 4; // 4 = "4 and higher"
 export type KIndexBand = 0 | 1 | '2-' | '2+' | 3 | 4; // 4 = "4 and higher"
 
@@ -257,16 +259,16 @@ export function bandPosition(mgPerL: number, min: number, max: number): number |
 }
 
 /** Clamp a P index to the 0..4 range the recommendation tables use (4 = "4+"). */
-export function pRecIndex(index: number | null | undefined): PIndex {
-  if (index == null) return 2; // unknown → assume target (maintenance)
+export function pRecIndex(index: number | null | undefined, ag?: AgronomyOverrides): PIndex {
+  if (index == null) return (ag?.targetPIndex ?? TARGET_P_INDEX) as PIndex; // unknown → assume target
   if (index <= 0) return 0;
   if (index >= 4) return 4;
   return index as PIndex;
 }
 
 /** Map a K band/index to the recommendation table's six columns. */
-export function kRecBand(band: KIndexBand | number | null | undefined): KIndexBand {
-  if (band == null) return '2-'; // unknown → assume target (maintenance)
+export function kRecBand(band: KIndexBand | number | null | undefined, ag?: AgronomyOverrides): KIndexBand {
+  if (band == null) return (ag?.targetKBand ?? TARGET_K_BAND) as KIndexBand; // unknown → assume target (maintenance)
   if (band === '2-' || band === '2+') return band;
   const n = typeof band === 'number' ? band : parseInt(String(band), 10);
   if (n <= 0) return 0;
@@ -295,27 +297,30 @@ export function silageRecommendation(
   cutNumber: number,
   pIndex: number | null,
   kBand: KIndexBand | number | null,
+  ag?: AgronomyOverrides,
 ): PKRecommendation {
   const cut = (Math.max(1, Math.min(4, cutNumber)) as SilageCut);
-  const pi = pRecIndex(pIndex);
-  const kb = kRecBand(kBand);
+  const pi = pRecIndex(pIndex, ag);
+  const kb = kRecBand(kBand, ag);
+  const ck = String(cut);
 
-  const p2o5 = SILAGE_P[cut][pi];
-  const kTotal = SILAGE_K[cut][kb];
+  const p2o5 = ag?.silageP?.[ck]?.[String(pi)] ?? SILAGE_P[cut][pi];
+  const kTotal = ag?.silageK?.[ck]?.[String(kb)] ?? SILAGE_K[cut][kb];
 
   const rec: PKRecommendation = {
     p2o5,
     k2o: kTotal,
-    atMaintenance: pi === TARGET_P_INDEX || kb === TARGET_K_BAND,
+    atMaintenance: pi === (ag?.targetPIndex ?? TARGET_P_INDEX) || kb === (ag?.targetKBand ?? TARGET_K_BAND),
   };
 
   // First cut: RB209 caps spring K at 80–90 kg/ha; balance goes previous autumn.
   if (cut === 1) {
-    const autumn = SILAGE_K_FIRST_CUT_AUTUMN[kb];
+    const autumn = ag?.firstCutAutumnK?.[String(kb)] ?? SILAGE_K_FIRST_CUT_AUTUMN[kb];
     // Spring value from table; if it exceeds the cap, the surplus shifts to autumn.
-    const springTable = SILAGE_K[1][kb];
-    const springCapped = springTable > FIRST_CUT_SPRING_K_CAP;
-    const spring = Math.min(springTable, FIRST_CUT_SPRING_K_CAP);
+    const springTable = ag?.silageK?.['1']?.[String(kb)] ?? SILAGE_K[1][kb];
+    const cap = ag?.springCap ?? FIRST_CUT_SPRING_K_CAP;
+    const springCapped = springTable > cap;
+    const spring = Math.min(springTable, cap);
     const extraToAutumn = springTable - spring;
     rec.k2o = autumn + extraToAutumn + spring;
     rec.kSplit = { previousAutumn: autumn + extraToAutumn, spring, springCapped };
@@ -328,13 +333,14 @@ export function silageRecommendation(
 export function grazingRecommendation(
   pIndex: number | null,
   kBand: KIndexBand | number | null,
+  ag?: AgronomyOverrides,
 ): PKRecommendation {
-  const pi = pRecIndex(pIndex);
-  const kb = kRecBand(kBand);
+  const pi = pRecIndex(pIndex, ag);
+  const kb = kRecBand(kBand, ag);
   return {
-    p2o5: GRAZING_P[pi],
-    k2o: GRAZING_K[kb],
-    atMaintenance: pi === TARGET_P_INDEX || kb === TARGET_K_BAND,
+    p2o5: ag?.grazingP?.[String(pi)] ?? GRAZING_P[pi],
+    k2o: ag?.grazingK?.[String(kb)] ?? GRAZING_K[kb],
+    atMaintenance: pi === (ag?.targetPIndex ?? TARGET_P_INDEX) || kb === (ag?.targetKBand ?? TARGET_K_BAND),
   };
 }
 
@@ -372,12 +378,13 @@ export function yieldAdjust(
 
 /** Extra catch-up K2O after cutting, by number of cuts in the system, applied
  *  only when soil K is at index 2+ or below. */
-export function extraKAfterCutting(cutsInSystem: number, kBand: KIndexBand | number | null): number {
-  const kb = kRecBand(kBand);
+export function extraKAfterCutting(cutsInSystem: number, kBand: KIndexBand | number | null, ag?: AgronomyOverrides): number {
+  const kb = kRecBand(kBand, ag);
   // 2+ or below: applies at 0,1,2-,2+. Not at 3 or 4.
   const atOrBelow2Plus = kb === 0 || kb === 1 || kb === '2-' || kb === '2+';
   if (!atOrBelow2Plus) return 0;
-  return EXTRA_K_AFTER_CUTTING[Math.max(1, Math.min(4, cutsInSystem))] ?? 0;
+  const cuts = Math.max(1, Math.min(4, cutsInSystem));
+  return ag?.extraK?.[String(cuts)] ?? EXTRA_K_AFTER_CUTTING[cuts] ?? 0;
 }
 
 /** Silage N for a given target DM yield band index, with SNS adjustment on total. */

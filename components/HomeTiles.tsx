@@ -105,7 +105,7 @@ export function HomeTiles({
           {grazingDue.map((c) => (
             <Link
               key={c.fieldId}
-              href={`/fields/${c.fieldId}`}
+              href={`/fields/${c.fieldId}?from=/`}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239,231,214,0.12)', borderRadius: 7, padding: '9px 11px', marginBottom: 6, textDecoration: 'none' }}
             >
               <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--brand-cream)' }}>{c.fieldName}</span>

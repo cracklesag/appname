@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import {
-  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings,
+  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
 } from '@/lib/data';
 import { loadMapSettings } from '@/lib/map-data';
 import { buildFertPlanRows } from '@/lib/fertplan';
@@ -17,16 +17,17 @@ export default async function SpreadMapPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups, mapSettings] = await Promise.all([
+  const [fields, applications, cuts, products, groups, mapSettings, grassSystems] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
     loadGroups(),
     loadMapSettings(),
+    loadGrassSystems(),
   ]);
 
-  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups);
+  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
 
   // Respect the same block filter the spread list used, so the map sheets show
   // only the block's fields.
@@ -64,7 +65,7 @@ export default async function SpreadMapPage({
       slurryUnit={settings.slurryUnit}
       mode={mode}
       mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
-      fromHref={searchParams.from || `/reports/spread-list?mode=${mode}&from=/reports/fert-plan`}
+      fromHref={searchParams.from || `/reports/spread-list?mode=${mode}&from=/plan`}
       minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}
       minSpreadK2OKgPerHa={settings.reportDefaults.minSpreadK2OKgPerHa}
     />

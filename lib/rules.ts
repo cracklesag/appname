@@ -1,6 +1,6 @@
 import {
   Application, Cut, CutType, Field, GrassSystem, Group, GrazingEvent, NextAction, PlateReading, Product, ProductCategory, ProductType, Settings,
-  SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS,
+  SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS, AgronomyOverrides,
 } from './types';
 import * as rb209 from './rb209';
 
@@ -684,7 +684,8 @@ export function getOfftakeForCut(
   settings: Settings,
   cutType: CutType
 ): { n: number; p2o5: number; k2o: number; yieldDM: number; baseYieldDM: number } {
-  const yields = YIELDS_BY_CUT_PROFILE[cutProfile] || [];
+  const ag = settings.agronomy;
+  const yields = ag?.baseYields?.[String(cutProfile)] ?? YIELDS_BY_CUT_PROFILE[cutProfile] ?? [];
   const baseYieldDM = yields[cutNumber - 1] || 0;
   const yieldMult = settings.yieldMultipliers[yieldClass] ?? 1;
   const typeMult = settings.cutTypeMultipliers[cutType] ?? 1;
@@ -693,10 +694,14 @@ export function getOfftakeForCut(
   const returnPct = cutType === 'grazing' ? (settings.grazingReturnPct ?? 0.70) : 0;
   const retention = 1 - returnPct;
 
+  const offN = ag?.offtakePerT?.n ?? OFFTAKE_PER_T_DM.n;
+  const offP = ag?.offtakePerT?.p2o5 ?? OFFTAKE_PER_T_DM.p2o5;
+  const offK = ag?.offtakePerT?.k2o ?? OFFTAKE_PER_T_DM.k2o;
+
   return {
-    n: yieldDM * OFFTAKE_PER_T_DM.n * retention,
-    p2o5: yieldDM * OFFTAKE_PER_T_DM.p2o5 * retention,
-    k2o: yieldDM * OFFTAKE_PER_T_DM.k2o * retention,
+    n: yieldDM * offN * retention,
+    p2o5: yieldDM * offP * retention,
+    k2o: yieldDM * offK * retention,
     yieldDM,
     baseYieldDM,
   };
@@ -1089,6 +1094,7 @@ export function getFieldPKRecommendation(
   field: Field,
   cutNumber: number,
   fieldCuts?: Cut[],
+  ag?: AgronomyOverrides,
 ): FieldPKRec {
   // Resolve the cut type the same way getCutTargets does.
   let cutType: CutType;
@@ -1107,17 +1113,17 @@ export function getFieldPKRecommendation(
 
   let rec: rb209.PKRecommendation;
   if (cutType === 'grazing') {
-    rec = rb209.grazingRecommendation(pBand, kBand);
+    rec = rb209.grazingRecommendation(pBand, kBand, ag);
   } else if (cutType === 'bales') {
     // Baled silage uses the silage table (it's still a cut removal).
-    rec = rb209.silageRecommendation(cutNumber, pBand, kBand);
+    rec = rb209.silageRecommendation(cutNumber, pBand, kBand, ag);
   } else {
-    rec = rb209.silageRecommendation(cutNumber, pBand, kBand);
+    rec = rb209.silageRecommendation(cutNumber, pBand, kBand, ag);
   }
 
   // Catch-up K only applies to cut (silage/bales) systems, not grazing-only.
   const extraK = (cutType === 'silage' || cutType === 'bales')
-    ? rb209.extraKAfterCutting(field.cut_profile, kBand)
+    ? rb209.extraKAfterCutting(field.cut_profile, kBand, ag)
     : 0;
 
   return {
@@ -1185,6 +1191,8 @@ export function getFieldNRecommendation(
   field: Field,
   cutNumber: number,
   fieldCuts?: Cut[],
+  settings?: Settings,
+  nMultiplier?: number,
 ): FieldNRec {
   let cutType: CutType;
   if (fieldCuts) {
@@ -1209,9 +1217,18 @@ export function getFieldNRecommendation(
     // Per-application figure: divide across roughly cutCount+1 grazing rounds.
     n = Math.round(seasonTotal / Math.max(1, cutCount));
   } else {
-    // silage / bales
-    n = rb209.silageNForCut(cutCount, cutNumber, sns);
+    // silage / bales — use the editable per-cut N target (Settings → N target
+    // per cut), which is what the user expects to control the plan. The RB209
+    // silage-N table (Table 3.8, by cut count + SNS) is the fallback default
+    // when no setting is present.
+    n = settings?.nTargets?.[cutNumber as 1 | 2 | 3 | 4]
+      ?? rb209.silageNForCut(cutCount, cutNumber, sns);
   }
+
+  // Grass-system N multiplier (PRG 1.00; clover-rich ~0.70; herbal ~0.30; IRG
+  // ~1.15). Legume/herbal swards fix their own N, so the bag/slurry target is
+  // scaled down. Matches getCutTargets so the plan and field cards agree.
+  n = Math.max(0, Math.round(n * (nMultiplier ?? 1)));
 
   return { cutType, cutNumber, n, sns };
 }
@@ -1222,8 +1239,9 @@ export function getFieldNShortfall(
   cutNumber: number,
   appliedN: number,
   fieldCuts?: Cut[],
+  settings?: Settings,
 ): { rec: FieldNRec; nToApply: number } {
-  const rec = getFieldNRecommendation(field, cutNumber, fieldCuts);
+  const rec = getFieldNRecommendation(field, cutNumber, fieldCuts, settings);
   return { rec, nToApply: Math.max(0, Math.round(rec.n - appliedN)) };
 }
 
@@ -1545,7 +1563,38 @@ export function getComingUpForField(
     .filter((c) => c.cut_date >= seasonStart)
     .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
   const lastCut = cuts[0];
-  if (!lastCut) return null;
+  if (!lastCut) {
+    // Pre-first-cut grazing: a grazing block that hasn't been cut this season
+    // still needs recurring dressing prompts. Anchor the interval to the most
+    // recent N-bearing application (or season start if none), mirroring the
+    // grazing top-up report so the home tile and the report agree.
+    const planned = getPlannedCuts(field);
+    if (planned[0] === 'grazing') {
+      const due = timing.grazingDressingIntervalDays;
+      const byId = new Map(products.map((p) => [p.id, p]));
+      let lastNDate: string | null = null;
+      for (const a of applications) {
+        if (a.field_id !== field.id || a.date_applied < seasonStart) continue;
+        const p = byId.get(a.product_id);
+        if (!p) continue;
+        const n = (p.n_pct ?? 0) || (p.n_kg_per_m3 ?? 0) || (p.n_kg_per_t ?? 0);
+        if (n > 0 && (lastNDate === null || a.date_applied > lastNDate)) lastNDate = a.date_applied;
+      }
+      const anchor = lastNDate ?? seasonStart;
+      const daysSinceAnchor = daysBetween(anchor, now);
+      const daysUntil = due - daysSinceAnchor;
+      if (daysUntil <= timing.planLeadTimeDays) {
+        return {
+          fieldId: field.id,
+          fieldName: field.name,
+          kind: 'grazing_due',
+          days: daysSinceAnchor,
+          daysUntil,
+        };
+      }
+    }
+    return null;
+  }
 
   const sinceCut = lastCut.cut_date;
   const daysSinceCut = daysBetween(sinceCut, now);

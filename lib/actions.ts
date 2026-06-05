@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/admin';
 import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
@@ -385,7 +386,9 @@ export async function saveCut(formData: FormData) {
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
-  redirect(`/fields/${fieldId}`);
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function updateCut(formData: FormData) {
@@ -498,7 +501,9 @@ export async function saveSoil(formData: FormData) {
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
-  redirect(`/fields/${fieldId}`);
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function savePlan(formData: FormData) {
@@ -640,6 +645,47 @@ export async function saveSettings(formData: FormData) {
 
   revalidatePath('/', 'layout');
   redirect('/settings');
+}
+
+/**
+ * Persist (or clear) the agronomist's RB209 overrides. Pass a JSON string of
+ * the full AgronomyConfig to save it; pass an empty string to reset to the
+ * built-in RB209 defaults. Preserves the rest of the settings blob.
+ */
+export async function saveAgronomy(overridesJson: string) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const userId = ctx.ownerId;
+
+  const { data: existingRow } = await supabase
+    .from('settings')
+    .select('data')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const existing = (existingRow?.data as Record<string, unknown>) || {};
+
+  const data: Record<string, unknown> = { ...existing };
+  const trimmed = (overridesJson || '').trim();
+  if (trimmed) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error('Invalid agronomy data');
+    }
+    if (parsed && typeof parsed === 'object') data.agronomy = parsed;
+  } else {
+    delete data.agronomy; // reset to RB209 defaults
+  }
+
+  const { error } = await supabase.from('settings').upsert({
+    user_id: userId,
+    data,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/', 'layout');
 }
 
 export async function createField(formData: FormData) {
@@ -789,6 +835,234 @@ export async function signOut() {
   const supabase = createClient();
   await supabase.auth.signOut();
   redirect('/login');
+}
+
+/**
+ * Permanently delete the signed-in user's account.
+ *
+ * Deletion is keyed on the signed-in auth user (ctx.userId), NOT the resolved
+ * farm owner — so the Postgres ON DELETE CASCADE on every user_id / owner_id
+ * FK (see schema.sql) does the right thing automatically:
+ *   - Admin (userId === ownerId): removes their account and the entire farm —
+ *     fields, cuts, applications, custom products/grass systems, groups, soil,
+ *     settings, invites — and every farm_members row they own, so any staff
+ *     are detached from the (now-gone) farm.
+ *   - Staff (userId !== ownerId): removes their account, their own empty
+ *     auto-created farm, and their membership rows (they leave every farm).
+ *     The admin's farm data is owned by the admin and is untouched.
+ *
+ * Requires the service-role client to call the auth admin API. After deletion
+ * the current session is invalid, so we clear it and redirect to /login.
+ */
+export async function deleteMyAccount(formData: FormData) {
+  const ctx = await requireMember();
+
+  const confirm = String(formData.get('confirm') || '').trim();
+  if (confirm !== 'DELETE') {
+    throw new Error('Type DELETE in capitals to confirm');
+  }
+
+  const admin = createServiceClient();
+  const { error } = await admin.auth.admin.deleteUser(ctx.userId);
+  if (error) {
+    throw new Error(`Could not delete your account: ${error.message}`);
+  }
+
+  // Session now references a deleted user — clear the cookie (best-effort) and
+  // bounce to login.
+  try {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+  } catch {
+    // ignore — the user is already gone; we just want the cookie cleared
+  }
+  redirect('/login');
+}
+
+// =====================================================================
+// FIELD EVENTS — reseed / oversow / plough log
+// =====================================================================
+
+/**
+ * Recompute the cached sward fields on `fields` from the event log:
+ *   - last_reseeded  = most recent reseed/oversow event date
+ *   - last_ploughed  = most recent plough event date
+ *   - grass_system_id = system from the most recent reseed/oversow event
+ *                       that names one
+ * Non-destructive: a field is only overwritten when there's an event to
+ * derive it from, so deleting every event of a kind leaves the existing
+ * value (and a manually-set sward) alone.
+ */
+async function recomputeFieldFromEvents(
+  supabase: ReturnType<typeof createClient>,
+  ownerId: string,
+  fieldId: string,
+): Promise<void> {
+  const { data: events } = await supabase
+    .from('field_events')
+    .select('event_type, event_date, grass_system_id')
+    .eq('user_id', ownerId)
+    .eq('field_id', fieldId)
+    .order('event_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  const rows = events ?? [];
+
+  const update: Record<string, unknown> = {};
+  const maxDate = (dates: string[]) => dates.reduce((a, b) => (a > b ? a : b));
+
+  const reseedDates = rows
+    .filter((e) => e.event_type === 'reseed' || e.event_type === 'oversow')
+    .map((e) => e.event_date as string);
+  const ploughDates = rows
+    .filter((e) => e.event_type === 'plough')
+    .map((e) => e.event_date as string);
+  if (reseedDates.length) update.last_reseeded = maxDate(reseedDates);
+  if (ploughDates.length) update.last_ploughed = maxDate(ploughDates);
+
+  // rows is date-desc, so the first matching entry is the most recent.
+  const latestSown = rows.find(
+    (e) => (e.event_type === 'reseed' || e.event_type === 'oversow') && e.grass_system_id,
+  );
+  if (latestSown?.grass_system_id) update.grass_system_id = latestSown.grass_system_id;
+
+  if (Object.keys(update).length) {
+    update.updated_at = new Date().toISOString();
+    await supabase.from('fields').update(update).eq('id', fieldId).eq('user_id', ownerId);
+  }
+}
+
+const VALID_EVENT_TYPES = ['reseed', 'oversow', 'plough'];
+
+export async function addFieldEvent(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  const eventType = String(formData.get('event_type') ?? '').trim();
+  const eventDate = String(formData.get('event_date') ?? '').trim();
+  if (!fieldId || !VALID_EVENT_TYPES.includes(eventType) || !eventDate) {
+    throw new Error('Pick an event type and a date.');
+  }
+
+  // Grass system + seed details only apply to reseed / oversow.
+  const rawSystem = String(formData.get('grass_system_id') ?? '').trim();
+  const grassSystemId = eventType === 'plough' || rawSystem === '' ? null : rawSystem;
+
+  const rawMix = String(formData.get('seed_mix') ?? '').trim();
+  const seedMix = eventType === 'plough' || rawMix === '' ? null : rawMix;
+
+  const rawRate = String(formData.get('seed_rate_value') ?? '').trim();
+  let seedRateValue: number | null = rawRate === '' ? null : Number(rawRate);
+  if (eventType === 'plough') seedRateValue = null;
+  if (seedRateValue !== null && (!Number.isFinite(seedRateValue) || seedRateValue <= 0)) {
+    throw new Error('Seed rate must be a positive number.');
+  }
+  const rawUnit = String(formData.get('seed_rate_unit') ?? '').trim();
+  const seedRateUnit = seedRateValue === null
+    ? null
+    : (rawUnit === 'kg/ha' ? 'kg/ha' : 'kg/ac');
+
+  const rawNotes = String(formData.get('notes') ?? '').trim();
+  const notes = rawNotes === '' ? null : rawNotes;
+
+  const { error } = await supabase.from('field_events').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    field_id: fieldId,
+    event_type: eventType,
+    event_date: eventDate,
+    grass_system_id: grassSystemId,
+    seed_mix: seedMix,
+    seed_rate_value: seedRateValue,
+    seed_rate_unit: seedRateUnit,
+    notes,
+  });
+  if (error) throw new Error(error.message);
+
+  await recomputeFieldFromEvents(supabase, ctx.ownerId, fieldId);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
+}
+
+export async function updateFieldEvent(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const id = String(formData.get('id') ?? '').trim();
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  const eventType = String(formData.get('event_type') ?? '').trim();
+  const eventDate = String(formData.get('event_date') ?? '').trim();
+  if (!id || !fieldId || !VALID_EVENT_TYPES.includes(eventType) || !eventDate) {
+    throw new Error('Pick an event type and a date.');
+  }
+
+  const rawSystem = String(formData.get('grass_system_id') ?? '').trim();
+  const grassSystemId = eventType === 'plough' || rawSystem === '' ? null : rawSystem;
+
+  const rawMix = String(formData.get('seed_mix') ?? '').trim();
+  const seedMix = eventType === 'plough' || rawMix === '' ? null : rawMix;
+
+  const rawRate = String(formData.get('seed_rate_value') ?? '').trim();
+  let seedRateValue: number | null = rawRate === '' ? null : Number(rawRate);
+  if (eventType === 'plough') seedRateValue = null;
+  if (seedRateValue !== null && (!Number.isFinite(seedRateValue) || seedRateValue <= 0)) {
+    throw new Error('Seed rate must be a positive number.');
+  }
+  const rawUnit = String(formData.get('seed_rate_unit') ?? '').trim();
+  const seedRateUnit = seedRateValue === null
+    ? null
+    : (rawUnit === 'kg/ha' ? 'kg/ha' : 'kg/ac');
+
+  const rawNotes = String(formData.get('notes') ?? '').trim();
+  const notes = rawNotes === '' ? null : rawNotes;
+
+  const { error } = await supabase
+    .from('field_events')
+    .update({
+      event_type: eventType,
+      event_date: eventDate,
+      grass_system_id: grassSystemId,
+      seed_mix: seedMix,
+      seed_rate_value: seedRateValue,
+      seed_rate_unit: seedRateUnit,
+      notes,
+    })
+    .eq('id', id)
+    .eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+
+  await recomputeFieldFromEvents(supabase, ctx.ownerId, fieldId);
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
+}
+
+export async function deleteFieldEvent(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  const id = String(formData.get('id') ?? '').trim();
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!id) throw new Error('Missing event id');
+
+  const { error } = await supabase
+    .from('field_events').delete()
+    .eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+
+  if (fieldId) {
+    await recomputeFieldFromEvents(supabase, ctx.ownerId, fieldId);
+    revalidatePath(`/fields/${fieldId}`);
+  }
+  revalidatePath('/');
 }
 
 // =============================================================================

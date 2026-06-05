@@ -47,7 +47,7 @@ export default async function ProductsPage({
       />
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-          Products you've added on top of the built-in RB209 catalogue. These appear in the picker when logging an application.
+          Products you've added on top of the built-in catalogue. These appear in the picker when logging an application.
         </div>
 
         {products.length === 0 ? (

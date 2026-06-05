@@ -150,7 +150,7 @@ export function LimeReportShell({
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>Lime status</h1>
         <p style={{ fontSize: 12.5, color: 'rgba(239,231,214,0.8)', margin: 0, lineHeight: 1.5 }}>
-          RB209 grassland liming — fields below target pH, with magnesian or calcium lime by soil magnesium.
+          Grassland liming — fields below target pH, with magnesian or calcium lime by soil magnesium.
         </p>
       </div>
 
@@ -310,7 +310,7 @@ export function LimeReportShell({
         )}
 
         <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, marginTop: 14 }}>
-          RB209 grassland liming for a 15 cm soil depth, ground limestone (NV 50–55). Rate =
+          Grassland liming for a 15 cm soil depth, ground limestone (NV 50–55). Rate =
           (target − measured pH) × soil liming factor. Grassland is capped at 7.5 t/ha per dressing,
           so larger requirements split across years. Magnesian (dolomitic) lime is recommended where
           soil magnesium is Index 0–1; calcium lime otherwise. Fields above pH 7 aren&apos;t limed

@@ -1,8 +1,8 @@
-import { Application, Cut, Field, Product, Settings, RateUnit } from './types';
+import { Application, Cut, Field, Product, Settings, RateUnit, GrassSystem } from './types';
 import {
   getSeasonStart, sumNutrients, getFieldPKRecommendation, displayFieldArea,
   getFieldNRecommendation, organicReleaseFraction, monthsBetween,
-  calcNutrients, planFieldFertiliser,
+  calcNutrients, planFieldFertiliser, resolveGrassSystem,
 } from './rules';
 import { meteredApps, fieldAreaHa } from './partials';
 
@@ -51,6 +51,7 @@ export function buildFertPlanRows(
   products: Product[],
   settings: Settings,
   groups: { id: string; name: string }[],
+  grassSystems: GrassSystem[] = [],
 ): FertPlanRow[] {
   const seasonStart = getSeasonStart();
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -106,7 +107,7 @@ export function buildFertPlanRows(
       const loggedOrganic = sumNutrients(sinceCutOrganic, products);
       const loggedGranular = sumNutrients(sinceCutGranular, products);
 
-      const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts);
+      const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts, settings.agronomy);
       // Season P/K demand = the RB209 recommendation summed over every cut up to
       // and including the one being fed (cuts 1..cutNumber), plus the one-off
       // index-building K. This rolls forward cut to cut: an under-fed cut keeps
@@ -114,7 +115,7 @@ export function buildFertPlanRows(
       // later cuts and shows nothing due until the balance is used up.
       let pGrossNeed = 0, kGrossNeed = 0;
       for (let c = 1; c <= cutNumber; c++) {
-        const r = getFieldPKRecommendation(f, c, fieldCuts);
+        const r = getFieldPKRecommendation(f, c, fieldCuts, settings.agronomy);
         pGrossNeed += r.p2o5;
         kGrossNeed += r.k2o;
       }
@@ -127,7 +128,8 @@ export function buildFertPlanRows(
       const p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
       const k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
 
-      const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts);
+      const nMult = resolveGrassSystem(f, grassSystems)?.n_target_multiplier ?? 1;
+      const nRec = getFieldNRecommendation(f, cutNumber, fieldCuts, settings, nMult);
       const nToApply = Math.max(0, Math.round(nRec.n - appliedNSinceCut));
 
       const area = displayFieldArea(f, settings.unitSystem);
@@ -202,6 +204,8 @@ export interface PlannedField {
   nothingGranular: boolean;
   pBands: { carry: number; slurry: number; granular: number; need: number };
   kBands: { carry: number; slurry: number; granular: number; need: number };
+  /** N bar source split. No carryover for N (pre-cut N isn't credited forward). */
+  nBands: { carry: number; slurry: number; granular: number; need: number };
 }
 
 /**
@@ -310,6 +314,12 @@ export function planField(
       slurry: row.loggedOrganicK + slurryK,
       granular: row.loggedGranularK + Math.round(granK),
       need: row.kNeed,
+    },
+    nBands: {
+      carry: 0, // N doesn't carry across the cut window
+      slurry: row.loggedOrganicN + slurryN,
+      granular: Math.max(0, row.appliedN - row.loggedOrganicN) + Math.round(granN),
+      need: row.nNeed,
     },
   };
 }

@@ -13,10 +13,12 @@ export function SoilForm({
   field,
   grassSystems,
   hiddenGrassSystemIds,
+  returnTo,
 }: {
   field: Field;
   grassSystems: GrassSystem[];
   hiddenGrassSystemIds: string[];
+  returnTo?: string;
 }) {
   const today = new Date().toISOString().slice(0, 7);  // YYYY-MM
 
@@ -80,6 +82,7 @@ export function SoilForm({
   return (
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       <input type="hidden" name="field_id" value={field.id} />
+      {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       <div style={{ padding: 16 }}>
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
           <div className="label" style={{ marginBottom: 10 }}>Latest soil analysis</div>

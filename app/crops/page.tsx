@@ -21,7 +21,7 @@ export default function CropsPage({
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>Crop nutrition guide</h1>
         <p style={{ fontSize: 12.5, color: 'rgba(239,231,214,0.8)', margin: 0, lineHeight: 1.5 }}>
-          RB209 nutrient schedules for non-grass crops — yields, offtake, nitrogen timing and soil fit.
+          Nutrient schedules for non-grass crops — yields, offtake, nitrogen timing and soil fit.
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export default function CropsPage({
         ))}
 
         <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 4 }}>
-          Figures are RB209-first, with AHDB/PDA trial data where RB209 is thin — each crop shows how settled
+          Figures follow published AHDB and PDA guidance, with trial data where that is thin — each crop shows how settled
           its defaults are. Phosphate and potash are offtake-replacement at Index 2; adjust up at low index,
           down (or skip) above target. Nitrogen rates are a guide — set them against your soil nitrogen supply.
           An estimate to plan from, not a substitute for a current soil report.

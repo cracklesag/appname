@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Pencil, Map as MapIcon } from 'lucide-react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { fmt, nutrientPerArea, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
-import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit, Group } from '@/lib/types';
 
@@ -90,7 +89,8 @@ export function PlanShell({
   minSpreadP2O5KgPerHa: number;
   minSpreadK2OKgPerHa: number;
 }) {
-  const [groupFilter, setGroupFilter] = useState(initialGroup);
+  // groupFilter / view / sortMode are derived from the URL (see below) so they
+  // survive a round-trip to a field and back.
 
   // Display unit for nutrient & rate figures (the planner works internally in
   // kg/ha; we convert only for display so acres users see per-acre numbers).
@@ -129,10 +129,25 @@ export function PlanShell({
   // Which field's slurry rate is being edited inline (null = none).
   const [editingSlurry, setEditingSlurry] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [view, setView] = useState<'field' | 'product'>('field');
-  const [sortMode, setSortMode] = useState<'order' | 'urgency'>('order');
-
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+
+  // Filters live in the URL so a round-trip to a field and back restores them
+  // (the field link carries the full Plan URL as its `from`). Planning edits
+  // (default product, rate, overrides, exclusions) persist via localStorage.
+  const groupFilter = params.get('group') ?? initialGroup ?? 'all';
+  const view: 'field' | 'product' = params.get('view') === 'product' ? 'product' : 'field';
+  const sortMode: 'order' | 'urgency' = params.get('sort') === 'urgency' ? 'urgency' : 'order';
+  const writeUrl = (next: { group?: string; view?: 'field' | 'product'; sort?: 'order' | 'urgency' }) => {
+    const sp = new URLSearchParams(params.toString());
+    if (next.group !== undefined) { if (next.group === 'all') sp.delete('group'); else sp.set('group', next.group); }
+    if (next.view !== undefined) { if (next.view === 'field') sp.delete('view'); else sp.set('view', next.view); }
+    if (next.sort !== undefined) { if (next.sort === 'order') sp.delete('sort'); else sp.set('sort', next.sort); }
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+  const planHref = (() => { const qs = params.toString(); return qs ? `${pathname}?${qs}` : pathname; })();
 
   const STORE_KEY = 'swardly_plan_state';
 
@@ -240,7 +255,14 @@ export function PlanShell({
   const openSpreadList = (mode: 'granular' | 'slurry') => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
     const groupParam = groupFilter && groupFilter !== 'all' ? `&group=${encodeURIComponent(groupFilter)}` : '';
-    router.push(`/reports/spread-list?mode=${mode}&from=/plan${groupParam}`);
+    router.push(`/reports/spread-list?mode=${mode}${groupParam}&from=${encodeURIComponent(planHref)}`);
+  };
+
+  /** Open the boundary map sheet for a mode, carrying the same toggles + group. */
+  const openSpreadMap = (mode: 'granular' | 'slurry') => {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
+    const groupParam = groupFilter && groupFilter !== 'all' ? `&group=${encodeURIComponent(groupFilter)}` : '';
+    router.push(`/reports/spread-map?mode=${mode}${groupParam}&from=${encodeURIComponent(planHref)}`);
   };
 
   // Order totals: granular products + planned organic volume.
@@ -289,7 +311,7 @@ export function PlanShell({
     <div style={{ padding: '14px 16px' }}>
       <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
         Plan the slurry or digestate you intend to spread, and the granular fertiliser
-        updates to cover only what&apos;s left of each field&apos;s RB209 shortfall.
+        updates to cover only what&apos;s left of each field&apos;s P &amp; K shortfall.
       </p>
 
       {/* Intended organic planning panel */}
@@ -387,7 +409,7 @@ export function PlanShell({
               <button
                 key={c.v}
                 type="button"
-                onClick={() => setGroupFilter(c.v)}
+                onClick={() => writeUrl({ group: c.v })}
                 style={{
                   flexShrink: 0, background: active ? 'var(--forest)' : 'var(--card)',
                   color: active ? 'var(--paper)' : 'var(--ink-soft)',
@@ -408,7 +430,7 @@ export function PlanShell({
           <button
             key={v}
             type="button"
-            onClick={() => setView(v)}
+            onClick={() => writeUrl({ view: v })}
             style={{
               flex: 1, background: view === v ? 'var(--forest)' : 'var(--card)',
               color: view === v ? 'var(--paper)' : 'var(--ink-soft)',
@@ -428,7 +450,7 @@ export function PlanShell({
             <button
               key={v}
               type="button"
-              onClick={() => setSortMode(v)}
+              onClick={() => writeUrl({ sort: v })}
               style={{
                 background: sortMode === v ? 'var(--forest)' : 'var(--card)',
                 color: sortMode === v ? 'var(--paper)' : 'var(--ink-soft)',
@@ -473,6 +495,7 @@ export function PlanShell({
 
       {/* Compile spread lists for the contractor */}
       {view === 'product' && computed.length > 0 && (
+        <>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <button
             type="button"
@@ -489,6 +512,23 @@ export function PlanShell({
             Slurry spread list
           </button>
         </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => openSpreadMap('granular')}
+            style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <MapIcon size={14} /> Granular map
+          </button>
+          <button
+            type="button"
+            onClick={() => openSpreadMap('slurry')}
+            style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <MapIcon size={14} /> Slurry map
+          </button>
+        </div>
+        </>
       )}
 
       {/* P & K source legend */}
@@ -605,7 +645,11 @@ export function PlanShell({
               <div style={{ marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '7px 9px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontSize: 11, color: 'var(--forest-dark)', minWidth: 0 }}>
-                    {c.organicName}: {c.rateStr || 0} {c.organicUnit} · ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}
+                    {c.organicName}: {c.rateStr || 0} {c.organicUnit}
+                    {c.slurryN === 0 && c.slurryP === 0 && c.slurryK === 0
+                      && (c.row.loggedOrganicN > 0 || c.row.loggedOrganicP > 0 || c.row.loggedOrganicK > 0)
+                      ? ' · already logged this cut'
+                      : <> · ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}</>}
                   </div>
                   <button
                     type="button"
@@ -676,12 +720,12 @@ export function PlanShell({
                 per-source figures revealed when the field is expanded. */}
             {!atTarget && (
               <div style={{ marginTop: 9 }}>
-                <SupplyBar label="N"  need={disp(row.nNeed)} supply={disp(c.supplyN)} unit={nUnit} />
+                <SourceBar label="N"    bands={c.nBands} unit={nUnit} disp={disp} showFigures={isOpen} />
                 <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />
                 <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />
                 {!isOpen && (
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                    Tap to see P &amp; K split by source · carryover is an estimated release
+                    Tap to see N, P &amp; K split by source · carryover is an estimated release
                   </div>
                 )}
               </div>
@@ -776,7 +820,7 @@ export function PlanShell({
             )}
 
             <Link
-              href={`/fields/${row.id}?from=/plan`}
+              href={`/fields/${row.id}?from=${encodeURIComponent(planHref)}`}
               style={{ display: 'inline-block', marginTop: 9, fontSize: 11, color: 'var(--forest)', fontWeight: 700, textDecoration: 'none' }}
             >
               Open field ›
@@ -786,12 +830,12 @@ export function PlanShell({
       })}
 
       <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14 }}>
-        Granular plans meet RB209 Section 3 (June 2023) P &amp; K recommendations at each field&apos;s
+        Granular plans follow the P &amp; K recommendations in AHDB&apos;s published nutrient guidance, at each field&apos;s
         soil index, after deducting what&apos;s already been applied this season and any slurry you
         plan above. Slurry nutrient values use your product settings and assume splash-plate
         application. The grey <strong>carryover</strong> band is an <em>estimate</em> of P &amp; K
         from earlier applications still becoming available (slurry fast, FYM over months) net of
-        crop offtake — it is a model, not an RB209 figure. Always sense-check rates and consult a
+        crop offtake — it is a model, not a published figure. Always sense-check rates and consult a
         FACTS adviser where needed.
       </p>
     </div>

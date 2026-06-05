@@ -6,7 +6,7 @@ import { getPlannedCuts, getSeasonStart } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LogCutPage({ params }: { params: { id: string } }) {
+export default async function LogCutPage({ params, searchParams }: { params: { id: string }; searchParams: { from?: string } }) {
   const [field, cuts, settings] = await Promise.all([
     loadField(params.id),
     loadCutsForField(params.id),
@@ -23,8 +23,8 @@ export default async function LogCutPage({ params }: { params: { id: string } })
 
   return (
     <div>
-      <Header title="Log cut" subtitle={field.name} backHref={`/fields/${field.id}`} />
-      <LogCutForm field={field} settings={settings} nextCutNumber={nextCutNumber} plannedType={plannedType} />
+      <Header title="Log cut" subtitle={field.name} backHref={searchParams.from || `/fields/${field.id}`} />
+      <LogCutForm field={field} settings={settings} nextCutNumber={nextCutNumber} plannedType={plannedType} returnTo={searchParams.from} />
     </div>
   );
 }
