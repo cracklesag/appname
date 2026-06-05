@@ -1,0 +1,799 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { Pencil } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { fmt, nutrientPerArea, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
+import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
+import { SupplyBar } from '@/components/NutrientBar';
+import { SoilHeatBar } from '@/components/SoilHeatBar';
+import { Product, RateUnit, Group } from '@/lib/types';
+
+export type { FertPlanRow };
+
+// Colours for the three supply sources (match the agreed mockup).
+const SRC = { carry: '#888780', slurry: '#1D9E75', granular: '#378ADD', over: '#E24B4A' };
+
+/**
+ * Stacked source bar (Style A): one nutrient, filled left-to-right with
+ * carryover -> slurry -> granular, scaled so the RB209 need sits at a fixed
+ * point and a marker line shows it. Anything past need shows red (over).
+ * showFigures reveals the per-source kg breakdown beneath.
+ */
+const SEV_RANK: Record<'now' | 'soon' | 'wait', number> = { now: 0, soon: 1, wait: 2 };
+const SEV_META: Record<'now' | 'soon' | 'wait', { label: string; bg: string; fg: string }> = {
+  now:  { label: 'Do now',   bg: '#F7C1C1', fg: '#791F1F' },
+  soon: { label: 'Soon',     bg: '#FAC775', fg: '#633806' },
+  wait: { label: 'Can wait', bg: '#D3D1C7', fg: '#444441' },
+};
+
+function SourceBar({
+  label, bands, unit, disp, showFigures,
+}: {
+  label: string;
+  bands: { carry: number; slurry: number; granular: number; need: number };
+  unit: string;
+  disp: (kgHa: number) => number;
+  showFigures: boolean;
+}) {
+  const supply = bands.carry + bands.slurry + bands.granular;
+  const need = bands.need;
+  const scaleMax = need > 0 ? need / 0.75 : Math.max(supply, 1);
+  const pct = (v: number) => `${Math.max(0, Math.min(100, (v / scaleMax) * 100))}%`;
+  const needPct = need > 0 ? `${(need / scaleMax) * 100}%` : null;
+  const over = Math.max(0, supply - need);
+
+  return (
+    <div style={{ marginBottom: showFigures ? 12 : 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}>{label}</span>
+        <span style={{ fontSize: 11, color: over > 0.5 ? SRC.over : 'var(--muted)' }}>
+          {disp(supply)}{need > 0 ? ` / ${disp(need)}` : ''} {unit}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 14, background: 'var(--line-soft, #e8e4da)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+          {bands.carry > 0 && <div style={{ width: pct(bands.carry), background: SRC.carry }} />}
+          {bands.slurry > 0 && <div style={{ width: pct(bands.slurry), background: SRC.slurry }} />}
+          {bands.granular > 0 && <div style={{ width: pct(bands.granular), background: SRC.granular }} />}
+        </div>
+        {needPct && (
+          <div style={{ position: 'absolute', top: -2, bottom: -2, left: needPct, width: 2, background: 'var(--ink, #2c2c2a)' }} />
+        )}
+      </div>
+      {showFigures && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap', fontSize: 10 }}>
+          {bands.carry > 0 && <span style={{ background: '#F1EFE8', color: '#444441', padding: '1px 7px', borderRadius: 10 }}>carryover {disp(bands.carry)}</span>}
+          {bands.slurry > 0 && <span style={{ background: '#E1F5EE', color: '#085041', padding: '1px 7px', borderRadius: 10 }}>slurry {disp(bands.slurry)}</span>}
+          {bands.granular > 0 && <span style={{ background: '#E6F1FB', color: '#0C447C', padding: '1px 7px', borderRadius: 10 }}>granular {disp(bands.granular)}</span>}
+          {over > 0.5 && <span style={{ background: '#FCEBEB', color: '#A32D2D', padding: '1px 7px', borderRadius: 10 }}>over {disp(over)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Soil targets for the heat bars — RB209 index 2 / pH 6.0 for grassland.
+const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
+
+export function PlanShell({
+  rows, groups, initialGroup, unitSystem, products, slurryUnit,
+  minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
+}: {
+  rows: FertPlanRow[];
+  groups: Group[];
+  initialGroup: string;
+  unitSystem: 'acres' | 'hectares';
+  products: Product[];
+  slurryUnit: 'gal/ac' | 'm3/ha';
+  minSpreadP2O5KgPerHa: number;
+  minSpreadK2OKgPerHa: number;
+}) {
+  const [groupFilter, setGroupFilter] = useState(initialGroup);
+
+  // Display unit for nutrient & rate figures (the planner works internally in
+  // kg/ha; we convert only for display so acres users see per-acre numbers).
+  const sys = unitSystem === 'acres' ? 'acres' : 'hectares';
+  const nUnit = sys === 'acres' ? 'kg/ac' : 'kg/ha';
+  const disp = (kgHa: number) => Math.round(nutrientPerArea(kgHa, sys));
+
+  // Organic sources the user can plan to apply first (slurry / solid / digestate).
+  const organics = useMemo(
+    () => products.filter((p) => p.type === 'slurry' || p.type === 'solid_manure'),
+    [products],
+  );
+  const granular = useMemo(
+    () => products.filter((p) => p.type === 'bag_fert'),
+    [products],
+  );
+
+  // Planning state: a default organic + default rate applied to all fields,
+  // with per-field overrides. Empty = no organic planned.
+  // Plan toggles + overrides. These are PERSISTED to localStorage so they're
+  // maintained when you come back to the plan (and carried to the spread lists).
+  const [defaultOrganicId, setDefaultOrganicId] = useState<number | ''>(
+    organics.length > 0 ? organics[0].id : '',
+  );
+  const [defaultRate, setDefaultRate] = useState<string>('');
+  // Per-field overrides: fieldId -> { productId, rate } (rate as string).
+  const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  // bag products switched off (never recommended), fields dropped from the
+  // spread lists, and fields where intended slurry is switched off.
+  const [excludedProductIds, setExcludedProductIds] = useState<number[]>([]);
+  const [excludedFieldIds, setExcludedFieldIds] = useState<string[]>([]);
+  const [slurryOffFieldIds, setSlurryOffFieldIds] = useState<string[]>([]);
+  const [showProductMenu, setShowProductMenu] = useState(false);
+  // Which field's slurry rate is being edited inline (null = none).
+  const [editingSlurry, setEditingSlurry] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [view, setView] = useState<'field' | 'product'>('field');
+  const [sortMode, setSortMode] = useState<'order' | 'urgency'>('order');
+
+  const router = useRouter();
+
+  const STORE_KEY = 'swardly_plan_state';
+
+  // Load saved toggles/overrides once on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.defaultOrganicId !== undefined) setDefaultOrganicId(s.defaultOrganicId);
+        if (typeof s.defaultRate === 'string') setDefaultRate(s.defaultRate);
+        if (s.overrides) setOverrides(s.overrides);
+        if (Array.isArray(s.excludedProductIds)) setExcludedProductIds(s.excludedProductIds);
+        if (Array.isArray(s.excludedFieldIds)) setExcludedFieldIds(s.excludedFieldIds);
+        if (Array.isArray(s.slurryOffFieldIds)) setSlurryOffFieldIds(s.slurryOffFieldIds);
+      }
+    } catch { /* ignore */ }
+    setHydrated(true);
+  }, []);
+
+  const toggleIn = <T,>(arr: T[], v: T): T[] =>
+    arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+
+  const planState: PlanState = useMemo(() => ({
+    defaultOrganicId, defaultRate, overrides,
+    excludedProductIds, excludedFieldIds, slurryOffFieldIds,
+  }), [defaultOrganicId, defaultRate, overrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
+
+  // Persist whenever the plan state changes (after the initial hydrate).
+  useEffect(() => {
+    if (!hydrated) return;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
+  }, [planState, hydrated]);
+
+  const organicRateUnit: RateUnit = useMemo(() => {
+    // Slurry uses the farm's slurry unit; solid manure uses t/ha or t/ac.
+    const def = organics.find((o) => o.id === defaultOrganicId);
+    if (def?.type === 'solid_manure') return unitSystem === 'acres' ? 't/ac' : 't/ha';
+    return slurryUnit;
+  }, [organics, defaultOrganicId, slurryUnit, unitSystem]);
+
+  const visible = useMemo(() => {
+    let list = rows;
+    if (groupFilter !== 'all') {
+      list = groupFilter === 'ungrouped'
+        ? rows.filter((r) => !r.groupId)
+        : rows.filter((r) => r.groupId === groupFilter);
+    }
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows, groupFilter]);
+
+  // Per-field plan via the shared planner (honours product on/off + slurry off
+  // + the minimum-rate hold on the post-slurry residual).
+  const computed = useMemo(
+    () => visible.map((row) => planField(row, planState, organics, granular, {
+      slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
+    })),
+    [visible, planState, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa],
+  );
+
+  // Tag each planned field with an urgency, and (in urgency mode) sort by it.
+  // Severity is derived from the corrected plan: a field with a real shortfall
+  // the planner wants to cover now is "Do now"; sub-threshold residuals held
+  // back are "Soon"; a field at target with nothing to apply is "Can wait".
+  const ordered = useMemo(() => {
+    const arr = computed.map((c) => {
+      const r = c.row;
+      const planned = c.planProducts.length > 0 || (!!c.organicName && c.slurryTotal > 0);
+      const owes = r.nToApply > 0 || r.p2o5ToApply > 0 || r.k2oToApply > 0;
+      let sev: 'now' | 'soon' | 'wait';
+      if (!planned && !owes) sev = 'wait';
+      else if (!planned && (c.pHeld || c.kHeld)) sev = 'soon';
+      else if (((r.cutType === 'silage' || r.cutType === 'bales') && r.nToApply > 0)
+        || r.k2oToApply > 0 || r.p2o5ToApply > 0) sev = 'now';
+      else sev = 'soon';
+      return { c, sev };
+    });
+    if (sortMode === 'urgency') {
+      arr.sort((a, b) => (SEV_RANK[a.sev] - SEV_RANK[b.sev]) || a.c.row.name.localeCompare(b.c.row.name));
+    }
+    return arr;
+  }, [computed, sortMode]);
+
+  // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
+  // reads its current group's profile live, so moving a field between groups
+  // changes which warnings apply with nothing copied.
+  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+  const today = useMemo(() => todayMd(), []);
+
+  // Total planned N (kg/ha) for a planned field — granular N plus slurry N if
+  // the row carries it — used to check a low-input cap.
+  const warningsFor = (c: typeof computed[number]): GroupWarning[] => {
+    const grp = c.row.groupId ? groupById.get(c.row.groupId) : null;
+    if (!grp) return [];
+    let nKgPerHa = 0;
+    for (const p of c.planProducts) {
+      const prod = granular.find((x) => x.id === p.productId);
+      if (prod && prod.n_pct) nKgPerHa += (p.rateKgPerHa * prod.n_pct) / 100;
+    }
+    return groupProfileWarnings(grp, { dateMd: today, nKgPerHa });
+  };
+
+  /** Save the current toggles/overrides and open a spread list, carrying the
+   *  current group filter so the report contains only the block in view. */
+  const openSpreadList = (mode: 'granular' | 'slurry') => {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(planState)); } catch { /* ignore */ }
+    const groupParam = groupFilter && groupFilter !== 'all' ? `&group=${encodeURIComponent(groupFilter)}` : '';
+    router.push(`/reports/spread-list?mode=${mode}&from=/plan${groupParam}`);
+  };
+
+  // Order totals: granular products + planned organic volume.
+  const productTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of computed) {
+      for (const p of c.planProducts) {
+        totals.set(p.productName, (totals.get(p.productName) ?? 0) + p.totalKg);
+      }
+    }
+    return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  }, [computed]);
+
+  const organicTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of computed) {
+      if (c.organicName && c.slurryTotal > 0) {
+        totals.set(`${c.organicName}|${c.organicUnit}`, (totals.get(`${c.organicName}|${c.organicUnit}`) ?? 0) + c.slurryTotal);
+      }
+    }
+    return [...totals.entries()];
+  }, [computed]);
+
+  const anyUngrouped = rows.some((r) => !r.groupId);
+  const chips = [
+    { v: 'all', label: 'All' },
+    ...groups.map((g) => ({ v: g.id, label: g.name })),
+    ...(anyUngrouped ? [{ v: 'ungrouped', label: 'Ungrouped' }] : []),
+  ];
+
+  const setOverride = (id: string, patch: Partial<{ productId: number | ''; rate: string }>) => {
+    setOverrides((prev) => {
+      const cur = prev[id] ?? { productId: defaultOrganicId, rate: defaultRate };
+      return { ...prev, [id]: { ...cur, ...patch } };
+    });
+  };
+  const clearOverride = (id: string) => {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ padding: '14px 16px' }}>
+      <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
+        Plan the slurry or digestate you intend to spread, and the granular fertiliser
+        updates to cover only what&apos;s left of each field&apos;s RB209 shortfall.
+      </p>
+
+      {/* Intended organic planning panel */}
+      {organics.length > 0 && (
+        <div className="card" style={{ padding: 13, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 9 }}>
+            Intended slurry / digestate — all fields
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select
+              className="select"
+              value={defaultOrganicId}
+              onChange={(e) => setDefaultOrganicId(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ flex: 1, minWidth: 0 }}
+            >
+              <option value="">None</option>
+              {organics.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+            <input
+              type="number"
+              inputMode="decimal"
+              className="input"
+              placeholder="rate"
+              value={defaultRate}
+              onChange={(e) => setDefaultRate(e.target.value)}
+              style={{ width: 84, textAlign: 'right' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{organicRateUnit}</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 7, lineHeight: 1.4 }}>
+            Applied to every field below. Tap a field to set a different rate just for it.
+          </div>
+        </div>
+      )}
+
+      {/* Fertiliser sources in use — toggle which bag products the plan may use */}
+      {granular.length > 0 && (
+        <div className="card" style={{ padding: 13, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => setShowProductMenu((v) => !v)}
+            style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+              Fertiliser sources in use
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--forest-dark)', fontWeight: 700 }}>
+              {granular.length - excludedProductIds.length}/{granular.length} on · {showProductMenu ? 'hide' : 'edit'}
+            </span>
+          </button>
+          {showProductMenu && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)', margin: '8px 0 10px', lineHeight: 1.45 }}>
+                Switch off anything you&apos;re not spreading this round. The plan won&apos;t recommend it —
+                a field short of that nutrient just stays short, and it won&apos;t appear on the spread list.
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {granular.map((p) => {
+                  const on = !excludedProductIds.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setExcludedProductIds((prev) => toggleIn(prev, p.id))}
+                      style={{
+                        background: on ? 'var(--forest)' : 'var(--card)',
+                        color: on ? 'var(--paper)' : 'var(--muted)',
+                        border: on ? 'none' : '1px solid var(--line)',
+                        borderRadius: 20, padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', textDecoration: on ? 'none' : 'line-through',
+                      }}
+                    >
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 10 }}>
+                Don&apos;t see one you use?{' '}
+                <Link href="/products?return=/plan" style={{ color: 'var(--forest)', fontWeight: 600, textDecoration: 'none' }}>
+                  Add more in Settings
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Group filter */}
+      {groups.length > 0 && (
+        <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
+          {chips.map((c) => {
+            const active = groupFilter === c.v;
+            return (
+              <button
+                key={c.v}
+                type="button"
+                onClick={() => setGroupFilter(c.v)}
+                style={{
+                  flexShrink: 0, background: active ? 'var(--forest)' : 'var(--card)',
+                  color: active ? 'var(--paper)' : 'var(--ink-soft)',
+                  border: active ? 'none' : '1px solid var(--line)', borderRadius: 20,
+                  padding: '6px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* View tabs: by field (cards) vs by product (order + spread lists) */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {([['field', 'By field'], ['product', 'By product']] as const).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            style={{
+              flex: 1, background: view === v ? 'var(--forest)' : 'var(--card)',
+              color: view === v ? 'var(--paper)' : 'var(--ink-soft)',
+              border: view === v ? 'none' : '1px solid var(--line)',
+              borderRadius: 10, padding: '9px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'field' && computed.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>Sort</span>
+          {([['order', 'Field'], ['urgency', 'Urgency']] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setSortMode(v)}
+              style={{
+                background: sortMode === v ? 'var(--forest)' : 'var(--card)',
+                color: sortMode === v ? 'var(--paper)' : 'var(--ink-soft)',
+                border: sortMode === v ? 'none' : '1px solid var(--line)',
+                borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Order totals */}
+      {view === 'product' && (productTotals.length > 0 || organicTotals.length > 0) && (
+        <div className="card" style={{ padding: 13, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>
+            Total to apply
+          </div>
+          {organicTotals.map(([key, vol]) => {
+            const [name, unit] = key.split('|');
+            return (
+              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
+                <span style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 600 }}>{name}</span>
+                <span className="nutrient-num" style={{ fontSize: 15, color: 'var(--ink)' }}>
+                  {fmt(Math.round(vol))} <span style={{ fontSize: 11, color: 'var(--muted)' }}>{unit.replace('/ac', '').replace('/ha', '')}</span>
+                </span>
+              </div>
+            );
+          })}
+          {productTotals.map(([name, kg]) => (
+            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
+              <span style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 600 }}>{name}</span>
+              <span className="nutrient-num" style={{ fontSize: 15, color: 'var(--ink)' }}>
+                {fmt(Math.round(kg))} <span style={{ fontSize: 11, color: 'var(--muted)' }}>kg</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}> · {(kg / 1000).toFixed(2)} t</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Compile spread lists for the contractor */}
+      {view === 'product' && computed.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => openSpreadList('granular')}
+            style={{ flex: 1, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Granular spread list
+          </button>
+          <button
+            type="button"
+            onClick={() => openSpreadList('slurry')}
+            style={{ flex: 1, background: SRC.slurry, color: '#fff', border: 'none', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Slurry spread list
+          </button>
+        </div>
+      )}
+
+      {/* P & K source legend */}
+      {view === 'field' && computed.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 11 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.carry }} /><span style={{ color: 'var(--muted)' }}>Carryover</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.slurry }} /><span style={{ color: 'var(--muted)' }}>Slurry / digestate</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.granular }} /><span style={{ color: 'var(--muted)' }}>Granular</span></span>
+        </div>
+      )}
+
+      {view === 'field' && computed.length === 0 && (
+        <div className="card" style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+          No fields to show.
+        </div>
+      )}
+
+      {view === 'field' && ordered.map(({ c, sev }) => {
+        const row = c.row;
+        const isOpen = !!expanded[row.id];
+        const hasOverride = !!overrides[row.id];
+        const excluded = excludedFieldIds.includes(row.id);
+        const slurryOff = slurryOffFieldIds.includes(row.id);
+        const cutLabel = row.cutType === 'grazing' ? 'grazing'
+          : row.cutType === 'bales' ? `cut ${row.cutNumber} (bales)`
+          : `cut ${row.cutNumber}`;
+        // At target = nothing left to plan once slurry + the minimum-rate hold
+        // are accounted for, and no slurry being added either.
+        const atTarget = c.nothingGranular && c.slurryTotal === 0
+          && c.pAfter === 0 && c.kAfter === 0 && row.nToApply === 0
+          && !c.pHeld && !c.kHeld;
+
+        return (
+          <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8, opacity: excluded ? 0.5 : 1 }}>
+            <div
+              onClick={() => setExpanded((p) => ({ ...p, [row.id]: !p[row.id] }))}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{row.name}</div>
+                <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: SEV_META[sev].bg, color: SEV_META[sev].fg }}>{SEV_META[sev].label}</span>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                  {fmt(row.areaValue, 1)} {row.areaUnit}
+                  {row.groupName && <> · {row.groupName}</>}
+                  {' · '}{cutLabel}
+                </div>
+              </div>
+              {excluded ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setExcludedFieldIds((prev) => toggleIn(prev, row.id)); }}
+                  style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'var(--card)', border: '1px solid var(--line)', padding: '4px 9px', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  off list · add
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {atTarget && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '4px 9px', borderRadius: 6 }}>
+                      ✓ at target
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExcludedFieldIds((prev) => toggleIn(prev, row.id)); }}
+                    aria-label="Take field off the spread list"
+                    title="Take off spread list"
+                    style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    on ✓
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Group-profile warnings (soft — never change the numbers). */}
+            {!excluded && (() => {
+              const ws = warningsFor(c);
+              if (ws.length === 0) return null;
+              return (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {ws.map((w, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                      background: w.severity === 'warn' ? '#FBF1D9' : 'var(--paper-deep, #F4EFE2)',
+                      border: `1px solid ${w.severity === 'warn' ? '#E8D08A' : 'var(--line)'}`,
+                      borderRadius: 7, padding: '6px 9px',
+                    }}>
+                      <span style={{ fontSize: 12, lineHeight: 1 }}>{w.severity === 'warn' ? '⚠️' : 'ℹ️'}</span>
+                      <span style={{ fontSize: 11, color: w.severity === 'warn' ? '#6B5616' : 'var(--ink-soft)', lineHeight: 1.4 }}>
+                        {w.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            {row.sampled ? (
+              <div style={{ marginTop: 9 }}>
+                <SoilHeatBar label="pH" value={row.ph} target={SOIL_TARGET.ph} max={7.5} />
+                <SoilHeatBar label="P" value={row.pIdx} target={SOIL_TARGET.pIdx} max={4} />
+                <SoilHeatBar label="K" value={row.kIdx} target={SOIL_TARGET.kIdx} max={4} />
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#7A5B12', marginTop: 7 }}>
+                No soil sample — plan assumes target index.
+              </div>
+            )}
+
+            {/* Planned slurry contribution — with an inline rate editor so you
+                can bump the volume up or down per field; bars + granular below
+                recalculate live as you type. */}
+            {c.slurryTotal > 0 && (
+              <div style={{ marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '7px 9px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--forest-dark)', minWidth: 0 }}>
+                    {c.organicName}: {c.rateStr || 0} {c.organicUnit} · ~{disp(c.slurryN)}N · {disp(c.slurryP)}P · {disp(c.slurryK)}K {nUnit}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSlurry((cur) => (cur === row.id ? null : row.id))}
+                    aria-label="Edit slurry volume"
+                    style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', cursor: 'pointer' }}
+                  >
+                    <Pencil size={12} /> {editingSlurry === row.id ? 'Done' : 'Edit'}
+                  </button>
+                </div>
+                {editingSlurry === row.id && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      autoFocus
+                      className="input"
+                      value={c.rateStr}
+                      onChange={(e) => setOverride(row.id, { rate: e.target.value })}
+                      style={{ width: 100, textAlign: 'right' }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.organicUnit}</span>
+                    {!!overrides[row.id] && (
+                      <button
+                        type="button"
+                        onClick={() => clearOverride(row.id)}
+                        style={{ fontSize: 11, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, marginLeft: 'auto' }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Granular plan */}
+            {c.planProducts.length > 0 ? (
+              <div style={{ marginTop: 9 }}>
+                {c.planProducts.map((p, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'var(--paper-deep, #f3efe4)', borderRadius: 8, padding: '9px 11px',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{p.productName}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(p.totalKg)} kg over field</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{disp(p.rateKgPerHa)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nUnit}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !atTarget ? (
+              <div style={{ fontSize: 12, color: 'var(--forest-dark)', marginTop: 9, fontWeight: 600 }}>
+                {c.slurryTotal > 0 ? 'Slurry covers it — no granular needed.' : 'No granular needed.'}
+              </div>
+            ) : null}
+
+            {/* Need-vs-supply bars. N stays a simple supply bar; P & K show
+                the source breakdown (carryover / slurry / granular), with the
+                per-source figures revealed when the field is expanded. */}
+            {!atTarget && (
+              <div style={{ marginTop: 9 }}>
+                <SupplyBar label="N"  need={disp(row.nNeed)} supply={disp(c.supplyN)} unit={nUnit} />
+                <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />
+                <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />
+                {!isOpen && (
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
+                    Tap to see P &amp; K split by source · carryover is an estimated release
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Low-rate hold notice — P or K shortfall too small to spread, so
+                it's held in the season balance and will combine with a later
+                cut once it's worth applying. */}
+            {(c.pHeld || c.kHeld) && (
+              <div style={{
+                marginTop: 8, padding: '7px 10px', borderRadius: 8,
+                background: '#F4EFE2', border: '1px solid #E4D9BD',
+                fontSize: 11, color: '#6B5D34', lineHeight: 1.45,
+              }}>
+                {c.pHeld && c.kHeld
+                  ? `P and K shortfalls are below your minimum spread rate — held for now and carried forward; they'll show once they build up enough to be worth spreading.`
+                  : c.pHeld
+                  ? `P₂O₅ shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`
+                  : `K₂O shortfall is below your minimum spread rate — too small to spread this cut. It's held and carried forward to combine with a later cut.`}
+              </div>
+            )}
+
+            {/* Field-level spread toggles (shown when expanded) */}
+            {isOpen && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setExcludedFieldIds((prev) => toggleIn(prev, row.id))}
+                  style={{
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px',
+                    background: excluded ? 'var(--forest)' : 'var(--card)',
+                    color: excluded ? 'var(--paper)' : 'var(--ink-soft)',
+                    border: excluded ? 'none' : '1px solid var(--line)',
+                  }}
+                >
+                  {excluded ? 'Add back to spread list' : 'Take off spread list'}
+                </button>
+                {(c.organicName || slurryOff || defaultOrganicId !== '') && (
+                  <button
+                    type="button"
+                    onClick={() => setSlurryOffFieldIds((prev) => toggleIn(prev, row.id))}
+                    style={{
+                      fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px',
+                      background: slurryOff ? 'var(--card)' : SRC.slurry,
+                      color: slurryOff ? 'var(--muted)' : '#fff',
+                      border: slurryOff ? '1px solid var(--line)' : 'none',
+                    }}
+                  >
+                    {slurryOff ? 'Slurry off — turn on' : 'Slurry on — turn off'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Per-field override (expand) */}
+            {isOpen && organics.length > 0 && !slurryOff && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                  Slurry for this field {hasOverride ? '(overriding the default)' : '(using the default)'}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    className="select"
+                    value={c.organicId}
+                    onChange={(e) => setOverride(row.id, { productId: e.target.value === '' ? '' : Number(e.target.value) })}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
+                    <option value="">None</option>
+                    {organics.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    className="input"
+                    placeholder="rate"
+                    value={c.rateStr}
+                    onChange={(e) => setOverride(row.id, { rate: e.target.value })}
+                    style={{ width: 84, textAlign: 'right' }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.organicUnit}</span>
+                </div>
+                {hasOverride && (
+                  <button
+                    type="button"
+                    onClick={() => clearOverride(row.id)}
+                    style={{ marginTop: 8, fontSize: 12, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+            )}
+
+            <Link
+              href={`/fields/${row.id}?from=/plan`}
+              style={{ display: 'inline-block', marginTop: 9, fontSize: 11, color: 'var(--forest)', fontWeight: 700, textDecoration: 'none' }}
+            >
+              Open field ›
+            </Link>
+          </div>
+        );
+      })}
+
+      <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14 }}>
+        Granular plans meet RB209 Section 3 (June 2023) P &amp; K recommendations at each field&apos;s
+        soil index, after deducting what&apos;s already been applied this season and any slurry you
+        plan above. Slurry nutrient values use your product settings and assume splash-plate
+        application. The grey <strong>carryover</strong> band is an <em>estimate</em> of P &amp; K
+        from earlier applications still becoming available (slurry fast, FYM over months) net of
+        crop offtake — it is a model, not an RB209 figure. Always sense-check rates and consult a
+        FACTS adviser where needed.
+      </p>
+    </div>
+  );
+}

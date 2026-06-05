@@ -1,7 +1,7 @@
 import { Application, Cut, Field, Product, Settings, RateUnit } from './types';
 import {
   getSeasonStart, sumNutrients, getFieldPKRecommendation, displayFieldArea,
-  getFieldNRecommendation, getOfftakeForCut, organicReleaseFraction, monthsBetween,
+  getFieldNRecommendation, organicReleaseFraction, monthsBetween,
   calcNutrients, planFieldFertiliser,
 } from './rules';
 import { meteredApps, fieldAreaHa } from './partials';
@@ -89,13 +89,14 @@ export function buildFertPlanRows(
         carryPRaw += nut.p * frac;
         carryKRaw += nut.k * frac;
       }
-      let pOff = 0, kOff = 0;
-      for (const c of seasonCuts) {
-        const o = getOfftakeForCut(f.cut_profile, c.cut_number, c.yield_class, settings, c.cut_type);
-        pOff += o.p2o5; kOff += o.k2o;
-      }
-      const carryP = Math.max(0, carryPRaw - pOff);
-      const carryK = Math.max(0, carryKRaw - kOff);
+      // Carryover = pre-window organic, released over time. Crop offtake is
+      // deliberately NOT subtracted here: the RB209 per-cut recommendations
+      // already account for what each cut removes, so offtake is embedded on the
+      // demand side. Subtracting it from supply as well double-counted removal
+      // and made the plan over-recommend K (worst after a heavy winter slurry).
+      // Supply is simply what's been applied, availability-adjusted.
+      const carryP = Math.max(0, carryPRaw);
+      const carryK = Math.max(0, carryKRaw);
 
       const sinceCutOrganic = sinceCutApps.filter((a) => {
         const t = productTypeById.get(a.product_id);
@@ -106,15 +107,23 @@ export function buildFertPlanRows(
       const loggedGranular = sumNutrients(sinceCutGranular, products);
 
       const rec = getFieldPKRecommendation(f, cutNumber, fieldCuts);
-      const pGrossNeed = rec.p2o5;
-      const kGrossNeed = rec.k2o + rec.extraKAfterCut;
+      // Season P/K demand = the RB209 recommendation summed over every cut up to
+      // and including the one being fed (cuts 1..cutNumber), plus the one-off
+      // index-building K. This rolls forward cut to cut: an under-fed cut keeps
+      // its demand owing; an over-applied one (e.g. winter slurry) banks against
+      // later cuts and shows nothing due until the balance is used up.
+      let pGrossNeed = 0, kGrossNeed = 0;
+      for (let c = 1; c <= cutNumber; c++) {
+        const r = getFieldPKRecommendation(f, c, fieldCuts);
+        pGrossNeed += r.p2o5;
+        kGrossNeed += r.k2o;
+      }
+      kGrossNeed += rec.extraKAfterCut;
 
+      // Supply = everything applied this season, availability-adjusted: full
+      // value since the cut window, released carryover before it. No offtake term.
       const pSupplyBeforePlan = carryP + loggedOrganic.p + loggedGranular.p;
       const kSupplyBeforePlan = carryK + loggedOrganic.k + loggedGranular.k;
-      // Raw shortfall before intended slurry. The minimum-rate hold is applied
-      // later in planField, AFTER intended slurry is deducted — otherwise a
-      // field where slurry covers most of the need leaves a sub-threshold
-      // granular dribble that the pre-slurry hold would miss.
       const p2o5ToApply = Math.max(0, Math.round(pGrossNeed - pSupplyBeforePlan));
       const k2oToApply = Math.max(0, Math.round(kGrossNeed - kSupplyBeforePlan));
 

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, Flame, FileText, ChevronRight, Sprout, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles } from 'lucide-react';
+import { Plus, FileUp, Calendar, ChevronRight, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -145,7 +145,7 @@ export default async function HomePage() {
 
             {/* Plan ahead — grazing dressings + gentle P/K review nudge */}
             {(grazingDue.length > 0 || pkReviewCount > 0) && (
-              <Link href="/reports/spreading?from=/" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
+              <Link href="/plan?from=/" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <Calendar size={15} style={{ color: 'var(--forest)' }} />
@@ -162,23 +162,24 @@ export default async function HomePage() {
               </Link>
             )}
 
+            {/* The Plan — consolidated "what to apply" (replaces P&K status,
+                fertiliser plan, spread report and field snapshot). */}
+            <Link href="/plan?from=/" style={{ display: 'block', background: 'var(--forest)', border: '1px solid var(--forest)', borderRadius: 10, padding: '14px 15px', marginBottom: 9, textDecoration: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                <ClipboardList size={22} style={{ color: 'var(--brand-cream)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--brand-cream)' }}>Plan</div>
+                  <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.85)', lineHeight: 1.4 }}>What to spread on every field — slurry first, then granular.</div>
+                </div>
+                <ChevronRight size={16} style={{ color: 'rgba(239,231,214,0.85)', flexShrink: 0 }} />
+              </div>
+            </Link>
+
             {/* Quick-access cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-              <Link href="/reports/pk?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <Sprout size={21} style={{ color: 'var(--forest)' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>P &amp; K status</span>
-              </Link>
-              <Link href="/reports/fert-plan?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <ClipboardList size={21} style={{ color: 'var(--forest)' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Fertiliser plan</span>
-              </Link>
-              <Link href="/reports/spreading?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <FileText size={21} style={{ color: 'var(--forest)' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spread report</span>
-              </Link>
-              <Link href="/reports/snapshot?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <Flame size={21} style={{ color: 'var(--amber)' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Field snapshot</span>
+              <Link href="/grazing" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Repeat size={21} style={{ color: 'var(--slurry, #6a90b5)' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Grazing</span>
               </Link>
               <Link href="/grazing" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Repeat size={21} style={{ color: 'var(--slurry, #6a90b5)' }} />
