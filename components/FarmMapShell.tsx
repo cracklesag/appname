@@ -994,7 +994,7 @@ function LocateBanner({
     "absolute left-3 top-3 z-10 max-w-[60%] rounded-xl bg-white/95 px-3 py-2 shadow-md backdrop-blur";
 
   return fieldId ? (
-    <a href={`/fields/${encodeURIComponent(fieldId)}`} className={classes}>
+    <a href={`/fields/${encodeURIComponent(fieldId)}?from=/map`} className={classes}>
       {inner}
     </a>
   ) : (

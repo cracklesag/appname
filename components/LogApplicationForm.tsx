@@ -473,7 +473,7 @@ export function LogApplicationForm({
 
     const hits: { name: string; daysAgo: number }[] = [];
     for (const fid of fieldIds) {
-      const last = recentByField[fid]?.[type];
+      const last = recentByField[fid]?.[String(productId)];
       if (!last) continue;
       const lastT = new Date(last + 'T00:00:00').getTime();
       if (isNaN(lastT)) continue;
@@ -489,20 +489,23 @@ export function LogApplicationForm({
       : type === 'bag_fert' ? 'fertiliser'
       : type === 'solid_manure' ? 'manure'
       : type === 'lime' ? 'lime' : 'an application';
+    // Name the actual product so the warning is unambiguous (it only fires for
+    // a repeat of THIS product, not just the same type).
+    const label = (products.find((p) => p.id === productId)?.name) ?? typeLabel;
 
     if (hits.length === 1) {
       const h = hits[0];
       const when = h.daysAgo === 0 ? 'the same day'
         : h.daysAgo > 0 ? `${h.daysAgo} day${h.daysAgo === 1 ? '' : 's'} ago`
         : `${Math.abs(h.daysAgo)} day${Math.abs(h.daysAgo) === 1 ? '' : 's'} later`;
-      return { kind: 'warning' as const, message: `${typeLabel} was already logged on ${h.name} ${when}. Sure this isn't a duplicate?` };
+      return { kind: 'warning' as const, message: `${label} was already logged on ${h.name} ${when}. Sure this isn't a duplicate?` };
     }
-    return { kind: 'warning' as const, message: `${typeLabel} was already logged within a week on ${hits.length} of these fields. Sure these aren't duplicates?` };
-  }, [isEdit, recentByField, date, isBatch, picked, field.id, field.name, batchFields, type]);
+    return { kind: 'warning' as const, message: `${label} was already logged within a week on ${hits.length} of these fields. Sure these aren't duplicates?` };
+  }, [isEdit, recentByField, date, isBatch, picked, field.id, field.name, batchFields, type, productId, products]);
 
   // Re-arm the duplicate warning if the date, type, or selection changes after
   // an acknowledgement — a new choice deserves a fresh check.
-  useEffect(() => { setDupeAcknowledged(false); }, [date, type, picked]);
+  useEffect(() => { setDupeAcknowledged(false); }, [date, type, picked, productId]);
   // A drawn part-area belongs to the single ticked field; if the selection
   // changes in the Log-tab flow, drop it so it can't bind to the wrong field.
   useEffect(() => { if (isBatch) { setDrawnGeo(null); setDrawnHa(0); } }, [picked, isBatch]);
@@ -654,7 +657,7 @@ export function LogApplicationForm({
     <>
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       {isEdit && existing && <input type="hidden" name="id" value={existing.id} />}
-      {isEdit && returnTo && <input type="hidden" name="return_to" value={returnTo} />}
+      {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       {!isBatch && <input type="hidden" name="field_id" value={field.id} />}
       <input type="hidden" name="product_id" value={productId} />
       {isBatch && <input type="hidden" name="log_type" value={type} />}
@@ -1234,7 +1237,7 @@ export function LogApplicationForm({
           </div>
         )}
         <div style={{ display: 'flex', gap: 10 }}>
-          <Link href={isBatch ? '/' : `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
+          <Link href={isBatch ? '/' : (returnTo || `/fields/${field.id}`)} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
           <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={!canSave}>
             <Save size={18} /> {submitting ? 'Saving…' : (dupWarning && dupeAcknowledged) ? 'Yes, log it anyway' : drawnGeo ? 'Save part application' : isBatch ? `Log on ${picked.size || ''} field${picked.size === 1 ? '' : 's'}` : isEdit ? 'Save changes' : 'Save entry'}
           </button>

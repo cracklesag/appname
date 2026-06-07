@@ -7,7 +7,7 @@ import { CutType, Field } from '@/lib/types';
 import { CUT_TYPE_LABELS, getPlannedCuts } from '@/lib/rules';
 import { savePlan } from '@/lib/actions';
 
-export function EditPlanForm({ field }: { field: Field }) {
+export function EditPlanForm({ field, returnTo }: { field: Field; returnTo?: string }) {
   const [cutProfile, setCutProfile] = useState<number>(field.cut_profile || 1);
   const initialPlanned = getPlannedCuts(field);
   const [plannedCuts, setPlannedCuts] = useState<CutType[]>(() => {
@@ -30,6 +30,7 @@ export function EditPlanForm({ field }: { field: Field }) {
   return (
     <form action={savePlan} style={{ paddingBottom: 100 }}>
       <input type="hidden" name="field_id" value={field.id} />
+      {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       <input type="hidden" name="cut_profile" value={cutProfile} />
       {plannedCuts.map((t, i) => (
         <input key={i} type="hidden" name={`cut_${i}`} value={t} />
@@ -104,7 +105,7 @@ export function EditPlanForm({ field }: { field: Field }) {
       </div>
 
       <div style={{ position: 'sticky', bottom: 0, padding: 16, background: 'linear-gradient(to top, var(--paper) 70%, transparent)', display: 'flex', gap: 10 }}>
-        <Link href={`/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
+        <Link href={returnTo || `/fields/${field.id}`} className="btn-ghost" style={{ flex: 1, textAlign: 'center', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Cancel</Link>
         <button type="submit" className="btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <Save size={18} /> Save plan
         </button>

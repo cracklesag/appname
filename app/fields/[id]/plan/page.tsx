@@ -11,7 +11,7 @@ export default async function PlanPage({ params, searchParams }: { params: { id:
   return (
     <div>
       <Header title="Edit cut plan" subtitle={field.name} backHref={searchParams.from || `/fields/${field.id}`} />
-      <EditPlanForm field={field} />
+      <EditPlanForm field={field} returnTo={searchParams.from} />
     </div>
   );
 }

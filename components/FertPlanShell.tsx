@@ -111,6 +111,9 @@ export function FertPlanShell({
   const [defaultRate, setDefaultRate] = useState<string>('');
   // Per-field overrides: fieldId -> { productId, rate } (rate as string).
   const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
+  // Per-field MANUAL granular override: fieldId -> { productId, rate }. Replaces
+  // the auto granular plan for that field and is not N-capped (user's call).
+  const [granularOverrides, setGranularOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // bag products switched off (never recommended), fields dropped from the
@@ -136,6 +139,7 @@ export function FertPlanShell({
         if (s.defaultOrganicId !== undefined) setDefaultOrganicId(s.defaultOrganicId);
         if (typeof s.defaultRate === 'string') setDefaultRate(s.defaultRate);
         if (s.overrides) setOverrides(s.overrides);
+        if (s.granularOverrides) setGranularOverrides(s.granularOverrides);
         if (Array.isArray(s.excludedProductIds)) setExcludedProductIds(s.excludedProductIds);
         if (Array.isArray(s.excludedFieldIds)) setExcludedFieldIds(s.excludedFieldIds);
         if (Array.isArray(s.slurryOffFieldIds)) setSlurryOffFieldIds(s.slurryOffFieldIds);
@@ -148,9 +152,9 @@ export function FertPlanShell({
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
   const planState: PlanState = useMemo(() => ({
-    defaultOrganicId, defaultRate, overrides,
+    defaultOrganicId, defaultRate, overrides, granularOverrides,
     excludedProductIds, excludedFieldIds, slurryOffFieldIds,
-  }), [defaultOrganicId, defaultRate, overrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
+  }), [defaultOrganicId, defaultRate, overrides, granularOverrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
 
   // Persist whenever the plan state changes (after the initial hydrate).
   useEffect(() => {
@@ -247,6 +251,20 @@ export function FertPlanShell({
   };
   const clearOverride = (id: string) => {
     setOverrides((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const setGranularOverride = (id: string, patch: Partial<{ productId: number | ''; rate: string }>) => {
+    setGranularOverrides((prev) => {
+      const cur = prev[id] ?? { productId: '' as number | '', rate: '' };
+      return { ...prev, [id]: { ...cur, ...patch } };
+    });
+  };
+  const clearGranularOverride = (id: string) => {
+    setGranularOverrides((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
@@ -438,6 +456,8 @@ export function FertPlanShell({
         const row = c.row;
         const isOpen = !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
+        const granOv = granularOverrides[row.id];
+        const hasGranOverride = !!granOv;
         const excluded = excludedFieldIds.includes(row.id);
         const slurryOff = slurryOffFieldIds.includes(row.id);
         const cutLabel = row.cutType === 'grazing' ? 'grazing'
@@ -698,6 +718,64 @@ export function FertPlanShell({
                   >
                     Reset to default
                   </button>
+                )}
+              </div>
+            )}
+
+            {/* Per-field MANUAL granular override (expand) — tweak the bag-fert
+                product/rate before the spread report. Not capped by N. */}
+            {isOpen && granular.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                  Granular for this field {hasGranOverride ? '(manual — overrides the auto plan)' : '(auto)'}
+                </div>
+                {!hasGranOverride ? (
+                  <button
+                    type="button"
+                    onClick={() => setGranularOverride(row.id, {
+                      productId: c.planProducts[0]?.productId ?? granular[0].id,
+                      rate: c.planProducts[0] ? String(c.planProducts[0].rateKgPerHa) : '',
+                    })}
+                    style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)' }}
+                  >
+                    Set a manual rate
+                  </button>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select
+                        className="select"
+                        value={granOv?.productId ?? ''}
+                        onChange={(e) => setGranularOverride(row.id, { productId: e.target.value === '' ? '' : Number(e.target.value) })}
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        <option value="">Choose…</option>
+                        {granular.map((gp) => <option key={gp.id} value={gp.id}>{gp.name}</option>)}
+                      </select>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        className="input"
+                        placeholder="rate"
+                        value={granOv?.rate ?? ''}
+                        onChange={(e) => setGranularOverride(row.id, { rate: e.target.value })}
+                        style={{ width: 84, textAlign: 'right' }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{nUnit}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.4 }}>
+                        Manual rate isn&apos;t capped by N — over-supply just shows on the bars.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => clearGranularOverride(row.id)}
+                        style={{ flexShrink: 0, fontSize: 12, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
+                      >
+                        Reset to auto
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             )}

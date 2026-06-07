@@ -373,3 +373,7 @@ a { color: inherit; text-decoration: none; }
   #swardly-splash { animation-duration: 1ms !important; }
   #swardly-splash-bar { animation-duration: 1ms !important; }
 }
+
+/* Hide the horizontal scrollbar on chip rows so it can't be mis-tapped (still swipes). */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

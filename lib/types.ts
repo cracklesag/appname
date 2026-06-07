@@ -47,7 +47,29 @@ export type ProductCategory =
  * Soil type categorisation, drives K target adjustment (light_sand) and
  * report flags (S risk, cold-clay N timing). Default 'medium_loam'.
  */
-export type SoilType = 'light_sand' | 'medium_loam' | 'heavy_clay' | 'deep_silt';
+export type SoilType = 'light_sand' | 'medium_loam' | 'heavy_clay' | 'deep_silt' | 'organic' | 'peaty';
+
+/** A committed soil sample (from the PDF import). Macro values are stored as
+ *  named columns; the full mineral/micronutrient panel lives in `extras`. */
+export interface SoilSample {
+  id: string;
+  user_id: string;
+  document_id: string | null;
+  sample_date: string | null;
+  lab_name: string | null;
+  lab_sample_ref: string | null;
+  lab_sample_label: string | null;
+  ph: number | null;
+  p_ppm: number | null;
+  p_index: number | null;
+  k_ppm: number | null;
+  k_index: number | null;
+  mg_ppm: number | null;
+  mg_index: number | null;
+  extras: Record<string, unknown>;
+  created_by: string | null;
+  created_at?: string;
+}
 
 /** Sward-management event logged against a field. */
 export type FieldEventType = 'reseed' | 'oversow' | 'plough';

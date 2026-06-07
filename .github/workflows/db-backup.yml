@@ -1,0 +1,72 @@
+name: Nightly database backup
+
+# Dumps the Supabase Postgres database every night and uploads it to a
+# Cloudflare R2 bucket (off-site, 3-2-1 backup).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL      Supabase **Session pooler** connection string (URI form,
+#                        includes the DB password). Settings -> Database ->
+#                        Connection string -> "Session pooler". MUST be the
+#                        session pooler (port 5432 on aws-0-...pooler.supabase.com),
+#                        NOT the direct host (IPv6-only, unreachable from CI) and
+#                        NOT the transaction pooler (port 6543, no pg_dump support).
+#   R2_ACCOUNT_ID        Your Cloudflare account ID.
+#   R2_BUCKET            The R2 bucket name to store backups in.
+#   R2_ACCESS_KEY_ID     R2 API token access key id.
+#   R2_SECRET_ACCESS_KEY R2 API token secret access key.
+#
+# Retention: set a lifecycle rule on the R2 bucket (e.g. delete objects after
+# 30 days) in the Cloudflare dashboard — simpler and safer than pruning here.
+
+on:
+  schedule:
+    - cron: '0 2 * * *'      # ~02:00 UTC nightly (≈2–3am UK)
+  workflow_dispatch: {}        # allow manual runs to test
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
+
+      - name: Dump database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d-%H%M%SZ)
+          mkdir -p out
+          # All farm/app data lives in the public schema — captured in a compressed
+          # custom-format dump (restore with: pg_restore -d <target> file.dump).
+          pg_dump "$DB_URL" --schema=public --no-owner --no-privileges -Fc -f "out/public-$STAMP.dump"
+          # Account identities (data only) so users can be remapped on restore.
+          # Non-fatal if permissions don't allow it — the public dump is the critical part.
+          pg_dump "$DB_URL" --data-only --no-owner -t auth.users -t auth.identities -f "out/auth-$STAMP.sql" || echo "auth dump skipped (permissions)"
+          tar -czf "swardly-backup-$STAMP.tar.gz" -C out .
+          echo "ARCHIVE=swardly-backup-$STAMP.tar.gz" >> "$GITHUB_ENV"
+          ls -lh "swardly-backup-$STAMP.tar.gz"
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          aws s3 cp "$ARCHIVE" "s3://${R2_BUCKET}/db/${ARCHIVE}" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          echo "Uploaded db/${ARCHIVE} to R2 bucket ${R2_BUCKET}"

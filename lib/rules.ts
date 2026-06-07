@@ -243,6 +243,8 @@ function limeSoilProfile(soil: SoilType | null): { category: rb209.LimeSoilCateg
     case 'light_sand':  return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.sands };
     case 'heavy_clay':  return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.clays };
     case 'deep_silt':   return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.loams };
+    case 'organic':     return { category: 'organic', factor: rb209.GRASS_LIMING_FACTOR.organic };
+    case 'peaty':       return { category: 'peaty',   factor: rb209.GRASS_LIMING_FACTOR.peaty };
     case 'medium_loam':
     default:            return { category: 'mineral', factor: rb209.GRASS_LIMING_FACTOR.loams };
   }
@@ -743,6 +745,8 @@ export const SOIL_TYPE_LABELS: Record<SoilType, string> = {
   medium_loam: 'Medium loam',
   heavy_clay: 'Heavy clay',
   deep_silt: 'Deep silt',
+  organic: 'Organic (high OM)',
+  peaty: 'Peaty / peat',
 };
 
 /** Short label (for tight UI spots like card subtitles). */
@@ -751,6 +755,8 @@ export const SOIL_TYPE_SHORT_LABELS: Record<SoilType, string> = {
   medium_loam: 'Medium loam',
   heavy_clay: 'Heavy clay',
   deep_silt: 'Deep silt',
+  organic: 'Organic',
+  peaty: 'Peaty',
 };
 
 /** Extra K₂O kg/ha per cut to bump the target on light sands. RB209-derived. */
@@ -1321,7 +1327,18 @@ export function planFieldFertiliser(
   let dN = 0, dP = 0, dK = 0;
   let usedCompound = false;
 
+  // N is a hard ceiling. Auto-sizing must never deliver more N than the field
+  // needs — chasing a P or K target with an N-rich compound (e.g. 25-5-5)
+  // would otherwise overshoot N badly. Any P/K left short is surfaced via the
+  // balances/bars; a manually entered rate can still exceed this.
+  const nCeiling = nToApply;
   const pushProduct = (p: Product, rate: number) => {
+    const npct = (p.n_pct ?? 0) / 100;
+    if (npct > 0) {
+      const nHeadroom = Math.max(0, nCeiling - dN);
+      rate = Math.min(rate, nHeadroom / npct);
+    }
+    if (rate <= 0) return;
     const gN = rate * (p.n_pct ?? 0) / 100;
     const gP = rate * (p.p2o5_pct ?? 0) / 100;
     const gK = rate * (p.k2o_pct ?? 0) / 100;
@@ -1349,19 +1366,29 @@ export function planFieldFertiliser(
     }
   }
 
-  // Strategy 2: straight P and K sources (only if the compound wasn't used).
-  if (!usedCompound) {
-    if (p2o5ToApply > 0) {
+  // Strategy 2: straight P/K sources cover any residual P/K — including what a
+  // compound couldn't deliver once the N ceiling capped its rate. Prefer
+  // N-free sources so they don't eat into (or breach) the N ceiling.
+  {
+    const preferNFree = (a: Product, b: Product, key: 'p2o5_pct' | 'k2o_pct') => {
+      const af = (a.n_pct ?? 0) === 0 ? 0 : 1;
+      const bf = (b.n_pct ?? 0) === 0 ? 0 : 1;
+      if (af !== bf) return af - bf;
+      return (b[key] ?? 0) - (a[key] ?? 0);
+    };
+    const pResid = p2o5ToApply - dP;
+    if (pResid > 0) {
       const pSource = [...granular]
         .filter((p) => (p.p2o5_pct ?? 0) > 0)
-        .sort((a, b) => (b.p2o5_pct ?? 0) - (a.p2o5_pct ?? 0))[0];
-      if (pSource) pushProduct(pSource, p2o5ToApply / (pSource.p2o5_pct! / 100));
+        .sort((a, b) => preferNFree(a, b, 'p2o5_pct'))[0];
+      if (pSource) pushProduct(pSource, pResid / (pSource.p2o5_pct! / 100));
     }
-    if (k2oToApply - dK > 0) {
+    const kResid = k2oToApply - dK;
+    if (kResid > 0) {
       const kSource = [...granular]
         .filter((p) => (p.k2o_pct ?? 0) > 0)
-        .sort((a, b) => (b.k2o_pct ?? 0) - (a.k2o_pct ?? 0))[0];
-      if (kSource) pushProduct(kSource, (k2oToApply - dK) / (kSource.k2o_pct! / 100));
+        .sort((a, b) => preferNFree(a, b, 'k2o_pct'))[0];
+      if (kSource) pushProduct(kSource, kResid / (kSource.k2o_pct! / 100));
     }
   }
 

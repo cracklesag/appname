@@ -4,6 +4,7 @@ import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskCo
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { ExportDataSection } from '@/components/ExportDataSection';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
+import { LegalLinksSection } from '@/components/LegalLinksSection';
 import { loadSettings } from '@/lib/data';
 import { createClient } from '@/lib/supabase/server';
 import { getFarmContext } from '@/lib/farm';
@@ -85,6 +86,7 @@ export default async function SettingsPage() {
           </div>
           <ExportDataSection />
           <DeleteAccountSection isAdmin={false} staffCount={0} farmName={s.farmName ?? null} />
+          <LegalLinksSection />
           <form action={signOut}>
             <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <LogOut size={16} /> Sign out
@@ -596,6 +598,7 @@ export default async function SettingsPage() {
         </div>
         <ExportDataSection />
         <DeleteAccountSection isAdmin staffCount={staffCount} farmName={s.farmName ?? null} />
+        <LegalLinksSection />
         <form action={signOut}>
           <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <LogOut size={16} /> Sign out

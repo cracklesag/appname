@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings, SoilSample } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -287,4 +287,17 @@ export async function loadAllApplicationAreas(): Promise<ApplicationArea[]> {
     .order('created_at', { ascending: true });
   if (error) return [];
   return (data || []) as ApplicationArea[];
+}
+
+
+export async function loadFieldSoilSamples(fieldId: string): Promise<SoilSample[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('get_field_soil_samples', { p_field_id: fieldId });
+  if (error) {
+    // Function may not be deployed yet — degrade to an empty history rather
+    // than throwing (the view shows a friendly empty state).
+    console.error('loadFieldSoilSamples:', error.message);
+    return [];
+  }
+  return (data ?? []) as SoilSample[];
 }

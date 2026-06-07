@@ -46,18 +46,14 @@ export default async function LogPage({
     redirect('/fields/new');
   }
 
-  // Build a map of the most recent application date per field per product
-  // type, so the form can warn about a likely double-entry (same field + same
-  // type within a few days). Only the latest date per (field,type) is needed.
-  const productTypeById = new Map(products.map((p) => [p.id, p.type]));
+  // Most recent application date per (field, product), so the form can warn
+  // about a likely double-entry — the SAME product re-logged on a field within
+  // a few days. Different products (CAN vs MOP) are distinct, not duplicates.
   const recentByField: Record<string, Record<string, string>> = {};
   for (const a of allApps) {
-    const t = productTypeById.get(a.product_id);
-    if (!t) continue;
-    const byType = (recentByField[a.field_id] ??= {});
-    if (!byType[t] || a.date_applied > byType[t]) {
-      byType[t] = a.date_applied;
-    }
+    const key = String(a.product_id);
+    const byProduct = (recentByField[a.field_id] ??= {});
+    if (!byProduct[key] || a.date_applied > byProduct[key]) byProduct[key] = a.date_applied;
   }
 
   const refField = fields[0];

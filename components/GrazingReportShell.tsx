@@ -28,7 +28,7 @@ import {
   sumNutrients,
 } from '@/lib/rules';
 import { meteredApps, fieldAreaHa } from '@/lib/partials';
-import { setGroupToGrazing } from '@/lib/actions';
+import { setGroupToGrazing, setFieldToGrazing } from '@/lib/actions';
 import { csvFilename, csvRow, downloadCsv } from '@/lib/csv';
 
 // =====================================================================
@@ -80,6 +80,7 @@ export function GrazingReportShell({
   const groupFilter = params.get('group') ?? 'all';
   const windowWeeks = clampWindowWeeks(parseInt(params.get('window') ?? '4', 10));
   const dueOnly = params.get('due') === '1';
+  const showLastApp = params.get('lastapp') !== '0';
 
   const cadenceKgN = settings.reportDefaults.grazingCadenceKgN;
   const cadenceWeeks = settings.reportDefaults.grazingCadenceWeeks;
@@ -87,7 +88,7 @@ export function GrazingReportShell({
   const cadenceDisp = Math.round(nutrientPerArea(cadenceKgN, settings.unitSystem));
 
   const writeUrl = useCallback(
-    (next: { group?: string; windowWeeks?: number; dueOnly?: boolean }) => {
+    (next: { group?: string; windowWeeks?: number; dueOnly?: boolean; showLastApp?: boolean }) => {
       const sp = new URLSearchParams(params.toString());
       if (next.group !== undefined) {
         if (next.group === 'all') sp.delete('group');
@@ -100,6 +101,10 @@ export function GrazingReportShell({
       if (next.dueOnly !== undefined) {
         if (next.dueOnly) sp.set('due', '1');
         else sp.delete('due');
+      }
+      if (next.showLastApp !== undefined) {
+        if (next.showLastApp) sp.delete('lastapp');
+        else sp.set('lastapp', '0');
       }
       router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     },
@@ -239,12 +244,33 @@ export function GrazingReportShell({
   // Group chip options (only show if user has groups).
   const groupChipOpts = groups.length === 0 ? null : (() => {
     const anyUngrouped = allGrazedStates.some((s) => !s.field.group_id);
+    // Groups that actually have grazing fields are most relevant here, so
+    // surface them first (stable sort keeps each bucket's original order).
+    const grazingGroupIds = new Set(
+      allGrazedStates.map((s) => s.field.group_id).filter(Boolean) as string[],
+    );
+    const sortedGroups = [...groups].sort(
+      (a, b) => (grazingGroupIds.has(a.id) ? 0 : 1) - (grazingGroupIds.has(b.id) ? 0 : 1),
+    );
     return [
       { value: 'all', label: 'All groups' },
-      ...groups.map((g) => ({ value: g.id, label: g.name })),
+      ...sortedGroups.map((g) => ({ value: g.id, label: g.name })),
       ...(anyUngrouped ? [{ value: 'unassigned', label: 'Ungrouped' }] : []),
     ];
   })();
+
+  // Fields in the selected group that aren't on a grazing plan (so aren't
+  // tracked for top-ups). Shown in a collapsible so every field in a group is
+  // visible, with a one-tap way to add each to grazing.
+  const otherGroupFields =
+    groupFilter === 'all' || groupFilter === 'unassigned'
+      ? []
+      : (() => {
+          const grazingIds = new Set(allGrazedStates.map((s) => s.field.id));
+          return fields.filter(
+            (f) => f.group_id === groupFilter && !f.needs_setup && !grazingIds.has(f.id),
+          );
+        })();
 
   // Copy + print.
   const [copied, setCopied] = useState(false);
@@ -254,6 +280,7 @@ export function GrazingReportShell({
   // maintenance grazing is deliberately left out of the rotation, so it
   // doesn't count as "missing".)
   const [grazeGroupId, setGrazeGroupId] = useState<string>('');
+  const [showOthers, setShowOthers] = useState(false);
   const nonGrazingByGroup = useMemo(() => {
     const out: { id: string; name: string; count: number; sample: string[] }[] = [];
     for (const g of groups) {
@@ -375,7 +402,7 @@ export function GrazingReportShell({
       {groupChipOpts && (
         <div style={{ marginBottom: 12 }}>
           <div className="label" style={{ marginBottom: 6 }}>Group</div>
-          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
+          <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10, WebkitOverflowScrolling: 'touch' }}>
             {groupChipOpts.map((o) => (
               <button
                 key={o.value}
@@ -414,6 +441,15 @@ export function GrazingReportShell({
               style={{ width: 16, height: 16 }}
             />
             <span style={{ color: 'var(--ink)' }}>Due / overdue only</span>
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showLastApp}
+              onChange={(e) => writeUrl({ showLastApp: e.target.checked })}
+              style={{ width: 16, height: 16 }}
+            />
+            <span style={{ color: 'var(--ink)' }}>Show last application</span>
           </label>
         </div>
       </div>
@@ -454,9 +490,42 @@ export function GrazingReportShell({
             state={s}
             settings={settings}
             cadenceKgN={cadenceKgN}
+            showLastApp={showLastApp}
             groupName={s.field.group_id ? (groups.find((g) => g.id === s.field.group_id)?.name ?? null) : null}
           />
         ))
+      )}
+
+      {/* Other fields in this group, not on a grazing plan */}
+      {otherGroupFields.length > 0 && (
+        <div className="card no-print" style={{ padding: 13, marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={() => setShowOthers((v) => !v)}
+            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ink)', padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span style={{ color: 'var(--muted)' }}>{showOthers ? '\u25be' : '\u25b8'}</span>
+            {otherGroupFields.length} more field{otherGroupFields.length === 1 ? '' : 's'} in this group, not on grazing
+          </button>
+          {showOthers && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 8 }}>
+                These are in this group but their cut plan isn&apos;t grazing, so they aren&apos;t tracked for top-ups. Add any to grazing:
+              </div>
+              {otherGroupFields.map((f) => (
+                <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid var(--line-soft)' }}>
+                  <span style={{ fontSize: 14, color: 'var(--ink)' }}>{f.name}</span>
+                  <form action={setFieldToGrazing}>
+                    <input type="hidden" name="field_id" value={f.id} />
+                    <button type="submit" style={{ flexShrink: 0, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                      Set to grazing
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Actions */}
@@ -508,7 +577,7 @@ export function GrazingReportShell({
 // ---- Card ------------------------------------------------------------
 
 function GrazingFieldCard({
-  state, settings, cadenceKgN, groupName,
+  state, settings, cadenceKgN, groupName, showLastApp,
 }: {
   state: {
     field: Field;
@@ -522,6 +591,7 @@ function GrazingFieldCard({
   settings: Settings;
   cadenceKgN: number;
   groupName: string | null;
+  showLastApp: boolean;
 }) {
   const { field: f, lastNApp, nextDueIso, daysToNextDue, seasonNApplied, nCap, status } = state;
   const area = displayFieldArea(f, settings.unitSystem);
@@ -566,6 +636,7 @@ function GrazingFieldCard({
       </div>
 
       {/* Last N application */}
+      {showLastApp && (
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
         {lastNApp ? (
           <>
@@ -577,6 +648,7 @@ function GrazingFieldCard({
           <>No N applied yet this season. Recommend applying now.</>
         )}
       </div>
+      )}
 
       {/* Recommended dose */}
       <div style={{

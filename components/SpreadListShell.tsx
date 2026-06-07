@@ -18,6 +18,7 @@ const DEFAULT_STATE: PlanState = {
   excludedProductIds: [],
   excludedFieldIds: [],
   slurryOffFieldIds: [],
+  granularOverrides: {},
 };
 
 export function SpreadListShell({

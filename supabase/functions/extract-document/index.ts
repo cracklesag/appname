@@ -83,7 +83,19 @@ For each page, extract these named fields where they appear:
                                 organic_matter_loi_pct, calcium_ppm, sulphur_ppm,
                                 manganese_ppm, copper_ppm, boron_ppm, zinc_ppm,
                                 molybdenum_ppm, iron_ppm, sodium_ppm,
-                                cec_meq_per_100g, and any others present.
+                                cec_meq_per_100g, soil_texture, and any others
+                                present. For soil_texture, capture any stated soil
+                                texture, textural class, or soil type verbatim
+                                (e.g. "Sandy loam", "Clay", "Loamy sand",
+                                "Organic", "Peat") — omit it if none is shown.
+                                Capture EVERY analyte printed with a value — the
+                                complete macro and micronutrient panel (Ca, Mg, S,
+                                Na, Mn, Cu, B, Zn, Mo, Fe, Co, Se), CEC, base
+                                saturation %, and organic matter — as snake_case
+                                keys. Keep the lab's unit in the key when it is not
+                                ppm (e.g. _pct, _mg_per_kg, _meq_per_100g,
+                                _percent_sat). Do not drop trace elements even when
+                                the value is low. Never invent a value not printed.
 
 Hard rules:
 

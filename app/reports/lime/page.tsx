@@ -54,6 +54,18 @@ export default async function LimeReportPage({
         }
       }
 
+      // Most recent lime application of any kind (date + the rate logged), so
+      // the report can show when this field was last limed and how much —
+      // regardless of whether it was before or after the soil sample.
+      let lastLime: { date: string; rate: number; unit: string } | null = null;
+      for (const a of applications) {
+        if (a.field_id !== f.id) continue;
+        if (!limeProductIds.has(a.product_id)) continue;
+        if (!lastLime || a.date_applied > lastLime.date) {
+          lastLime = { date: a.date_applied, rate: a.rate_value, unit: a.rate_unit };
+        }
+      }
+
       return {
         id: f.id,
         name: f.name,
@@ -66,6 +78,10 @@ export default async function LimeReportPage({
         sampleDate,
         limeSinceSample: limeSinceDate != null,
         limeSinceDate,
+        soilType: f.soil_type,
+        lastLimeDate: lastLime?.date ?? null,
+        lastLimeRate: lastLime?.rate ?? null,
+        lastLimeUnit: lastLime?.unit ?? null,
         ph: f.ph,
         mgIdx: f.mg_idx,
         targetPh: rec.targetPh,

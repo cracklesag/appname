@@ -281,6 +281,12 @@ export default async function FieldDetailPage({
                 </div>
               </div>
               {field.notes && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>{field.notes}</div>}
+              <Link
+                href={`/fields/${field.id}/soil-samples${subFrom}`}
+                style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: 'var(--forest)', fontWeight: 700, textDecoration: 'none' }}
+              >
+                Sample history &amp; micronutrients ›
+              </Link>
             </div>
           ) : (
             <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>

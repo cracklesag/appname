@@ -548,7 +548,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
           const editable = canEditEntry(a.created_by);
           const rowHref = editable
             ? `/fields/${f.id}/applications/${a.id}/edit?from=${encodeURIComponent(currentUrl)}`
-            : `/fields/${f.id}`;
+            : `/fields/${f.id}?from=${encodeURIComponent(currentUrl)}`;
 
           return (
             <Link

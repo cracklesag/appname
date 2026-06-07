@@ -184,6 +184,10 @@ export interface PlanState {
   excludedFieldIds: string[];
   /** Field ids where intended slurry is switched off (granular still plans). */
   slurryOffFieldIds: string[];
+  /** Per-field MANUAL granular override: fieldId -> { productId, rate }. When
+   *  set, this product+rate replaces the auto granular plan and is NOT capped
+   *  by N (a deliberate user choice). */
+  granularOverrides?: Record<string, { productId: number | ''; rate: string }>;
 }
 
 export interface PlannedField {
@@ -260,19 +264,44 @@ export function planField(
   let kAfter = Math.max(0, row.k2oToApply - slurryK);
   const nAfter = Math.max(0, row.nToApply - slurryN);
 
-  // Minimum-rate hold on the residual the granular plan would actually cover.
-  // Below the threshold it's too small to spread accurately — hold it (it
-  // stays owed and re-presents on a later cut as carryover depletes).
+  // Manual granular override: the user has fixed a bag-fert product + rate for
+  // this field, replacing the auto plan. A manual rate is deliberately NOT
+  // capped by N (it's the user's call) — any over-supply just shows on the bars.
+  const granOv = state.granularOverrides?.[row.id];
+  const granOvProduct = granOv && granOv.productId !== ''
+    ? granularAll.find((p) => p.id === granOv.productId)
+    : undefined;
+  const granOvRate = granOv ? parseFloat(granOv.rate) : NaN;
+  const useGranOverride = !!granOvProduct && Number.isFinite(granOvRate) && granOvRate > 0;
+
+  // Minimum-rate hold on the residual the auto granular plan would cover (only
+  // when not manually overridden). Below the threshold it's too small to spread
+  // accurately — hold it (it stays owed and re-presents on a later cut).
   const minP = settings.minSpreadP2O5KgPerHa;
   const minK = settings.minSpreadK2OKgPerHa;
-  const pHeld = pAfter > 0 && pAfter < minP;
-  const kHeld = kAfter > 0 && kAfter < minK;
+  const pHeld = !useGranOverride && pAfter > 0 && pAfter < minP;
+  const kHeld = !useGranOverride && kAfter > 0 && kAfter < minK;
   if (pHeld) pAfter = 0;
   if (kHeld) kAfter = 0;
 
   // Apply product on/off: excluded bag products can't be chosen by the planner.
   const granular = granularAll.filter((p) => !state.excludedProductIds.includes(p.id));
-  const plan = planFieldFertiliser(pAfter, kAfter, granular, nAfter);
+  const plan = useGranOverride
+    ? {
+        products: [{
+          productId: granOvProduct!.id,
+          productName: granOvProduct!.name,
+          rateKgPerHa: Math.round(granOvRate),
+          deliversN: Math.round(granOvRate * (granOvProduct!.n_pct ?? 0) / 100),
+          deliversP2O5: Math.round(granOvRate * (granOvProduct!.p2o5_pct ?? 0) / 100),
+          deliversK2O: Math.round(granOvRate * (granOvProduct!.k2o_pct ?? 0) / 100),
+        }],
+        nBalance: 0,
+        p2o5Balance: 0,
+        k2oBalance: 0,
+        note: 'Manual rate — set by you.',
+      }
+    : planFieldFertiliser(pAfter, kAfter, granular, nAfter);
 
   let granN = 0, granP = 0, granK = 0;
   const planProducts = plan

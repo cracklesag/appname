@@ -20,6 +20,7 @@ export interface SpreadMapField {
 const DEFAULT_STATE: PlanState = {
   defaultOrganicId: '', defaultRate: '', overrides: {},
   excludedProductIds: [], excludedFieldIds: [], slurryOffFieldIds: [],
+  granularOverrides: {},
 };
 
 // Three rate bands, light→heavy. Strong, satellite-readable colours.

@@ -8,6 +8,7 @@ import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
+import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 
 /**
  * Season start used for cut renumbering. Mirrors getSeasonStart() in
@@ -141,7 +142,9 @@ export async function saveApplication(formData: FormData) {
   revalidatePath(`/fields/${fieldId}/part-applications`);
   revalidatePath('/');
   revalidatePath('/activity');
-  redirect(`/fields/${fieldId}`);
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 /**
@@ -473,7 +476,7 @@ export async function saveSoil(formData: FormData) {
   // Soil type is optional on the form — if not present, leave the existing
   // value untouched (don't overwrite a saved value with the default).
   const rawSoilType = String(formData.get('soil_type') ?? '');
-  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
+  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt', 'organic', 'peaty'];
   const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : null;
   // Grass system — only set if the form sent a non-empty value. Same
   // approach as soil type lets older forms keep working.
@@ -527,7 +530,9 @@ export async function savePlan(formData: FormData) {
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
-  redirect(`/fields/${fieldId}`);
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : `/fields/${fieldId}`;
+  redirect(dest);
 }
 
 export async function saveSettings(formData: FormData) {
@@ -708,7 +713,7 @@ export async function createField(formData: FormData) {
   const rawGroupId = String(formData.get('group_id') ?? '').trim();
   const groupId: string | null = rawGroupId === '' ? null : rawGroupId;
   // Soil type — defaults to medium_loam if not provided.
-  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt'];
+  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt', 'organic', 'peaty'];
   const rawSoilType = String(formData.get('soil_type') ?? '');
   const soilType = VALID_SOIL_TYPES.includes(rawSoilType) ? rawSoilType : 'medium_loam';
   // Grass system — optional FK. Empty string or absence → look up the PRG
@@ -1205,6 +1210,41 @@ export async function commitDocumentDecisions(
   });
   if (rpcErr) {
     return { error: rpcErr.message };
+  }
+
+  // Best-effort: fill in soil type for linked existing fields that don't have
+  // one yet, inferred from the sample (organic-matter % and any stated soil
+  // texture). Never overrides an existing choice; failures are ignored since
+  // soil type can always be set on the lime page.
+  try {
+    const live = payload.decisions.filter((d) => d.decision !== 'rejected');
+    const ids = live.map((d) => d.extracted_sample_id).filter(Boolean);
+    if (ids.length > 0) {
+      const { data: exRows } = await supabase
+        .from('extracted_samples')
+        .select('id, extras')
+        .in('id', ids);
+      const extrasById = new Map<string, Record<string, unknown>>(
+        ((exRows ?? []) as { id: string; extras: Record<string, unknown> | null }[])
+          .map((r) => [r.id, r.extras ?? {}]),
+      );
+      for (const d of live) {
+        const suggested = suggestSoilTypeFromExtras(extrasById.get(d.extracted_sample_id));
+        if (!suggested) continue;
+        for (const link of d.field_links) {
+          if ('existing_field_id' in link && link.existing_field_id) {
+            await supabase
+              .from('fields')
+              .update({ soil_type: suggested, updated_at: new Date().toISOString() })
+              .eq('id', link.existing_field_id)
+              .eq('user_id', user.id)
+              .or('soil_type.is.null,soil_type.eq.medium_loam');
+          }
+        }
+      }
+    }
+  } catch {
+    /* best-effort — soil type can be set on the lime page */
   }
 
   // Best-effort: delete the PDF from Storage now that it's committed.
@@ -1934,6 +1974,38 @@ export async function setGroupToGrazing(formData: FormData) {
   revalidatePath('/settings/groups');
   revalidatePath(`/settings/groups/${groupId}`);
 }
+
+export async function setFieldToGrazing(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  await requireAdmin();
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field id is required');
+
+  const { data: fieldRow, error: fieldErr } = await supabase
+    .from('fields')
+    .select('id, cut_profile')
+    .eq('id', fieldId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (fieldErr || !fieldRow) throw new Error('Field not found or not yours');
+
+  const profile = Math.max(1, Number(fieldRow.cut_profile) || 1);
+  const plannedCuts: CutType[] = Array(profile).fill('grazing');
+  const { error } = await supabase
+    .from('fields')
+    .update({ cut_profile: profile, planned_cuts: plannedCuts, updated_at: new Date().toISOString() })
+    .eq('id', fieldId)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not update field: ${error.message}`);
+
+  revalidatePath('/');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/spreading');
+  revalidatePath(`/fields/${fieldId}`);
+}
 // =====================================================================
 //
 // Library has shared seeds (user_id NULL) shipped by migration plus
@@ -2443,4 +2515,29 @@ export async function redeemInvite(formData: FormData) {
   revalidatePath('/');
   revalidatePath('/settings');
   redirect('/?joined=1');
+}
+
+
+export async function setFieldSoilType(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  await requireAdmin();
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field id is required');
+  const raw = String(formData.get('soil_type') ?? '');
+  const VALID_SOIL_TYPES = ['light_sand', 'medium_loam', 'heavy_clay', 'deep_silt', 'organic', 'peaty'];
+  if (!VALID_SOIL_TYPES.includes(raw)) throw new Error('Invalid soil type');
+
+  const { error } = await supabase
+    .from('fields')
+    .update({ soil_type: raw, updated_at: new Date().toISOString() })
+    .eq('id', fieldId)
+    .eq('user_id', user.id);
+  if (error) throw new Error(`Could not update soil type: ${error.message}`);
+
+  revalidatePath('/reports/lime');
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
 }

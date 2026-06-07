@@ -3,6 +3,9 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Printer, Layers, AlertTriangle } from 'lucide-react';
+import { SoilType } from '@/lib/types';
+import { SOIL_TYPE_LABELS } from '@/lib/rules';
+import { setFieldSoilType } from '@/lib/actions';
 
 export interface LimeRow {
   id: string;
@@ -16,6 +19,10 @@ export interface LimeRow {
   sampleDate: string | null;
   limeSinceSample: boolean;
   limeSinceDate: string | null;
+  soilType: SoilType | null;
+  lastLimeDate: string | null;
+  lastLimeRate: number | null;
+  lastLimeUnit: string | null;
   ph: number | null;
   mgIdx: number | null;
   targetPh: number;
@@ -267,12 +274,42 @@ export function LimeReportShell({
                   {row.ph != null ? row.ph.toFixed(1) : '—'}
                 </span>
               </div>
-              <div style={{ fontSize: 10, color: MUTED, marginBottom: row.needsLime ? 9 : 0, paddingLeft: 30 }}>
+              <div style={{ fontSize: 10, color: MUTED, marginBottom: 2, paddingLeft: 30 }}>
                 target {row.targetPh.toFixed(1)}
                 {row.mgIdx != null && <> · Mg index {row.mgIdx.toFixed(1)}</>}
                 {' · '}
                 {row.sampleDate ? `sampled ${fmtDate(row.sampleDate)}` : (row.sampled ? 'sample date not recorded' : 'not sampled')}
               </div>
+
+              {/* Inline soil-type editor — set or correct it here (easy to skip at
+                  field setup); the lime rate and target pH update on change. */}
+              <form action={setFieldSoilType} style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 30, marginBottom: 2 }}>
+                <input type="hidden" name="field_id" value={row.id} />
+                <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>Soil type</span>
+                <select
+                  name="soil_type"
+                  defaultValue={row.soilType ?? ''}
+                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink)', maxWidth: 190 }}
+                >
+                  <option value="" disabled>Choose…</option>
+                  {(Object.entries(SOIL_TYPE_LABELS) as [string, string][]).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </form>
+
+              {/* Last time lime was actually spread here — date + the rate logged. */}
+              {row.lastLimeDate ? (
+                <div style={{ fontSize: 10, color: MUTED, paddingLeft: 30, marginBottom: row.needsLime ? 9 : 0 }}>
+                  Last limed <strong style={{ color: 'var(--ink)' }}>{fmtDate(row.lastLimeDate)}</strong>
+                  {row.lastLimeRate != null && <> · {row.lastLimeRate} {row.lastLimeUnit}</>}
+                </div>
+              ) : (
+                <div style={{ fontSize: 10, color: MUTED, paddingLeft: 30, marginBottom: row.needsLime ? 9 : 0 }}>
+                  No lime application logged.
+                </div>
+              )}
 
               {row.limeSinceSample && (
                 <div style={{
@@ -311,11 +348,13 @@ export function LimeReportShell({
 
         <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.5, marginTop: 14 }}>
           Grassland liming for a 15 cm soil depth, ground limestone (NV 50–55). Rate =
-          (target − measured pH) × soil liming factor. Grassland is capped at 7.5 t/ha per dressing,
-          so larger requirements split across years. Magnesian (dolomitic) lime is recommended where
-          soil magnesium is Index 0–1; calcium lime otherwise. Fields above pH 7 aren&apos;t limed
-          (trace-element lock-up). An estimate — sense-check against a current soil report and adjust
-          for stony ground.
+          (target − measured pH) × the <strong>soil-type liming factor</strong>, so a sandier field
+          needs less and a heavier one more for the same pH gap; the target pH also follows soil type.
+          Grassland is capped at 7.5 t/ha per dressing, so larger requirements split across years.
+          Magnesian (dolomitic) lime is recommended where soil magnesium is Index 0–1; calcium lime
+          otherwise. Fields above pH 7 aren&apos;t limed (trace-element lock-up). These are estimates —
+          always confirm against a current soil analysis and take FACTS-qualified agronomic advice
+          before applying.
         </p>
       </div>
     </div>

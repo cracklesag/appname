@@ -25,21 +25,20 @@ export default async function LogApplicationPage({
     : undefined;
   const backHref = searchParams.from || `/fields/${field.id}`;
 
-  // Latest application date per (field, product type) so the form can warn about
-  // a likely duplicate (same field + same type within a week).
-  const productTypeById = new Map(products.map((p) => [p.id, p.type]));
+  // Latest application date per (field, product) so the form can warn about a
+  // likely duplicate — the SAME product re-logged on a field within a week.
+  // Different products (e.g. CAN then MOP) are distinct applications, not dupes.
   const recentByField: Record<string, Record<string, string>> = {};
   for (const a of allApps) {
-    const t = productTypeById.get(a.product_id);
-    if (!t) continue;
-    const byType = (recentByField[a.field_id] ??= {});
-    if (!byType[t] || a.date_applied > byType[t]) byType[t] = a.date_applied;
+    const key = String(a.product_id);
+    const byProduct = (recentByField[a.field_id] ??= {});
+    if (!byProduct[key] || a.date_applied > byProduct[key]) byProduct[key] = a.date_applied;
   }
 
   return (
     <div>
       <Header title="Log application" subtitle={field.name} backHref={backHref} />
-      <LogApplicationForm field={field} products={products} settings={settings} initialType={initialType} usage={usage} recentByField={recentByField} />
+      <LogApplicationForm field={field} products={products} settings={settings} initialType={initialType} usage={usage} recentByField={recentByField} returnTo={searchParams.from} />
     </div>
   );
 }

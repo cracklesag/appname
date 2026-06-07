@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +26,10 @@ export default function SignupPage() {
       setError('Please enter a valid email address');
       return;
     }
+    if (!agreed) {
+      setError('Please accept the Terms of Service and Privacy Policy to continue');
+      return;
+    }
 
     setLoading(true);
     const supabase = createClient();
@@ -32,7 +37,10 @@ export default function SignupPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${origin}/auth/callback` },
+      options: {
+        emailRedirectTo: `${origin}/auth/callback`,
+        data: { terms_accepted_at: new Date().toISOString() },
+      },
     });
 
     if (error) {
@@ -132,11 +140,26 @@ export default function SignupPage() {
           </div>
         )}
 
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            style={{ marginTop: 2, width: 18, height: 18, flexShrink: 0 }}
+          />
+          <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>
+            I agree to the{' '}
+            <Link href="/terms" target="_blank" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline' }}>Terms of Service</Link>
+            {' '}and{' '}
+            <Link href="/privacy" target="_blank" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline' }}>Privacy Policy</Link>.
+          </span>
+        </label>
+
         <button
           type="submit"
           className="btn-primary"
           style={{ width: '100%' }}
-          disabled={loading}
+          disabled={loading || !agreed}
         >
           {loading ? 'Creating account…' : 'Create account'}
         </button>
