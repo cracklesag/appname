@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical } from 'lucide-react';
+import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical, ListChecks } from 'lucide-react';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { ExportDataSection } from '@/components/ExportDataSection';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
@@ -95,6 +95,20 @@ export default async function SettingsPage() {
         </div>
       ) : (
       <>
+      {/* Setup guide — revisit the home checklist */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <Link href="/?setup=1" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <ListChecks size={18} style={{ color: 'var(--forest)' }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Setup guide</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Revisit the getting-started steps</div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </Link>
+      </div>
+
       {/* Team — admin only */}
       <div style={{ padding: '14px 16px 0' }}>
         <Link href="/settings/team" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>

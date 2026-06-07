@@ -86,7 +86,7 @@ export default function ImportPage() {
             value={docType}
             onChange={(e) => setDocType(e.target.value)}
           >
-            <option value="soil_report">Soil sample report (Lancrop / Yara)</option>
+            <option value="soil_report">Soil sample report</option>
             {/* Future: NMP, fertiliser invoice, slurry analysis */}
           </select>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontStyle: 'italic' }}>

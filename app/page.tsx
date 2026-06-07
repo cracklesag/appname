@@ -15,10 +15,12 @@ import {
   getSeasonLabel,
 } from '@/lib/rules';
 import { getFarmContext } from '@/lib/farm';
+import { loadMapSettings } from '@/lib/map-data';
+import { SetupChecklist } from '@/components/SetupChecklist';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: { setup?: string } }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
@@ -31,6 +33,14 @@ export default async function HomePage() {
 
   const farmCtx = await getFarmContext();
   const isAdmin = farmCtx?.isAdmin ?? true;
+
+  const mapSettings = await loadMapSettings();
+  const fieldsWithSoil = fields.filter(
+    (f) => f.ph != null || f.p_idx != null || f.k_idx != null || f.mg_idx != null,
+  ).length;
+  const setupComplete = fields.length > 0 && fieldsWithSoil > 0 && products.length > 0;
+  const forcedSetup = searchParams?.setup === '1';
+  const showSetup = isAdmin && (!setupComplete || forcedSetup);
 
   const seasonLabel = getSeasonLabel();
 
@@ -111,15 +121,19 @@ export default async function HomePage() {
       </div>
 
       <div style={{ padding: '14px 16px' }}>
-        {!hasFields && (
-          <div className="card" style={{ padding: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 14 }}>
-              No fields yet. Add your first to get started.
-            </div>
-            <Link href="/fields/new" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
-              <Plus size={16} /> Add field
-            </Link>
-          </div>
+        {showSetup && (
+          <SetupChecklist
+            onboarded={settings.onboarded}
+            farmName={settings.farmName ?? null}
+            unitsLabel={settings.unitSystem === 'acres' ? 'Acres' : 'Hectares'}
+            hasFields={hasFields}
+            fieldsTotal={fields.length}
+            fieldsWithSoil={fieldsWithSoil}
+            productCount={products.length}
+            sbi={mapSettings?.sbi ?? null}
+            licenceAccepted={!!mapSettings?.os_licence_accepted_at}
+            defaultOpen={forcedSetup}
+          />
         )}
 
         {hasFields && (

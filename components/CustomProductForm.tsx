@@ -94,6 +94,11 @@ export function CustomProductForm({
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label" style={{ marginBottom: 4 }}>Nutrient values</div>
             {unitsLabel && <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>{unitsLabel}</div>}
+            {(type === 'slurry' || type === 'solid_manure') && (
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.45, marginBottom: 10 }}>
+                Enter the figures from your own {type === 'slurry' ? 'slurry' : 'manure'} analysis if you have one. Leave blank anything you do not have, and use the placeholders as typical guides.
+              </div>
+            )}
 
             {type === 'bag_fert' && (
               <>

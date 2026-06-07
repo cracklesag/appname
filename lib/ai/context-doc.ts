@@ -200,7 +200,7 @@ Day-counts are set in **Settings → Timing prompts**.
 
 ## Document import (existing AI feature)
 
-**Import a document** (\`/import\`, admin) uploads a **soil-report PDF** (built for Lancrop / Yara Megalab reports; PDF only, up to 20 MB). A background worker extracts the per-sample values (pH, P/K/Mg ppm and index, etc.); status moves queued → processing → ready for review → committed (or failed, which can be retried; or discarded). The user **reviews** each extracted sample, accepts/edits/rejects it and matches it to a field (the UI can split composite labels like "Top and Bottom Field"), then **commits**, which writes the soil values onto the fields. The screen polls while processing.
+**Import a document** (\`/import\`, admin) uploads a **soil-report PDF** (PDF only, up to 20 MB). A background worker extracts the per-sample values (pH, P/K/Mg ppm and index, etc.); status moves queued → processing → ready for review → committed (or failed, which can be retried; or discarded). The user **reviews** each extracted sample, accepts/edits/rejects it and matches it to a field (the UI can split composite labels like "Top and Bottom Field"), then **commits**, which writes the soil values onto the fields. The screen polls while processing.
 
 The uploaded **PDF is not stored long-term** — it is scanned to extract the data and deleted once the user confirms; the extracted values stay in the account. This is a separate feature from the chat assistant; if a user asks about importing soil reports, point them here.
 

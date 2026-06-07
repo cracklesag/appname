@@ -9,6 +9,7 @@ import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } fro
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
+import { STARTER_PRODUCTS } from '@/lib/starter-products';
 
 /**
  * Season start used for cut renumbering. Mirrors getSeasonStart() in
@@ -2540,4 +2541,52 @@ export async function setFieldSoilType(formData: FormData) {
   revalidatePath('/reports/lime');
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
+}
+
+export async function seedStarterProducts() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  await requireAdmin();
+
+  const { data: existing } = await supabase
+    .from('products')
+    .select('name')
+    .eq('user_id', user.id);
+  const have = new Set((existing ?? []).map((r: { name: string }) => String(r.name).trim().toLowerCase()));
+
+  const rows = STARTER_PRODUCTS
+    .filter((p) => !have.has(p.name.trim().toLowerCase()))
+    .map((p, i) => ({
+      user_id: user.id,
+      name: p.name,
+      type: p.type,
+      category: p.category,
+      sort_order: 900 + i,
+      dm_pct: p.dm_pct ?? null,
+      form: p.form ?? (p.type === 'bag_fert' ? 'granular' : null),
+      n_pct: p.n_pct ?? null,
+      p2o5_pct: p.p2o5_pct ?? null,
+      k2o_pct: p.k2o_pct ?? null,
+      s_pct: p.s_pct ?? null,
+      n_kg_per_m3: p.n_kg_per_m3 ?? null,
+      p2o5_kg_per_m3: p.p2o5_kg_per_m3 ?? null,
+      k2o_kg_per_m3: p.k2o_kg_per_m3 ?? null,
+      so3_kg_per_m3: p.so3_kg_per_m3 ?? null,
+      mgo_kg_per_m3: p.mgo_kg_per_m3 ?? null,
+      n_kg_per_t: p.n_kg_per_t ?? null,
+      p2o5_kg_per_t: p.p2o5_kg_per_t ?? null,
+      k2o_kg_per_t: p.k2o_kg_per_t ?? null,
+      so3_kg_per_t: p.so3_kg_per_t ?? null,
+      mgo_kg_per_t: p.mgo_kg_per_t ?? null,
+    }));
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from('products').insert(rows);
+    if (error) throw new Error(`Could not add starter products: ${error.message}`);
+  }
+
+  revalidatePath('/products');
+  revalidatePath('/');
+  revalidatePath('/', 'layout');
 }

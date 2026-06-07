@@ -6,6 +6,7 @@ import { Header } from '@/components/Header';
 import { ProductPill } from '@/components/ProductPill';
 import { Product } from '@/lib/types';
 import { DeleteProductButton } from '@/components/DeleteProductButton';
+import { seedStarterProducts } from '@/lib/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,18 +51,30 @@ export default async function ProductsPage({
           Products you've added on top of the built-in catalogue. These appear in the picker when logging an application.
         </div>
 
+        {products.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.45, marginBottom: 12 }}>
+            Tip: slurry and FYM values are starting defaults. To match your own analysis, add your slurry from your sheet and remove the default if it is not needed.
+          </div>
+        )}
+
         {products.length === 0 ? (
           <div className="card" style={{ padding: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 14, color: 'var(--ink-soft)', marginBottom: 12 }}>
-              No custom products yet.
+              No custom products yet. Add the common UK set to get started, then edit to match what you buy.
             </div>
-            <Link
-              href="/products/new"
-              className="btn-primary"
-              style={{ padding: '10px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
-            >
-              <Plus size={14} /> Add your first
-            </Link>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <form action={seedStarterProducts}>
+                <button type="submit" className="btn-primary" style={{ padding: '10px 14px', fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                  Add common products
+                </button>
+              </form>
+              <Link
+                href="/products/new"
+                style={{ padding: '10px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card)', color: 'var(--ink-soft)', fontWeight: 700 }}
+              >
+                <Plus size={14} /> Add my own
+              </Link>
+            </div>
           </div>
         ) : (
           products.map((p) => <ProductRow key={p.id} product={p} />)
