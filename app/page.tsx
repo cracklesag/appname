@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, ChevronRight, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles } from 'lucide-react';
+import { Plus, FileUp, Calendar, ChevronRight, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -206,6 +206,10 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
               <Link href="/crops?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Wheat size={21} style={{ color: '#b8902f' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Crop guide</span>
+              </Link>
+              <Link href="/spray" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <SprayCan size={21} style={{ color: '#7a6cb5' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spray records</span>
               </Link>
               <Link href="/map" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <MapIcon size={21} style={{ color: '#2f7d6a' }} />

@@ -20,6 +20,8 @@ interface Props {
   productName: string;
   /** kg K₂O per hectare this application delivers (for the loading preview). */
   k2oPerHa: number;
+  /** Hide the K₂O loading preview (e.g. for non-fertiliser uses like spray). Defaults to showing it. */
+  showLoading?: boolean;
   /** Field area unit for the area readout. */
   unitSystem: 'acres' | 'hectares';
   onCancel: () => void;
@@ -29,7 +31,7 @@ interface Props {
 interface Pt { x: number; y: number; }
 
 export default function PartApplicationDraw({
-  boundary, productName, k2oPerHa, unitSystem, onCancel, onDone,
+  boundary, productName, k2oPerHa, unitSystem, onCancel, onDone, showLoading = true,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 360, h: 440 });
@@ -225,10 +227,12 @@ export default function PartApplicationDraw({
               <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Area drawn</div>
               <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{areaLabel}</div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>K₂O loading</div>
-              <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--forest-dark)' }}>~{kPerAc} <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg/ac</span></div>
-            </div>
+            {showLoading && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>K₂O loading</div>
+                <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--forest-dark)' }}>~{kPerAc} <span style={{ fontSize: 12, color: 'var(--muted)' }}>kg/ac</span></div>
+              </div>
+            )}
             <button
               type="button" onClick={clear}
               style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '7px 10px', fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}

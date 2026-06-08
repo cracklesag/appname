@@ -81,6 +81,12 @@ export const ASSISTANT_TOOLS: AnthropicTool[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_grazing_schedule',
+    description:
+      "The rotational-grazing nitrogen top-up schedule — the SAME computation as the app's Grazing top-up report. For ANY question about which grazing fields need nitrogen, when N was last applied to a grazing field, or when the next dose is due, use THIS tool. Do NOT derive grazing timing from get_recent_applications: that list is capped at the newest rows and will miss older dressings, giving false 'none on record' results, and it requires hand-computed dates. Returns, per grazing field (soonest-due first): area, last N date and rate, next-due date, days until due, and a status of overdue / due now / upcoming / awaiting first dose, plus the cadence in use. Only fields heading for rotational grazing are included.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'submit_feature_request',
     description:
       "File a feature request to the developer. ONLY call this after the user has explicitly agreed to send one, and only for something the app genuinely cannot do. Do not promise delivery.",

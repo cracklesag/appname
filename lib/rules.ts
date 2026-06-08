@@ -571,6 +571,47 @@ export function nAvailability(
 
 // ---- Per-application NPK delivered -------------------------------
 
+/**
+ * Resolve a product's values as of a given application date using its dated
+ * analysis history. Picks the version whose effective_from is the latest date
+ * on or before `dateIso`; if the date predates every version, uses the earliest
+ * version; if the product has no history, returns it unchanged. Identity fields
+ * (id, name, type, category) are preserved — only nutrient/dm/form/density vary.
+ */
+export function effectiveProductOn(product: Product, dateIso: string): Product {
+  const versions = product.analyses;
+  if (!versions || versions.length === 0) return product;
+  const d = dateIso.slice(0, 10);
+  const sorted = versions.length === 1
+    ? versions
+    : [...versions].sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+  let chosen = sorted[0];
+  for (const v of sorted) {
+    if (v.effective_from <= d) chosen = v;
+    else break;
+  }
+  return {
+    ...product,
+    dm_pct: chosen.dm_pct,
+    form: chosen.form,
+    density_kg_per_l: chosen.density_kg_per_l,
+    n_pct: chosen.n_pct,
+    p2o5_pct: chosen.p2o5_pct,
+    k2o_pct: chosen.k2o_pct,
+    s_pct: chosen.s_pct,
+    n_kg_per_m3: chosen.n_kg_per_m3,
+    p2o5_kg_per_m3: chosen.p2o5_kg_per_m3,
+    k2o_kg_per_m3: chosen.k2o_kg_per_m3,
+    so3_kg_per_m3: chosen.so3_kg_per_m3,
+    mgo_kg_per_m3: chosen.mgo_kg_per_m3,
+    n_kg_per_t: chosen.n_kg_per_t,
+    p2o5_kg_per_t: chosen.p2o5_kg_per_t,
+    k2o_kg_per_t: chosen.k2o_kg_per_t,
+    so3_kg_per_t: chosen.so3_kg_per_t,
+    mgo_kg_per_t: chosen.mgo_kg_per_t,
+  };
+}
+
 export function calcNutrients(
   product: Product | undefined,
   rateValue: number,
@@ -579,6 +620,10 @@ export function calcNutrients(
   method: ApplicationMethod | null
 ): { nPerHa: number; p2o5PerHa: number; k2oPerHa: number; so3PerHa: number; mgoPerHa: number; nNote: string; availFactor?: number } {
   if (!product || !rateValue) return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, so3PerHa: 0, mgoPerHa: 0, nNote: '' };
+
+  // Value the application using the product's analysis as it stood on the
+  // application date (no-op when the product has no dated history).
+  product = effectiveProductOn(product, dateApplied);
 
   if (product.type === 'lime') {
     return { nPerHa: 0, p2o5PerHa: 0, k2oPerHa: 0, so3PerHa: 0, mgoPerHa: 0, nNote: 'pH amendment' };
@@ -1557,8 +1602,9 @@ function nitrogenAppliedSince(
     if (a.date_applied < sinceIso) return false;
     const p = byId.get(a.product_id);
     if (!p) return false;
+    const ep = effectiveProductOn(p, a.date_applied);
     const n =
-      (p.n_pct ?? 0) || (p.n_kg_per_m3 ?? 0) || (p.n_kg_per_t ?? 0);
+      (ep.n_pct ?? 0) || (ep.n_kg_per_m3 ?? 0) || (ep.n_kg_per_t ?? 0);
     return n > 0;
   });
 }

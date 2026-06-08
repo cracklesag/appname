@@ -1,11 +1,47 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, Settings, SoilSample } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
   const { data, error } = await supabase.from('products').select('*').order('id');
   if (error) throw error;
-  return data as Product[];
+  const products = (data as Product[]) ?? [];
+
+  // Attach dated analysis history so each application can be valued using the
+  // version effective on its date (see lib/rules.ts:effectiveProductOn).
+  const { data: analyses } = await supabase
+    .from('product_analyses')
+    .select('*')
+    .order('effective_from', { ascending: true });
+  if (analyses && analyses.length) {
+    const byProduct = new Map<number, ProductAnalysis[]>();
+    for (const a of analyses as ProductAnalysis[]) {
+      const list = byProduct.get(a.product_id);
+      if (list) list.push(a);
+      else byProduct.set(a.product_id, [a]);
+    }
+    for (const p of products) {
+      const list = byProduct.get(p.id);
+      if (list) p.analyses = list;
+    }
+  }
+  return products;
+}
+
+export async function loadProduct(id: number): Promise<Product | null> {
+  const supabase = createClient();
+  const { data } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
+  return (data as Product | null) ?? null;
+}
+
+export async function loadProductAnalyses(productId: number): Promise<ProductAnalysis[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('product_analyses')
+    .select('*')
+    .eq('product_id', productId)
+    .order('effective_from', { ascending: false });
+  return (data as ProductAnalysis[]) ?? [];
 }
 
 export async function loadFields(): Promise<Field[]> {
@@ -300,4 +336,29 @@ export async function loadFieldSoilSamples(fieldId: string): Promise<SoilSample[
     return [];
   }
   return (data ?? []) as SoilSample[];
+}
+
+
+export async function loadSprayRecords(): Promise<SprayRecord[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('spray_records')
+    .select('*')
+    .order('date_applied', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) {
+    // Table may not exist yet (migration not run) — degrade gracefully.
+    return [];
+  }
+  return (data as SprayRecord[]) ?? [];
+}
+
+export async function loadSprayRecordsForField(fieldId: string): Promise<SprayRecord[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('spray_records')
+    .select('*')
+    .eq('field_id', fieldId)
+    .order('date_applied', { ascending: false });
+  return (data as SprayRecord[]) ?? [];
 }

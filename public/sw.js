@@ -1,8 +1,13 @@
 // Minimal PWA service worker.
-// MVP1: cache static assets so the app launches when offline.
-// Data sync (queue writes when offline) is MVP2.
+// - Static icons/manifest: precached so the app launches when offline.
+// - Build assets (/_next/static/, content-hashed + immutable): cache-first, so
+//   navigating between pages doesn't re-download the same JS/CSS over a weak
+//   signal. New deploys ship new filenames, so this never serves stale code.
+// - Everything else (HTML documents, RSC data payloads): network-first, falling
+//   back to cache only when offline — so logged farm data is always fresh.
+// Data sync (queue writes when offline) is a later milestone.
 
-const CACHE_NAME = 'app-shell-v2';
+const CACHE_NAME = 'app-shell-v3';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -25,23 +30,44 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function putInCache(req, res) {
+  // Only cache complete, successful, basic (same-origin) responses.
+  if (!res || res.status !== 200 || res.type === 'opaque') return;
+  const copy = res.clone();
+  caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  // Only handle GET
   if (req.method !== 'GET') return;
-  // Don't try to cache API calls / Supabase requests
+
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) return; // never touch Supabase/3rd-party
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
+  // Immutable, content-hashed build assets + icons → cache-first.
+  const isImmutable =
+    url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/');
+  if (isImmutable) {
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        if (cached) return cached;
+        return fetch(req).then((res) => {
+          putInCache(req, res);
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  // Everything else → network-first, cache fallback when offline.
   event.respondWith(
-    fetch(req).then((res) => {
-      // Update cache for static assets in the background
-      if (STATIC_ASSETS.includes(url.pathname) || url.pathname.startsWith('/icons/')) {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((c) => c.put(req, copy));
-      }
-      return res;
-    }).catch(() => caches.match(req).then((cached) => cached || caches.match('/')))
+    fetch(req)
+      .then((res) => {
+        if (STATIC_ASSETS.includes(url.pathname)) putInCache(req, res);
+        return res;
+      })
+      .catch(() => caches.match(req).then((cached) => cached || caches.match('/')))
   );
 });

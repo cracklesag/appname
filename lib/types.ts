@@ -242,6 +242,34 @@ export interface Product {
   k2o_kg_per_t: number | null;
   so3_kg_per_t: number | null;
   mgo_kg_per_t: number | null;
+  /** Dated analysis history (newest-or-any order). When present, an application
+   *  is valued using the version effective on its date rather than these base
+   *  values. Base columns above mirror the most-recent version. */
+  analyses?: ProductAnalysis[];
+}
+
+/** One dated version of a product's analysis. See lib/rules.ts:effectiveProductOn. */
+export interface ProductAnalysis {
+  id: string;
+  product_id: number;
+  effective_from: string; // 'YYYY-MM-DD'
+  dm_pct: number | null;
+  form: 'granular' | 'liquid' | null;
+  density_kg_per_l: number | null;
+  n_pct: number | null;
+  p2o5_pct: number | null;
+  k2o_pct: number | null;
+  s_pct: number | null;
+  n_kg_per_m3: number | null;
+  p2o5_kg_per_m3: number | null;
+  k2o_kg_per_m3: number | null;
+  so3_kg_per_m3: number | null;
+  mgo_kg_per_m3: number | null;
+  n_kg_per_t: number | null;
+  p2o5_kg_per_t: number | null;
+  k2o_kg_per_t: number | null;
+  so3_kg_per_t: number | null;
+  mgo_kg_per_t: number | null;
 }
 
 export interface Application {
@@ -531,4 +559,27 @@ export interface ExtractedSample {
   committed_sample_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A plant-protection (spray) record. Separate from Application — never enters
+ *  nutrient calculations. Optional drawn sprayed area (coverage = 'partial'). */
+export interface SprayRecord {
+  id: string;
+  field_id: string;
+  user_id: string;
+  created_by: string | null;
+  date_applied: string;
+  product_name: string;
+  product_litres: number | null;
+  water_l_per_ha: number | null;
+  area_ha: number | null;
+  coverage: 'whole' | 'partial';
+  polygon: unknown | null;
+  wind_dir: string | null;
+  wind_speed_mph: number | null;
+  temp_c: number | null;
+  weather_note: string | null;
+  targets: string[] | null;
+  notes: string | null;
+  created_at: string;
 }

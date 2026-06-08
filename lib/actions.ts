@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/admin';
 import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
-import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit } from '@/lib/types';
+import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit, Product, ProductAnalysis } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
@@ -2589,4 +2589,247 @@ export async function seedStarterProducts() {
   revalidatePath('/products');
   revalidatePath('/');
   revalidatePath('/', 'layout');
+}
+
+// ---------------------------------------------------------------------------
+// Editing a custom product: write a new dated analysis version (backdatable)
+// so past applications keep the values they were spread with, while the
+// product's base values move to the most-recent version for future plans.
+// ---------------------------------------------------------------------------
+function analysisFieldsFromProduct(p: Product) {
+  return {
+    dm_pct: p.dm_pct, form: p.form, density_kg_per_l: p.density_kg_per_l,
+    n_pct: p.n_pct, p2o5_pct: p.p2o5_pct, k2o_pct: p.k2o_pct, s_pct: p.s_pct,
+    n_kg_per_m3: p.n_kg_per_m3, p2o5_kg_per_m3: p.p2o5_kg_per_m3, k2o_kg_per_m3: p.k2o_kg_per_m3,
+    so3_kg_per_m3: p.so3_kg_per_m3, mgo_kg_per_m3: p.mgo_kg_per_m3,
+    n_kg_per_t: p.n_kg_per_t, p2o5_kg_per_t: p.p2o5_kg_per_t, k2o_kg_per_t: p.k2o_kg_per_t,
+    so3_kg_per_t: p.so3_kg_per_t, mgo_kg_per_t: p.mgo_kg_per_t,
+  };
+}
+function analysisFieldsFromVersion(a: ProductAnalysis) {
+  return {
+    dm_pct: a.dm_pct, form: a.form, density_kg_per_l: a.density_kg_per_l,
+    n_pct: a.n_pct, p2o5_pct: a.p2o5_pct, k2o_pct: a.k2o_pct, s_pct: a.s_pct,
+    n_kg_per_m3: a.n_kg_per_m3, p2o5_kg_per_m3: a.p2o5_kg_per_m3, k2o_kg_per_m3: a.k2o_kg_per_m3,
+    so3_kg_per_m3: a.so3_kg_per_m3, mgo_kg_per_m3: a.mgo_kg_per_m3,
+    n_kg_per_t: a.n_kg_per_t, p2o5_kg_per_t: a.p2o5_kg_per_t, k2o_kg_per_t: a.k2o_kg_per_t,
+    so3_kg_per_t: a.so3_kg_per_t, mgo_kg_per_t: a.mgo_kg_per_t,
+  };
+}
+
+export async function updateCustomProduct(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  await requireAdmin();
+
+  const id = parseInt(String(formData.get('product_id')), 10);
+  if (!Number.isFinite(id)) throw new Error('Invalid product id');
+
+  const { data: existing } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
+  if (!existing) throw new Error('Product not found');
+  const ex = existing as Product;
+
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) throw new Error('Name is required');
+
+  const returnTo = String(formData.get('return_to') ?? '/products');
+  const type = ex.type; // type is fixed once a product exists
+
+  // Lime carries no nutrient values — allow a rename only, no analysis version.
+  if (type === 'lime') {
+    const { error } = await supabase.from('products').update({ name }).eq('id', id);
+    if (error) throw new Error(`Could not save product: ${error.message}`);
+    revalidatePath('/products'); revalidatePath('/'); revalidatePath('/', 'layout');
+    redirect(returnTo);
+  }
+
+  // Effective date of the new version (backdatable). Defaults to today.
+  const today = new Date().toISOString().slice(0, 10);
+  let effectiveFrom = String(formData.get('effective_from') ?? '').trim() || today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) effectiveFrom = today;
+
+  const newVals: Record<string, unknown> = { dm_pct: optionalNonNegative(formData, 'dm_pct') };
+  if (type === 'bag_fert') {
+    const bagForm = String(formData.get('form') ?? 'granular') === 'liquid' ? 'liquid' : 'granular';
+    newVals.form = bagForm;
+    newVals.n_pct = optionalNonNegative(formData, 'n_pct');
+    newVals.p2o5_pct = optionalNonNegative(formData, 'p2o5_pct');
+    newVals.k2o_pct = optionalNonNegative(formData, 'k2o_pct');
+    newVals.s_pct = optionalNonNegative(formData, 's_pct');
+    if (bagForm === 'liquid') {
+      const density = optionalNonNegative(formData, 'density_kg_per_l');
+      if (!density || density <= 0) throw new Error('Liquid fertiliser needs a density in kg/L (from the product label)');
+      newVals.density_kg_per_l = density;
+    }
+  } else if (type === 'slurry') {
+    newVals.n_kg_per_m3 = optionalNonNegative(formData, 'n_kg_per_m3');
+    newVals.p2o5_kg_per_m3 = optionalNonNegative(formData, 'p2o5_kg_per_m3');
+    newVals.k2o_kg_per_m3 = optionalNonNegative(formData, 'k2o_kg_per_m3');
+    newVals.so3_kg_per_m3 = optionalNonNegative(formData, 'so3_kg_per_m3');
+    newVals.mgo_kg_per_m3 = optionalNonNegative(formData, 'mgo_kg_per_m3');
+  } else if (type === 'solid_manure') {
+    newVals.n_kg_per_t = optionalNonNegative(formData, 'n_kg_per_t');
+    newVals.p2o5_kg_per_t = optionalNonNegative(formData, 'p2o5_kg_per_t');
+    newVals.k2o_kg_per_t = optionalNonNegative(formData, 'k2o_kg_per_t');
+    newVals.so3_kg_per_t = optionalNonNegative(formData, 'so3_kg_per_t');
+    newVals.mgo_kg_per_t = optionalNonNegative(formData, 'mgo_kg_per_t');
+  }
+
+  // Preserve pre-edit values as a far-past v1 if no history exists yet, so any
+  // application dated before this edit keeps the values it was spread with.
+  const { data: existingVersions } = await supabase
+    .from('product_analyses').select('id').eq('product_id', id).limit(1);
+  if (!existingVersions || existingVersions.length === 0) {
+    const { error: v1Err } = await supabase.from('product_analyses').insert({
+      product_id: id, user_id: ex.user_id, effective_from: '2000-01-01',
+      ...analysisFieldsFromProduct(ex),
+    });
+    if (v1Err) throw new Error(`Could not record prior analysis: ${v1Err.message}`);
+  }
+
+  const { error: insErr } = await supabase.from('product_analyses').insert({
+    product_id: id, user_id: ex.user_id, effective_from: effectiveFrom, ...newVals,
+  });
+  if (insErr) throw new Error(`Could not save analysis: ${insErr.message}`);
+
+  // Sync the product's base values to the most-recent version.
+  const { data: latest } = await supabase
+    .from('product_analyses').select('*').eq('product_id', id)
+    .order('effective_from', { ascending: false }).order('created_at', { ascending: false })
+    .limit(1).maybeSingle();
+  const baseUpdate: Record<string, unknown> = { name };
+  if (latest) Object.assign(baseUpdate, analysisFieldsFromVersion(latest as ProductAnalysis));
+  const { error: updErr } = await supabase.from('products').update(baseUpdate).eq('id', id);
+  if (updErr) throw new Error(`Could not update product: ${updErr.message}`);
+
+  revalidatePath('/products'); revalidatePath('/'); revalidatePath('/', 'layout');
+  redirect(returnTo);
+}
+
+export async function deleteProductAnalysis(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const analysisId = String(formData.get('analysis_id') ?? '');
+  const productId = parseInt(String(formData.get('product_id')), 10);
+  if (!analysisId || !Number.isFinite(productId)) throw new Error('Invalid request');
+
+  const { count } = await supabase.from('product_analyses')
+    .select('id', { count: 'exact', head: true }).eq('product_id', productId);
+  if ((count ?? 0) <= 1) throw new Error('A product must keep at least one analysis version.');
+
+  const { error } = await supabase.from('product_analyses').delete().eq('id', analysisId);
+  if (error) throw new Error(`Could not delete version: ${error.message}`);
+
+  const { data: latest } = await supabase.from('product_analyses').select('*')
+    .eq('product_id', productId).order('effective_from', { ascending: false })
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (latest) {
+    await supabase.from('products').update(analysisFieldsFromVersion(latest as ProductAnalysis)).eq('id', productId);
+  }
+  revalidatePath('/products'); revalidatePath('/'); revalidatePath('/', 'layout');
+  redirect(`/products/${productId}/edit`);
+}
+
+// ---------------------------------------------------------------------------
+// Spray records (plant protection). Separate from applications — never touches
+// nutrient maths. Optional drawn sprayed area stored inline on the row.
+// ---------------------------------------------------------------------------
+function parseTargets(raw: FormDataEntryValue | null): string[] | null {
+  if (raw == null) return null;
+  const txt = String(raw).trim();
+  if (!txt) return null;
+  let arr: string[] = [];
+  try {
+    const parsed = JSON.parse(txt);
+    if (Array.isArray(parsed)) arr = parsed.map((t) => String(t).trim()).filter(Boolean);
+  } catch {
+    // Fallback: comma-separated string.
+    arr = txt.split(',').map((t) => t.trim()).filter(Boolean);
+  }
+  // de-dupe, cap length
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of arr) { const k = t.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(t); } }
+  return out.length ? out.slice(0, 12) : null;
+}
+
+export async function createSprayRecord(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+
+  const fieldId = String(formData.get('field_id') ?? '');
+  const dateApplied = String(formData.get('date_applied') ?? '');
+  const productName = String(formData.get('product_name') ?? '').trim();
+  if (!fieldId || !dateApplied || !productName) {
+    throw new Error('Field, date and spray name are required');
+  }
+
+  const numOrNull = (key: string): number | null => {
+    const raw = formData.get(key);
+    if (raw == null || String(raw).trim() === '') return null;
+    const n = parseFloat(String(raw));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const strOrNull = (key: string): string | null => {
+    const raw = formData.get(key);
+    const v = raw == null ? '' : String(raw).trim();
+    return v === '' ? null : v;
+  };
+
+  // Optional drawn sprayed area (only part of the field treated).
+  const isPartial = String(formData.get('coverage')) === 'partial';
+  let polygon: FieldGeometry | null = null;
+  let areaHa: number | null = numOrNull('area_ha');
+  if (isPartial) {
+    const areaJson = formData.get('spray_area') ? String(formData.get('spray_area')) : null;
+    if (!areaJson) throw new Error('A part-field spray needs a drawn area');
+    try {
+      polygon = JSON.parse(areaJson) as FieldGeometry;
+    } catch {
+      throw new Error('Could not read the drawn area');
+    }
+    areaHa = polygonAreaHectares(polygon);
+    if (!(areaHa > 0)) throw new Error('The drawn area is empty — draw the sprayed area and try again');
+  }
+
+  const { error } = await supabase.from('spray_records').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    field_id: fieldId,
+    date_applied: dateApplied,
+    product_name: productName,
+    product_litres: numOrNull('product_litres'),
+    water_l_per_ha: numOrNull('water_l_per_ha'),
+    area_ha: areaHa,
+    coverage: isPartial ? 'partial' : 'whole',
+    polygon: polygon ?? null,
+    wind_dir: strOrNull('wind_dir'),
+    wind_speed_mph: numOrNull('wind_speed_mph'),
+    temp_c: numOrNull('temp_c'),
+    weather_note: strOrNull('weather_note'),
+    targets: parseTargets(formData.get('targets')),
+    notes: strOrNull('notes'),
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/spray');
+  revalidatePath('/');
+  const returnTo = formData.get('return_to') ? String(formData.get('return_to')) : '/spray';
+  const dest = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/spray';
+  redirect(dest);
+}
+
+export async function deleteSprayRecord(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing record id');
+  const { error } = await supabase.from('spray_records').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/spray');
+  revalidatePath('/');
+  redirect('/spray');
 }

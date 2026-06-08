@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
@@ -122,7 +122,12 @@ function ProductRow({ product }: { product: Product }) {
             <div className="nutrient-num" style={{ fontSize: 12, color: 'var(--muted)' }}>{summary}</div>
           )}
         </div>
-        <DeleteProductButton productId={product.id} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <Link href={`/products/${product.id}/edit?return=/products`} aria-label="Edit product" style={{ display: 'inline-flex', padding: 6, color: 'var(--muted)', textDecoration: 'none' }}>
+            <Pencil size={16} />
+          </Link>
+          <DeleteProductButton productId={product.id} />
+        </div>
       </div>
     </div>
   );

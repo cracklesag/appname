@@ -9,7 +9,8 @@ import {
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { createClient } from '@/lib/supabase/server';
-import { resolveGrassSystem, methodLabel, SOIL_TYPE_LABELS } from '@/lib/rules';
+import { resolveGrassSystem, methodLabel, SOIL_TYPE_LABELS, getSeasonStart } from '@/lib/rules';
+import { computeGrazingSchedule, type GrazingDueStatus } from '@/lib/grazing';
 import type { Field, Cut, Application, Product, GrassSystem, Group } from '@/lib/types';
 
 type Json = Record<string, unknown>;
@@ -162,6 +163,41 @@ export async function runTool(name: string, input: Json): Promise<Json> {
             n_kg_per_m3: p.n_kg_per_m3, p2o5_kg_per_m3: p.p2o5_kg_per_m3, k2o_kg_per_m3: p.k2o_kg_per_m3,
             n_kg_per_t: p.n_kg_per_t, p2o5_kg_per_t: p.p2o5_kg_per_t, k2o_kg_per_t: p.k2o_kg_per_t,
           })),
+        };
+      }
+
+      case 'get_grazing_schedule': {
+        const [fields, applications, cuts, products, grassSystems, settings] = await Promise.all([
+          loadFields(), loadAllApplications(), loadAllCuts(), loadAllProducts(), loadGrassSystems(), loadSettings(),
+        ]);
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const rows = computeGrazingSchedule({
+          fields, applications, cuts, products, grassSystems, settings,
+          seasonStart: getSeasonStart(), todayIso,
+        });
+        const statusLabel = (st: GrazingDueStatus): string =>
+          st.kind === 'overdue' ? `overdue by ${st.days} day${st.days === 1 ? '' : 's'}`
+          : st.kind === 'due_now' ? 'due now'
+          : st.kind === 'upcoming' ? `due in ${st.days} day${st.days === 1 ? '' : 's'}`
+          : 'awaiting first dose (no N on record this season)';
+        return {
+          cadence: `${settings.reportDefaults.grazingCadenceKgN} kg N/ha every ${settings.reportDefaults.grazingCadenceWeeks} weeks`,
+          today: todayIso,
+          fields: rows
+            .slice()
+            .sort((a, b) => a.daysToNextDue - b.daysToNextDue)
+            .map((r) => ({
+              field: r.field.name,
+              area_ac: r.field.acres,
+              area_ha: r.field.ha,
+              last_n_date: r.lastNApp?.date ?? null,
+              last_n_kg_per_ha: r.lastNApp ? Math.round(r.lastNApp.nPerHa) : null,
+              next_due_date: r.lastNApp ? r.nextDueIso : null,
+              days_until_due: r.lastNApp ? r.daysToNextDue : null,
+              status: statusLabel(r.status),
+              season_n_kg_per_ha: Math.round(r.seasonNApplied),
+              n_cap_kg_per_ha: r.nCap,
+            })),
         };
       }
 
