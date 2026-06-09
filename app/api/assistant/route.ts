@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
   const framing = {
     farmName: settings.farmName ?? null,
     role: ctx.role,
+    accountType: (settings.accountType ?? 'farm') as 'farm' | 'contractor',
     unitSystem: settings.unitSystem,
     todayIso: new Date().toISOString().slice(0, 10),
   };
