@@ -11,6 +11,7 @@ import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
+import { randomBytes } from 'crypto';
 
 /**
  * Season start used for cut renumbering. Mirrors getSeasonStart() in
@@ -3267,4 +3268,140 @@ export async function reopenJob(formData: FormData) {
   await supabase.from('jobs').update({ status: 'sent', submitted_at: null }).eq('id', id);
   revalidatePath(`/jobs/${id}`);
   redirect(`/jobs/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Job sheets — Phase 3: no-account share links. The admin generates a token
+// (optional PIN + expiry); an unauthenticated recipient opens it in a browser.
+// Anonymous reads/writes go through the SERVICE client (RLS can't scope an
+// anonymous user), with the token validated in code. Share submissions always
+// land as 'submitted' and wait for admin approval.
+// ---------------------------------------------------------------------------
+export async function createShareLink(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+  const { data: job } = await supabase.from('jobs').select('id, user_id').eq('id', id).maybeSingle();
+  if (!job || (job as { user_id: string }).user_id !== ctx.ownerId) throw new Error('Not your job');
+
+  const pinRaw = String(formData.get('pin') ?? '').trim();
+  const expiry = String(formData.get('expiry_days') ?? '30');
+  let expiresAt: string | null = null;
+  if (expiry !== 'never') {
+    const days = parseInt(expiry, 10);
+    if (Number.isFinite(days) && days > 0) expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+  }
+  const token = randomBytes(18).toString('base64url');
+  const { error } = await supabase.from('jobs').update({
+    share_token: token,
+    share_pin: pinRaw === '' ? null : pinRaw,
+    share_expires_at: expiresAt,
+  }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}
+
+export async function revokeShareLink(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+  const { data: job } = await supabase.from('jobs').select('id, user_id').eq('id', id).maybeSingle();
+  if (!job || (job as { user_id: string }).user_id !== ctx.ownerId) throw new Error('Not your job');
+  const { error } = await supabase.from('jobs').update({ share_token: null, share_pin: null, share_expires_at: null }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}
+
+interface SharedJobResult {
+  status?: 'ok' | 'needpin' | 'badpin' | 'notfound' | 'expired' | 'closed';
+  job?: {
+    id: string; title: string; job_type: string; instruction: string | null;
+    product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null;
+    water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null;
+    notes: string | null; due_date: string | null; contractor_label: string | null; status: string;
+  };
+  fields?: { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null }[];
+}
+
+// Anonymous read of a shared job by token (validates PIN + expiry in code).
+export async function loadSharedJob(token: string, pin?: string): Promise<SharedJobResult> {
+  if (!token) return { status: 'notfound' };
+  const svc = createServiceClient();
+  const { data: job } = await svc.from('jobs').select('*').eq('share_token', token).maybeSingle();
+  if (!job) return { status: 'notfound' };
+  const j = job as Record<string, unknown>;
+  if (j.share_expires_at && new Date(j.share_expires_at as string).getTime() < Date.now()) return { status: 'expired' };
+  if (j.share_pin) {
+    if (pin == null || pin === '') return { status: 'needpin' };
+    if (String(pin) !== String(j.share_pin)) return { status: 'badpin' };
+  }
+  const def = jobTypeDef(j.job_type as string);
+  let productName: string | null = null;
+  if (def?.commitsTo === 'applications' && j.product_id != null) {
+    const { data: p } = await svc.from('products').select('name').eq('id', j.product_id).maybeSingle();
+    productName = (p as { name: string } | null)?.name ?? null;
+  }
+  const { data: fields } = await svc.from('job_fields').select('*').eq('job_id', j.id as string).order('sort_order');
+  const spec = Array.isArray(j.spray_spec) ? (j.spray_spec as { name: string; l_per_ha: number | null }[]).map((s) => ({ name: s.name, l_per_ha: s.l_per_ha })) : null;
+  return {
+    status: 'ok',
+    job: {
+      id: j.id as string,
+      title: j.title as string,
+      job_type: j.job_type as string,
+      instruction: (j.instruction as string) ?? null,
+      product_name: productName,
+      rate_value: (j.rate_value as number) ?? null,
+      rate_unit: (j.rate_unit as string) ?? null,
+      rate_noun: def?.rateNoun ?? null,
+      water_l_per_ha: (j.water_l_per_ha as number) ?? null,
+      spray_spec: spec,
+      notes: (j.notes as string) ?? null,
+      due_date: (j.due_date as string) ?? null,
+      contractor_label: (j.contractor_label as string) ?? null,
+      status: j.status as string,
+    },
+    fields: ((fields ?? []) as Record<string, unknown>[]).map((f) => ({
+      id: f.id as string,
+      field_name: f.field_name as string,
+      boundary: f.boundary ?? null,
+      area_ha: (f.area_ha as number) ?? null,
+      planned_rate_value: (f.planned_rate_value as number) ?? null,
+      planned_rate_unit: (f.planned_rate_unit as string) ?? null,
+      status: f.status as string,
+      actual_rate_value: (f.actual_rate_value as number) ?? null,
+    })),
+  };
+}
+
+export async function submitSharedJob(token: string, pin: string | undefined, completionsJson: string): Promise<{ ok: boolean; error?: string }> {
+  if (!token) return { ok: false, error: 'Invalid link' };
+  const svc = createServiceClient();
+  const { data: job } = await svc.from('jobs').select('*').eq('share_token', token).maybeSingle();
+  if (!job) return { ok: false, error: 'This link is no longer valid' };
+  const j = job as Record<string, unknown>;
+  if (j.share_expires_at && new Date(j.share_expires_at as string).getTime() < Date.now()) return { ok: false, error: 'This link has expired' };
+  if (j.share_pin && String(pin ?? '') !== String(j.share_pin)) return { ok: false, error: 'Wrong PIN' };
+  if (j.status === 'approved') return { ok: false, error: 'This job has already been logged' };
+
+  let completions: { id: string; status: string; actual_rate?: number | null; note?: string | null }[];
+  try { completions = JSON.parse(completionsJson); } catch { return { ok: false, error: 'Could not read the completion' }; }
+  const { data: fieldRows } = await svc.from('job_fields').select('id').eq('job_id', j.id as string);
+  const ownIds = new Set(((fieldRows ?? []) as { id: string }[]).map((f) => f.id));
+  const valid = new Set(['pending', 'done', 'partial', 'skipped']);
+  for (const c of completions) {
+    if (!ownIds.has(c.id) || !valid.has(c.status)) continue;
+    const rate = c.actual_rate == null || !Number.isFinite(Number(c.actual_rate)) ? null : Number(c.actual_rate);
+    await svc.from('job_fields').update({
+      status: c.status,
+      actual_rate_value: rate,
+      completion_note: c.note && String(c.note).trim() !== '' ? String(c.note).trim() : null,
+    }).eq('id', c.id);
+  }
+  await svc.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', j.id as string);
+  return { ok: true };
 }

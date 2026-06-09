@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { Trash2 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { JobWorkflow } from '@/components/JobWorkflow';
+import { ShareLinkPanel } from '@/components/ShareLinkPanel';
 import { loadJob, loadSettings, loadAllProducts } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { deleteJob } from '@/lib/actions';
@@ -25,6 +27,11 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
   const areaUnit = settings.unitSystem === 'acres' ? 'ac' : 'ha';
+  const h = headers();
+  const host = h.get('host');
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  const origin = host ? `${proto}://${host}` : '';
+  const shareUrl = job.share_token ? `${origin}/jobs/share/${job.share_token}` : null;
 
   const instructionLine = (() => {
     if (def?.commitsTo === 'applications') return `${product?.name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${def.rateNoun}` : ''}`;
@@ -57,6 +64,10 @@ export default async function JobPage({ params }: { params: { id: string } }) {
             {job.due_date ? `Due ${fmtDate(job.due_date)}` : 'No due date'}{job.contractor_label ? ` · for ${job.contractor_label}` : ''}
           </div>
         </div>
+
+        {isAdmin && job.status !== 'approved' && (
+          <ShareLinkPanel jobId={job.id} shareUrl={shareUrl} pin={job.share_pin} expiresAt={job.share_expires_at} />
+        )}
 
         <div className="label" style={{ marginBottom: 8 }}>Fields <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· {fields.length}</span></div>
         <JobWorkflow
