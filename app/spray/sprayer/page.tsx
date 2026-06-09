@@ -42,6 +42,15 @@ export default async function SprayerSettingsPage() {
           </div>
         </div>
 
+        <div style={{ marginBottom: 16 }}>
+          <div className="label">Tank size <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· optional</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="number" name="tank_l" className="input" inputMode="decimal" step="any" min="0" defaultValue={s.tankLitres ?? undefined} placeholder="e.g. 1000" style={{ flex: 1 }} />
+            <span style={{ fontSize: 13, color: 'var(--muted)', width: 56 }}>L</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Lets the calculator split a field into tank loads. Leave blank if you&apos;d rather just see whole-field totals.</div>
+        </div>
+
         <div style={{ marginBottom: 18 }}>
           <div className="label">Usual forward speed</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

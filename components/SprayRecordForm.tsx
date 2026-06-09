@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Save, MapPin, Pencil, X } from 'lucide-react';
+import { Save, MapPin, Pencil, X, Plus } from 'lucide-react';
 import { Field } from '@/lib/types';
 import type { FieldGeometry } from '@/lib/geo';
 import { createSprayRecord } from '@/lib/actions';
@@ -10,6 +10,11 @@ import PartApplicationDraw from './PartApplicationDraw';
 
 const WIND_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 const COMMON_TARGETS = ['Docks', 'Thistles', 'Buttercup', 'Chickweed', 'Nettles', 'Ragwort', 'Dandelion'];
+
+// Handed over from the spray calculator's "Log this event" button (consumed once).
+const PREFILL_KEY = 'swardly:spray-log';
+
+interface ProdLine { key: number; productId: string; name: string; litres: string; }
 
 export function SprayRecordForm({
   fields,
@@ -26,8 +31,8 @@ export function SprayRecordForm({
 }) {
   const usable = fields.filter((f) => !f.needs_setup);
   const [fieldId, setFieldId] = useState<string>(defaultFieldId ?? usable[0]?.id ?? '');
-  const [productName, setProductName] = useState('');
-  const [productId, setProductId] = useState('');
+  const [lines, setLines] = useState<ProdLine[]>([{ key: 1, productId: '', name: '', litres: '' }]);
+  const [water, setWater] = useState('');
   const [windDir, setWindDir] = useState<string>('');
   const [targets, setTargets] = useState<string[]>([]);
   const [targetInput, setTargetInput] = useState('');
@@ -37,6 +42,33 @@ export function SprayRecordForm({
   const [drawnHa, setDrawnHa] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
+
+  // Pull the calculator hand-off (field, water rate, spray lines) once on mount.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PREFILL_KEY);
+      if (raw) {
+        const v = JSON.parse(raw) as Partial<{
+          fieldId: string;
+          waterLPerHa: number;
+          lines: { name?: string; spray_product_id?: string | null; litres?: number | null }[];
+        }>;
+        if (typeof v.fieldId === 'string' && v.fieldId) setFieldId(v.fieldId);
+        if (v.waterLPerHa != null && Number.isFinite(v.waterLPerHa)) setWater(String(Math.round(v.waterLPerHa)));
+        if (Array.isArray(v.lines) && v.lines.length > 0) {
+          setLines(v.lines.map((l, i) => ({
+            key: Date.now() + i,
+            productId: l.spray_product_id ? String(l.spray_product_id) : '',
+            name: l.name ? String(l.name) : '',
+            litres: l.litres != null && Number.isFinite(Number(l.litres)) ? String(l.litres) : '',
+          })));
+          setPrefilled(true);
+        }
+        sessionStorage.removeItem(PREFILL_KEY);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const today = new Date().toISOString().slice(0, 10);
   const field = usable.find((f) => f.id === fieldId);
@@ -45,13 +77,28 @@ export function SprayRecordForm({
   const toUnit = (ha: number) => (unitSystem === 'acres' ? ha * 2.47105 : ha);
   const wholeHa = field?.ha ?? 0;
   const isPartial = partOnly && !!drawnGeo;
+
   const addTarget = (t: string) => {
     const v = t.trim();
     if (!v) return;
     setTargets((prev) => (prev.some((x) => x.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]));
   };
   const removeTarget = (t: string) => setTargets((prev) => prev.filter((x) => x !== t));
-  const effectiveName = productId ? (sprayProducts.find((p) => p.id === productId)?.name ?? '') : productName;
+
+  const setLine = (key: number, patch: Partial<ProdLine>) =>
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const addLine = () => setLines((prev) => [...prev, { key: Date.now(), productId: '', name: '', litres: '' }]);
+  const removeLine = (key: number) => setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
+  const onPickProduct = (key: number, productId: string) => setLine(key, { productId });
+
+  const lineName = (l: ProdLine) => (l.productId ? (sprayProducts.find((p) => p.id === l.productId)?.name ?? '') : l.name.trim());
+  const firstName = lines.length ? lineName(lines[0]) : '';
+  const productLinesJson = JSON.stringify(
+    lines
+      .map((l) => ({ name: lineName(l), spray_product_id: l.productId || null, litres: l.litres.trim() === '' ? null : Number(l.litres) }))
+      .filter((l) => l.name !== ''),
+  );
+  const usesStock = lines.some((l) => l.productId);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,7 +117,7 @@ export function SprayRecordForm({
     return (
       <PartApplicationDraw
         boundary={boundary}
-        productName={effectiveName || 'Spray'}
+        productName={firstName || 'Spray'}
         k2oPerHa={0}
         showLoading={false}
         unitSystem={unitSystem}
@@ -84,6 +131,7 @@ export function SprayRecordForm({
     <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       <input type="hidden" name="field_id" value={fieldId} />
       <input type="hidden" name="return_to" value={returnTo} />
+      <input type="hidden" name="product_lines" value={productLinesJson} />
       {isPartial ? (
         <>
           <input type="hidden" name="coverage" value="partial" />
@@ -94,6 +142,12 @@ export function SprayRecordForm({
       )}
 
       <div style={{ padding: 16 }}>
+        {prefilled && (
+          <div style={{ background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.45 }}>
+            Filled in from the calculator. Add your target and weather, then save.
+          </div>
+        )}
+
         {/* Field */}
         <div style={{ marginBottom: 14 }}>
           <div className="label">Field</div>
@@ -111,51 +165,48 @@ export function SprayRecordForm({
           <input type="date" name="date_applied" className="input" defaultValue={today} max={today} required />
         </div>
 
-        {/* Spray used — pick from the stock list (draws down stock) or type a one-off */}
-        <div style={{ marginBottom: 14 }}>
-          <div className="label">Spray used</div>
-          {sprayProducts.length > 0 && (
-            <select
-              className="input"
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              style={{ marginBottom: productId === '' ? 8 : 0 }}
-            >
-              <option value="">Other (type below)</option>
-              {sprayProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          )}
-          {productId === '' && (
-            <input
-              type="text" className="input"
-              value={productName} onChange={(e) => setProductName(e.target.value)}
-              placeholder="e.g. Doxstar Pro" required maxLength={120}
-            />
-          )}
-          <input type="hidden" name="product_name" value={effectiveName} />
-          {productId && <input type="hidden" name="spray_product_id" value={productId} />}
-          {sprayProducts.length > 0 && productId && (
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Logging litres used will draw this product down in your stock list.</div>
-          )}
-        </div>
-
-        {/* Rates */}
+        {/* Sprays used — one or more products in the tank; each draws its own stock */}
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div className="label">Product used</div>
+          <div className="label" style={{ marginBottom: lines.length > 1 ? 4 : 8 }}>Spray{lines.length > 1 ? 's' : ''} used</div>
+          {lines.length > 1 && (
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.4 }}>A tank mix — this all saves as one spray record for the field.</div>
+          )}
+          {lines.map((l, idx) => (
+            <div key={l.key} style={{ marginBottom: 10, paddingBottom: idx < lines.length - 1 ? 12 : 0, borderBottom: idx < lines.length - 1 ? '1px solid var(--line)' : 'none' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                {sprayProducts.length > 0 ? (
+                  <select className="input" value={l.productId} onChange={(e) => onPickProduct(l.key, e.target.value)} style={{ flex: 1 }}>
+                    <option value="">Other (type below)</option>
+                    {sprayProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                ) : null}
+                {lines.length > 1 && (
+                  <button type="button" onClick={() => removeLine(l.key)} aria-label="Remove spray" style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--muted)', cursor: 'pointer', padding: '0 10px' }}><X size={15} /></button>
+                )}
+              </div>
+              {l.productId === '' && (
+                <input type="text" className="input" value={l.name} onChange={(e) => setLine(l.key, { name: e.target.value })} placeholder="Spray name (e.g. Doxstar Pro)" maxLength={120} style={{ marginBottom: 8 }} />
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="number" name="product_litres" className="input" inputMode="decimal" step="any" min="0" placeholder="e.g. 4" style={{ flex: 1 }} />
+                <input type="number" className="input" inputMode="decimal" step="any" min="0" value={l.litres} onChange={(e) => setLine(l.key, { litres: e.target.value })} placeholder="e.g. 4" style={{ flex: 1 }} />
                 <span style={{ fontSize: 12, color: 'var(--muted)', width: 56 }}>litres total</span>
               </div>
             </div>
-          </div>
-          <div>
-            <div className="label">Water volume</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="number" name="water_l_per_ha" className="input" inputMode="decimal" step="any" min="0" placeholder="e.g. 200" style={{ flex: 1 }} />
-              <span style={{ fontSize: 12, color: 'var(--muted)', width: 56 }}>L / ha</span>
-            </div>
+          ))}
+          <button type="button" onClick={addLine} className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px' }}>
+            <Plus size={15} /> Add another spray
+          </button>
+          {usesStock && (
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Litres used will draw the chosen products down in your stock list.</div>
+          )}
+        </div>
+
+        {/* Water volume (shared across the mix) */}
+        <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+          <div className="label">Water volume</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="number" name="water_l_per_ha" className="input" inputMode="decimal" step="any" min="0" value={water} onChange={(e) => setWater(e.target.value)} placeholder="e.g. 200" style={{ flex: 1 }} />
+            <span style={{ fontSize: 12, color: 'var(--muted)', width: 56 }}>L / ha</span>
           </div>
         </div>
 
@@ -173,12 +224,7 @@ export function SprayRecordForm({
             </div>
           )}
           {boundary ? (
-            <button
-              type="button"
-              onClick={() => setDrawing(true)}
-              className="btn-ghost"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 12px' }}
-            >
+            <button type="button" onClick={() => setDrawing(true)} className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 12px' }}>
               <Pencil size={15} /> {isPartial ? 'Redraw sprayed area' : 'Sprayed only part? Draw it'}
             </button>
           ) : (
@@ -197,12 +243,7 @@ export function SprayRecordForm({
           <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>Wind direction</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
             {WIND_DIRS.map((d) => (
-              <button
-                key={d} type="button"
-                onClick={() => setWindDir(windDir === d ? '' : d)}
-                className={`toggle-btn ${windDir === d ? 'active' : ''}`}
-                style={{ minWidth: 44, padding: '7px 0' }}
-              >
+              <button key={d} type="button" onClick={() => setWindDir(windDir === d ? '' : d)} className={`toggle-btn ${windDir === d ? 'active' : ''}`} style={{ minWidth: 44, padding: '7px 0' }}>
                 {d}
               </button>
             ))}

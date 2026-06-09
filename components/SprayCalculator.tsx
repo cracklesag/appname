@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, X, RotateCcw, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
-import { computeSprayMix, type SprayLine } from '@/lib/spray';
+import { useRouter } from 'next/navigation';
+import { Plus, X, RotateCcw, ClipboardList, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
+import { computeSprayMix, computeLoadSplit, type SprayLine } from '@/lib/spray';
 
 interface CalcField { id: string; name: string; ha: number; }
 interface CalcProduct { id: string; name: string; default_l_per_ha: number | null; }
@@ -11,6 +12,7 @@ interface SprayerCfg {
   widthM: number | null;
   totalFlowLMin: number | null;
   defaultSpeedKmh: number | null;
+  tankLitres: number | null;
 }
 
 // Inputs survive navigating to the sprayer-settings page and back (and a reload).
@@ -38,6 +40,7 @@ export function SprayCalculator({
   const [speed, setSpeed] = useState<string>(sprayer.defaultSpeedKmh != null ? String(sprayer.defaultSpeedKmh) : '');
   const [lines, setLines] = useState<Line[]>([{ key: 1, productId: '', name: '', lPerHa: '' }]);
   const [restored, setRestored] = useState(false);
+  const [view, setView] = useState<'field' | 'load'>('field');
 
   // Restore once on mount (client only — keeps SSR markup stable).
   useEffect(() => {
@@ -72,7 +75,9 @@ export function SprayCalculator({
     try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   };
 
+  const router = useRouter();
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const areaHa = useMemo(() => {
     if (areaMode === 'field') {
@@ -103,6 +108,13 @@ export function SprayCalculator({
     [areaHa, sprayer.widthM, sprayer.totalFlowLMin, speed, JSON.stringify(calcLines)],
   );
 
+  const loadSplit = useMemo(
+    () => computeLoadSplit({ appRateLPerHa: result.appRateLPerHa, totalSprayL: result.totalSprayL, tankL: sprayer.tankLitres, lines: calcLines }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [result.appRateLPerHa, result.totalSprayL, sprayer.tankLitres, JSON.stringify(calcLines)],
+  );
+  const tankSet = !!(sprayer.tankLitres && sprayer.tankLitres > 0);
+
   const sprayerSet = !!(sprayer.widthM && sprayer.totalFlowLMin);
   const totalFlow = sprayer.totalFlowLMin ?? 0;
 
@@ -124,6 +136,22 @@ export function SprayCalculator({
         return p?.default_l_per_ha != null ? String(p.default_l_per_ha) : '';
       })(),
     });
+  };
+
+  const logEvent = () => {
+    const f = fields.find((x) => x.id === fieldId);
+    if (!f) return;
+    const payloadLines = lines
+      .filter((l) => (l.name.trim() || l.productId) && parseFloat(l.lPerHa) > 0)
+      .map((l) => ({
+        name: l.productId ? (productById.get(l.productId)?.name ?? '') : l.name.trim(),
+        spray_product_id: l.productId || null,
+        litres: round1((parseFloat(l.lPerHa) || 0) * areaHa),
+      }))
+      .filter((l) => l.name !== '');
+    const payload = { fieldId, waterLPerHa: Math.round(result.appRateLPerHa), lines: payloadLines };
+    try { sessionStorage.setItem('swardly:spray-log', JSON.stringify(payload)); } catch { /* ignore */ }
+    router.push('/spray/new');
   };
 
   const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n.toFixed(1));
@@ -216,32 +244,85 @@ export function SprayCalculator({
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
               Application volume <strong style={{ color: 'var(--ink)' }}>{fmt(result.appRateLPerHa)} L/ha</strong> (water + product) over {(unitSystem === 'acres' ? areaHa * 2.47105 : areaHa).toFixed(2)} {areaUnit}
             </div>
-            {result.lines.length > 0 && (
-              <div style={{ marginBottom: 10 }}>
-                {result.lines.map((l, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
-                    <span style={{ color: 'var(--ink)' }}>{l.name} <span style={{ color: 'var(--muted)', fontSize: 12 }}>@ {l.lPerHa} L/ha</span></span>
-                    <strong style={{ color: 'var(--forest-dark)' }}>{fmt(l.volumeL)} L</strong>
+
+            <div className="toggle-group" style={{ marginBottom: 12 }}>
+              <button type="button" className={`toggle-btn ${view === 'field' ? 'active' : ''}`} onClick={() => setView('field')}>Whole field</button>
+              <button type="button" className={`toggle-btn ${view === 'load' ? 'active' : ''}`} onClick={() => setView('load')}>By load</button>
+            </div>
+
+            {view === 'field' ? (
+              <>
+                {result.lines.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    {result.lines.map((l, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '4px 0' }}>
+                        <span style={{ color: 'var(--ink)' }}>{l.name} <span style={{ color: 'var(--muted)', fontSize: 12 }}>@ {l.lPerHa} L/ha</span></span>
+                        <strong style={{ color: 'var(--forest-dark)' }}>{fmt(l.volumeL)} L</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--ink)' }}>Water — whole field</span>
+                  <strong style={{ color: 'var(--forest-dark)', fontSize: 17 }}>{fmt(result.waterL)} L</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--muted)' }}>
+                  <span>Total mix — whole field</span>
+                  <span>{fmt(result.totalSprayL)} L</span>
+                </div>
+                {result.waterNegative && (
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--clay, #b06a37)', lineHeight: 1.45 }}>
+                    Product volume ({fmt(result.totalProductL)} L) is more than the total spray volume at this application rate — there&apos;s no room for water. Increase the application rate (slow down, or larger nozzles) or check the product L/ha.
+                  </div>
+                )}
+              </>
+            ) : loadSplit.ok ? (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                  {loadSplit.totalLoads} load{loadSplit.totalLoads > 1 ? 's' : ''} of your {fmt(loadSplit.tankL)} L tank
+                </div>
+                {loadSplit.loads.map((ld, i) => (
+                  <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)', marginBottom: 6 }}>
+                      {ld.count} × {fmt(ld.volumeL)} L {ld.count > 1 ? 'loads (each)' : 'load'}
+                    </div>
+                    {ld.lines.map((l, j) => (
+                      <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '3px 0' }}>
+                        <span style={{ color: 'var(--ink)' }}>{l.name} <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>@ {l.lPerHa} L/ha</span></span>
+                        <strong style={{ color: 'var(--forest-dark)' }}>{fmt(l.volumeL)} L</strong>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '4px 0 0', borderTop: '1px solid var(--line)', marginTop: 4 }}>
+                      <span style={{ color: 'var(--ink-soft)' }}>Water</span>
+                      <strong style={{ color: 'var(--forest-dark)' }}>{fmt(ld.waterL)} L</strong>
+                    </div>
+                    {ld.waterNegative && (
+                      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--clay, #b06a37)' }}>Product exceeds the load volume — check the rate.</div>
+                    )}
                   </div>
                 ))}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-              <span style={{ fontWeight: 700, color: 'var(--ink)' }}>Water for the tank</span>
-              <strong style={{ color: 'var(--forest-dark)', fontSize: 17 }}>{fmt(result.waterL)} L</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--muted)' }}>
-              <span>Total in tank (water + product)</span>
-              <span>{fmt(result.totalSprayL)} L</span>
-            </div>
-            {result.waterNegative && (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--clay, #b06a37)', lineHeight: 1.45 }}>
-                Product volume ({fmt(result.totalProductL)} L) is more than the total spray volume at this application rate — there&apos;s no room for water. Increase the application rate (slow down, or larger nozzles) or check the product L/ha.
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+                {loadSplit.reason}{!tankSet && <> <Link href="/spray/sprayer" style={{ color: 'var(--forest)', fontWeight: 700 }}>Set tank size →</Link></>}
               </div>
             )}
           </>
         )}
       </div>
+
+      {/* Log this mix as a spray record (carries field, water rate and sprays through) */}
+      {result.ok && (
+        areaMode === 'field' && fieldId ? (
+          <button type="button" onClick={logEvent} className="btn-primary" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <ClipboardList size={17} /> Log whole field at this rate
+          </button>
+        ) : (
+          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.45 }}>
+            Pick a field above (not a typed area) to log this as a spray record.
+          </div>
+        )
+      )}
     </div>
   );
 }

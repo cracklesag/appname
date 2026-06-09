@@ -465,6 +465,8 @@ export interface Settings {
     /** Total boom output (all nozzles together) in L/min — drives the calculator. */
     totalFlowLMin: number | null;
     defaultSpeedKmh: number | null;
+    /** Sprayer tank capacity (L) — optional; lets the calculator split a field into loads. */
+    tankLitres?: number | null;
     /** Legacy (pre 2026-06-09) — derived into totalFlowLMin when present. */
     nozzleFlowLMin?: number | null;
     nozzleCount?: number | null;
@@ -508,7 +510,7 @@ export const DEFAULT_SETTINGS: Settings = {
     planLeadTimeDays: 7,
   },
   hiddenGrassSystemIds: [],
-  sprayer: { widthM: null, totalFlowLMin: null, defaultSpeedKmh: null },
+  sprayer: { widthM: null, totalFlowLMin: null, defaultSpeedKmh: null, tankLitres: null },
   onboarded: false,
 };
 
@@ -598,7 +600,15 @@ export interface SprayRecord {
   notes: string | null;
   /** Links to a catalogue spray_product so usage draws down stock; null for free-text one-offs. */
   spray_product_id: string | null;
+  /** Tank mix — every product in this one spray. Stock draws down per entry. */
+  products: SprayProductLine[] | null;
   created_at: string;
+}
+
+export interface SprayProductLine {
+  name: string;
+  spray_product_id: string | null;
+  litres: number | null;
 }
 
 export interface SprayProduct {

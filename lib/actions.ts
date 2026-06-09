@@ -2761,10 +2761,6 @@ export async function createSprayRecord(formData: FormData) {
 
   const fieldId = String(formData.get('field_id') ?? '');
   const dateApplied = String(formData.get('date_applied') ?? '');
-  const productName = String(formData.get('product_name') ?? '').trim();
-  if (!fieldId || !dateApplied || !productName) {
-    throw new Error('Field, date and spray name are required');
-  }
 
   const numOrNull = (key: string): number | null => {
     const raw = formData.get(key);
@@ -2777,6 +2773,36 @@ export async function createSprayRecord(formData: FormData) {
     const v = raw == null ? '' : String(raw).trim();
     return v === '' ? null : v;
   };
+
+  // A spray "event" can be a tank mix of several products. Each product becomes
+  // its own spray_records row sharing the field, date, water rate, area,
+  // weather and targets — so stock draws down per product but weather/targets
+  // are entered once. Falls back to the single product_name field if no lines.
+  type LineIn = { name?: string; spray_product_id?: string | null; litres?: number | null };
+  let lines: { name: string; spray_product_id: string | null; product_litres: number | null }[] = [];
+  const linesRaw = formData.get('product_lines');
+  if (linesRaw) {
+    try {
+      const arr = JSON.parse(String(linesRaw)) as LineIn[];
+      lines = (Array.isArray(arr) ? arr : [])
+        .map((l) => {
+          const litresNum = l.litres == null ? NaN : Number(l.litres);
+          return {
+            name: String(l.name ?? '').trim(),
+            spray_product_id: l.spray_product_id ? String(l.spray_product_id) : null,
+            product_litres: Number.isFinite(litresNum) && litresNum >= 0 ? litresNum : null,
+          };
+        })
+        .filter((l) => l.name !== '');
+    } catch { /* fall back below */ }
+  }
+  if (lines.length === 0) {
+    const single = String(formData.get('product_name') ?? '').trim();
+    if (single) lines = [{ name: single, spray_product_id: strOrNull('spray_product_id'), product_litres: numOrNull('product_litres') }];
+  }
+  if (!fieldId || !dateApplied || lines.length === 0) {
+    throw new Error('Field, date and at least one spray are required');
+  }
 
   // Optional drawn sprayed area (only part of the field treated).
   const isPartial = String(formData.get('coverage')) === 'partial';
@@ -2794,13 +2820,11 @@ export async function createSprayRecord(formData: FormData) {
     if (!(areaHa > 0)) throw new Error('The drawn area is empty — draw the sprayed area and try again');
   }
 
-  const { error } = await supabase.from('spray_records').insert({
+  const shared = {
     user_id: ctx.ownerId,
     created_by: ctx.userId,
     field_id: fieldId,
     date_applied: dateApplied,
-    product_name: productName,
-    product_litres: numOrNull('product_litres'),
     water_l_per_ha: numOrNull('water_l_per_ha'),
     area_ha: areaHa,
     coverage: isPartial ? 'partial' : 'whole',
@@ -2811,7 +2835,18 @@ export async function createSprayRecord(formData: FormData) {
     weather_note: strOrNull('weather_note'),
     targets: parseTargets(formData.get('targets')),
     notes: strOrNull('notes'),
-    spray_product_id: strOrNull('spray_product_id'),
+  };
+  // One field spray = one record. A tank mix lists every product here; each
+  // still draws down its own stock. product_name/litres mirror the primary
+  // (or a joined summary) for the existing list/map display.
+  const primary = lines[0];
+  const productName = lines.length === 1 ? primary.name : lines.map((l) => l.name).join(' + ');
+  const { error } = await supabase.from('spray_records').insert({
+    ...shared,
+    product_name: productName,
+    product_litres: lines.length === 1 ? primary.product_litres : null,
+    spray_product_id: lines.length === 1 ? primary.spray_product_id : null,
+    products: lines.map((l) => ({ name: l.name, spray_product_id: l.spray_product_id, litres: l.product_litres })),
   });
   if (error) throw new Error(error.message);
 
@@ -2946,6 +2981,7 @@ export async function saveSprayerSettings(formData: FormData) {
     widthM: numOrNullField(formData, 'width_m'),
     totalFlowLMin: numOrNullField(formData, 'total_flow_l_min'),
     defaultSpeedKmh: numOrNullField(formData, 'default_speed_kmh'),
+    tankLitres: numOrNullField(formData, 'tank_l'),
   };
   const data = { ...existing, sprayer };
   const { error } = await supabase.from('settings').upsert({
