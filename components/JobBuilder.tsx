@@ -21,6 +21,7 @@ export function JobBuilder({
   products,
   sprayProducts,
   staff,
+  contractors,
   unitSystem,
 }: {
   jobTypes: JobTypeDef[];
@@ -28,6 +29,7 @@ export function JobBuilder({
   products: BProduct[];
   sprayProducts: BSprayProduct[];
   staff: { id: string; label: string }[];
+  contractors: { id: string; label: string }[];
   unitSystem: 'acres' | 'hectares';
 }) {
   const [jobTypeId, setJobTypeId] = useState<string>('');
@@ -224,18 +226,19 @@ export function JobBuilder({
             {/* Send to */}
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
               <div className="label" style={{ marginBottom: 8 }}>Send to</div>
-              {staff.length > 0 ? (
+              {(staff.length > 0 || contractors.length > 0) ? (
                 <>
-                  <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={{ marginBottom: 10 }}>
+                  <select className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={{ marginBottom: 8 }}>
                     <option value="">No one yet</option>
-                    {staff.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                    {staff.length > 0 && <optgroup label="Your staff">{staff.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</optgroup>}
+                    {contractors.length > 0 && <optgroup label="Contractors">{contractors.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>}
                   </select>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Assign to one of your staff — it appears in their app to tick off. (Staff names are coming; share-link and contractor accounts next.)</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>It appears in their app to tick off. <Link href="/settings/contractors" style={{ color: 'var(--forest)' }}>Manage contractors</Link>. You can also create a no-account share link from the job after saving.</div>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>No staff on your account yet. You can still label who it&apos;s for below; share-link and contractor sending are coming next.</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>No staff or connected contractors yet. <Link href="/settings/contractors" style={{ color: 'var(--forest)' }}>Connect a contractor</Link>, or save the job and create a share link for someone without the app.</div>
               )}
-              <div className="label" style={{ marginBottom: 6 }}>Or note who it&apos;s for <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· optional</span></div>
+              <div className="label" style={{ marginBottom: 6 }}>Or just note who it&apos;s for <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· optional</span></div>
               <input type="text" name="contractor_label" className="input" value={contractor} onChange={(e) => setContractor(e.target.value)} placeholder="e.g. a contractor's name" maxLength={120} />
             </div>
 

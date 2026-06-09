@@ -4,16 +4,16 @@ import { Trash2 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { JobWorkflow } from '@/components/JobWorkflow';
 import { ShareLinkPanel } from '@/components/ShareLinkPanel';
-import { loadJob, loadSettings, loadAllProducts } from '@/lib/data';
+import { loadJob, loadSettings, loadAllProducts, loadFarmMembers } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
-import { deleteJob } from '@/lib/actions';
+import { deleteJob, forwardJob } from '@/lib/actions';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { fmtDate } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
 
 export default async function JobPage({ params }: { params: { id: string } }) {
-  const [data, settings, products] = await Promise.all([loadJob(params.id), loadSettings(), loadAllProducts()]);
+  const [data, settings, products, members] = await Promise.all([loadJob(params.id), loadSettings(), loadAllProducts(), loadFarmMembers()]);
   if (!settings.onboarded) redirect('/welcome');
   if (!data) redirect('/jobs');
   const ctx = await getFarmContext();
@@ -23,6 +23,8 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const isAssignee = !!ctx && job.assignee_user_id === ctx.userId;
   const role: 'admin' | 'assignee' | 'viewer' = isAdmin ? 'admin' : isAssignee ? 'assignee' : 'viewer';
   const autoLog = !!ctx && job.user_id === ctx.ownerId; // farm staff/admin log immediately
+  const isContractorOnThisJob = isAssignee && !!ctx && job.user_id !== ctx.ownerId; // received from another account
+  const myStaff = members.filter((m) => m.role === 'staff');
   const def = jobTypeDef(job.job_type);
   const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
@@ -67,6 +69,28 @@ export default async function JobPage({ params }: { params: { id: string } }) {
 
         {isAdmin && job.status !== 'approved' && (
           <ShareLinkPanel jobId={job.id} shareUrl={shareUrl} pin={job.share_pin} expiresAt={job.share_expires_at} />
+        )}
+
+        {isContractorOnThisJob && job.status !== 'approved' && (
+          <form action={forwardJob} className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <input type="hidden" name="id" value={job.id} />
+            <div className="label" style={{ marginBottom: 8 }}>Forward to one of your operators</div>
+            {myStaff.length > 0 ? (
+              <>
+                <select name="operator_id" className="input" defaultValue={job.delegated_to_user_id ?? ''} style={{ marginBottom: 10 }}>
+                  <option value="">Me — I&apos;ll do it</option>
+                  {myStaff.map((m, i) => <option key={m.member_id} value={m.member_id}>Operator {i + 1}</option>)}
+                </select>
+                <button type="submit" className="btn-ghost" style={{ width: '100%' }}>Update who&apos;s doing it</button>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>You have no operators on your account yet. Invite them from your Team screen, then you can forward jobs to them.</div>
+            )}
+          </form>
+        )}
+
+        {job.delegated_to_user_id && (isAdmin || isContractorOnThisJob) && (
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, padding: '0 2px' }}>Forwarded to an operator.</div>
         )}
 
         <div className="label" style={{ marginBottom: 8 }}>Fields <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· {fields.length}</span></div>

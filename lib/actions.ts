@@ -3194,7 +3194,7 @@ async function loadJobForAction(supabase: ReturnType<typeof createClient>, id: s
   const { data: job } = await supabase.from('jobs').select('*').eq('id', id).maybeSingle();
   if (!job) throw new Error('Job not found');
   const { data: fields } = await supabase.from('job_fields').select('*').eq('job_id', id).order('sort_order');
-  return { job: job as JobRowForCommit & { assignee_user_id: string | null }, fields: (fields ?? []) as JobFieldRowForCommit[] };
+  return { job: job as JobRowForCommit & { assignee_user_id: string | null; delegated_to_user_id: string | null }, fields: (fields ?? []) as JobFieldRowForCommit[] };
 }
 
 export async function saveJobCompletion(formData: FormData) {
@@ -3206,8 +3206,9 @@ export async function saveJobCompletion(formData: FormData) {
 
   const { job, fields } = await loadJobForAction(supabase, id);
   const isAssignee = job.assignee_user_id === ctx.userId;
+  const isDelegate = job.delegated_to_user_id === ctx.userId;
   const isFarmMember = job.user_id === ctx.ownerId; // staff or admin of this farm
-  if (!isAssignee && !isFarmMember) throw new Error('You cannot complete this job');
+  if (!isAssignee && !isDelegate && !isFarmMember) throw new Error('You cannot complete this job');
   if (job.status === 'approved') redirect(`/jobs/${id}`); // already logged
 
   let completions: { id: string; status: string; actual_rate?: number | null; note?: string | null }[];
@@ -3404,4 +3405,102 @@ export async function submitSharedJob(token: string, pin: string | undefined, co
   }
   await svc.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', j.id as string);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Job sheets — Phase 4: contractor accounts by ID + forwarding to operators.
+// A contractor opts in (gets a code); a farm connects to that code and can
+// then assign jobs to the contractor. The contractor receives the job in their
+// app (via the assignee mechanism + RLS) and can complete it OR forward it to
+// one of their own staff. All contractor submissions need farm approval.
+// ---------------------------------------------------------------------------
+
+function makeContractorCode(): string {
+  return randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8).toUpperCase();
+}
+
+export async function becomeContractor(formData: FormData) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not signed in');
+  const businessName = String(formData.get('business_name') ?? '').trim() || null;
+
+  const { data: existing } = await supabase.from('contractor_profiles').select('user_id, code').eq('user_id', user.id).maybeSingle();
+  if (existing) {
+    const { error } = await supabase.from('contractor_profiles').update({ business_name: businessName }).eq('user_id', user.id);
+    if (error) throw new Error(error.message);
+  } else {
+    let lastErr: string | null = null;
+    for (let i = 0; i < 4; i++) {
+      const { error } = await supabase.from('contractor_profiles').insert({ user_id: user.id, code: makeContractorCode(), business_name: businessName });
+      if (!error) { lastErr = null; break; }
+      lastErr = error.message;
+      if (!/duplicate|unique/i.test(error.message)) break; // only retry on code collision
+    }
+    if (lastErr) throw new Error(lastErr);
+  }
+  revalidatePath('/settings/contractors');
+  redirect('/settings/contractors');
+}
+
+export async function connectContractor(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const code = String(formData.get('code') ?? '').trim().toUpperCase();
+  if (!code) throw new Error('Enter a contractor code');
+
+  // Look up the code with the service client (contractor profiles are private).
+  const svc = createServiceClient();
+  const { data: prof } = await svc.from('contractor_profiles').select('user_id, business_name').eq('code', code).maybeSingle();
+  if (!prof) throw new Error('No contractor found with that code');
+  const contractorUserId = (prof as { user_id: string }).user_id;
+  if (contractorUserId === ctx.ownerId) throw new Error('That code is your own account');
+
+  const label = String(formData.get('label') ?? '').trim() || (prof as { business_name: string | null }).business_name || 'Contractor';
+  const { error } = await supabase.from('farm_contractors').upsert({
+    owner_id: ctx.ownerId,
+    contractor_user_id: contractorUserId,
+    label,
+  }, { onConflict: 'owner_id,contractor_user_id' });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/contractors');
+  revalidatePath('/jobs/new');
+  redirect('/settings/contractors');
+}
+
+export async function removeContractor(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing id');
+  const { error } = await supabase.from('farm_contractors').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/contractors');
+  redirect('/settings/contractors');
+}
+
+// Contractor admin forwards a received job to one of their own operators.
+export async function forwardJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const id = String(formData.get('id') ?? '');
+  const target = String(formData.get('operator_id') ?? '');
+  if (!id) throw new Error('Missing job id');
+
+  const { data: job } = await supabase.from('jobs').select('id, assignee_user_id, status').eq('id', id).maybeSingle();
+  if (!job) throw new Error('Job not found');
+  if ((job as { assignee_user_id: string | null }).assignee_user_id !== ctx.userId) throw new Error('Only the contractor this job was sent to can forward it');
+
+  let delegate: string | null = null;
+  if (target) {
+    // Validate the target is a staff member of THIS contractor's account.
+    const { data: member } = await supabase.from('farm_members').select('member_id').eq('owner_id', ctx.ownerId).eq('member_id', target).maybeSingle();
+    if (!member) throw new Error('That operator is not on your team');
+    delegate = target;
+  }
+  const { error } = await supabase.from('jobs').update({ delegated_to_user_id: delegate }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
 }

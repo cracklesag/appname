@@ -657,6 +657,7 @@ export interface Job {
   notes: string | null;
   due_date: string | null;
   assignee_user_id: string | null;
+  delegated_to_user_id: string | null;
   contractor_label: string | null;
   share_token: string | null;
   share_pin: string | null;
@@ -683,3 +684,19 @@ export interface JobField {
 }
 
 export interface JobWithFields extends Job { fields: JobField[]; }
+
+
+export interface ContractorProfile {
+  user_id: string;
+  code: string;
+  business_name: string | null;
+  created_at: string;
+}
+
+export interface FarmContractor {
+  id: string;
+  owner_id: string;
+  contractor_user_id: string;
+  label: string | null;
+  created_at: string;
+}

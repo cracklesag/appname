@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -396,4 +396,20 @@ export async function loadJob(id: string): Promise<{ job: Job; fields: JobField[
   const { data: fields } = await supabase
     .from('job_fields').select('*').eq('job_id', id).order('sort_order');
   return { job: job as Job, fields: (fields as JobField[]) ?? [] };
+}
+
+
+export async function loadMyContractorProfile(): Promise<ContractorProfile | null> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase.from('contractor_profiles').select('*').eq('user_id', user.id).maybeSingle();
+  return (data as ContractorProfile) ?? null;
+}
+
+export async function loadFarmContractors(): Promise<FarmContractor[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('farm_contractors').select('*').order('created_at', { ascending: true });
+  if (error) return [];
+  return (data as FarmContractor[]) ?? [];
 }
