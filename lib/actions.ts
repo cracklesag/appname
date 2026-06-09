@@ -3089,3 +3089,182 @@ export async function deleteJob(formData: FormData) {
   revalidatePath('/');
   redirect('/jobs');
 }
+
+// ---------------------------------------------------------------------------
+// Job sheets — Phase 2: recipient completion, admin review/approve, and the
+// shared commit that writes the real records. Farm staff (and the admin)
+// auto-log on submit; anyone else (contractor / share-link, later) lands as
+// 'submitted' and waits for admin approval.
+// ---------------------------------------------------------------------------
+
+const JOB_VALID_UNITS = new Set(['kg/ha', 'kg/ac', 'lb/ac', 'gal/ac', 'm3/ha', 't/ac', 't/ha', 'l/ha', 'l/ac']);
+
+interface JobRowForCommit {
+  id: string; user_id: string; job_type: string; status: string;
+  product_id: number | null; rate_value: number | null; rate_unit: string | null;
+  water_l_per_ha: number | null; spray_spec: { name: string; spray_product_id: string | null; l_per_ha: number | null }[] | null;
+  title: string; contractor_label: string | null;
+}
+interface JobFieldRowForCommit {
+  id: string; field_id: string | null; field_name: string; area_ha: number | null;
+  planned_rate_value: number | null; status: string; actual_rate_value: number | null;
+}
+
+// Writes the records for an approved job. Idempotent-by-caller: only invoke on
+// the transition into 'approved'. actingUserId = whoever triggered it.
+async function commitJobRecords(
+  supabase: ReturnType<typeof createClient>,
+  actingUserId: string,
+  job: JobRowForCommit,
+  fields: JobFieldRowForCommit[],
+) {
+  const def = jobTypeDef(job.job_type);
+  if (!def) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const done = fields.filter((f) => (f.status === 'done' || f.status === 'partial') && f.field_id);
+
+  if (def.commitsTo === 'applications') {
+    if (!job.product_id) return;
+    const unit = job.rate_unit && JOB_VALID_UNITS.has(job.rate_unit) ? job.rate_unit : (def.defaultUnit ?? 'kg/ha');
+    const inserts = done
+      .map((f) => {
+        const rate = f.actual_rate_value ?? f.planned_rate_value ?? job.rate_value;
+        if (rate == null || !(rate > 0)) return null;
+        return {
+          user_id: job.user_id,
+          created_by: actingUserId,
+          field_id: f.field_id as string,
+          product_id: job.product_id as number,
+          date_applied: today,
+          rate_value: rate,
+          rate_unit: unit,
+          method: null,
+          notes: `From job sheet: ${job.title}`,
+          applied_by: job.contractor_label ?? 'Job sheet',
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    if (inserts.length > 0) {
+      const { error } = await supabase.from('applications').insert(inserts);
+      if (error) throw new Error(`Could not log applications: ${error.message}`);
+    }
+  } else if (def.commitsTo === 'spray_records') {
+    const spec = Array.isArray(job.spray_spec) ? job.spray_spec : [];
+    const names = spec.map((s) => s.name).filter(Boolean);
+    const productName = names.length === 1 ? names[0] : (names.join(' + ') || 'Spray');
+    const rows = done.map((f) => {
+      const area = f.area_ha ?? null;
+      const products = spec.map((s) => ({
+        name: s.name,
+        spray_product_id: s.spray_product_id ?? null,
+        litres: s.l_per_ha != null && area != null ? Math.round(s.l_per_ha * area * 10) / 10 : null,
+      }));
+      const single = products.length === 1 ? products[0] : null;
+      return {
+        user_id: job.user_id,
+        created_by: actingUserId,
+        field_id: f.field_id as string,
+        date_applied: today,
+        product_name: productName,
+        product_litres: single ? single.litres : null,
+        spray_product_id: single ? single.spray_product_id : null,
+        products,
+        water_l_per_ha: job.water_l_per_ha,
+        area_ha: area,
+        coverage: 'whole',
+        polygon: null,
+        wind_dir: null,
+        wind_speed_mph: null,
+        temp_c: null,
+        weather_note: null,
+        targets: null,
+        notes: `From job sheet: ${job.title}`,
+      };
+    });
+    if (rows.length > 0) {
+      const { error } = await supabase.from('spray_records').insert(rows);
+      if (error) throw new Error(`Could not log spray records: ${error.message}`);
+    }
+  }
+  // 'none' (generic) writes nothing.
+}
+
+async function loadJobForAction(supabase: ReturnType<typeof createClient>, id: string) {
+  const { data: job } = await supabase.from('jobs').select('*').eq('id', id).maybeSingle();
+  if (!job) throw new Error('Job not found');
+  const { data: fields } = await supabase.from('job_fields').select('*').eq('job_id', id).order('sort_order');
+  return { job: job as JobRowForCommit & { assignee_user_id: string | null }, fields: (fields ?? []) as JobFieldRowForCommit[] };
+}
+
+export async function saveJobCompletion(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const id = String(formData.get('job_id') ?? '');
+  if (!id) throw new Error('Missing job id');
+
+  const { job, fields } = await loadJobForAction(supabase, id);
+  const isAssignee = job.assignee_user_id === ctx.userId;
+  const isFarmMember = job.user_id === ctx.ownerId; // staff or admin of this farm
+  if (!isAssignee && !isFarmMember) throw new Error('You cannot complete this job');
+  if (job.status === 'approved') redirect(`/jobs/${id}`); // already logged
+
+  let completions: { id: string; status: string; actual_rate?: number | null; note?: string | null }[];
+  try {
+    completions = JSON.parse(String(formData.get('completions') ?? '[]'));
+  } catch {
+    throw new Error('Could not read the completion — try again');
+  }
+  const valid = new Set(['pending', 'done', 'partial', 'skipped']);
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  for (const c of completions) {
+    if (!byId.has(c.id) || !valid.has(c.status)) continue;
+    const rate = c.actual_rate == null || !Number.isFinite(Number(c.actual_rate)) ? null : Number(c.actual_rate);
+    await supabase.from('job_fields').update({
+      status: c.status,
+      actual_rate_value: rate,
+      completion_note: c.note && String(c.note).trim() !== '' ? String(c.note).trim() : null,
+    }).eq('id', c.id);
+    const f = byId.get(c.id)!;
+    f.status = c.status;
+    f.actual_rate_value = rate;
+  }
+
+  if (isFarmMember) {
+    // Trusted: log immediately.
+    await commitJobRecords(supabase, ctx.userId, job, fields);
+    await supabase.from('jobs').update({ status: 'approved', submitted_at: new Date().toISOString(), approved_at: new Date().toISOString() }).eq('id', id);
+  } else {
+    await supabase.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', id);
+  }
+  revalidatePath(`/jobs/${id}`);
+  revalidatePath('/jobs');
+  redirect(`/jobs/${id}`);
+}
+
+export async function approveJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+  const { job, fields } = await loadJobForAction(supabase, id);
+  if (job.user_id !== ctx.ownerId) throw new Error('Not your job');
+  if (job.status === 'approved') redirect(`/jobs/${id}`);
+  await commitJobRecords(supabase, ctx.userId, job, fields);
+  await supabase.from('jobs').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', id);
+  revalidatePath(`/jobs/${id}`);
+  revalidatePath('/jobs');
+  redirect(`/jobs/${id}`);
+}
+
+export async function reopenJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+  const { job } = await loadJobForAction(supabase, id);
+  if (job.user_id !== ctx.ownerId) throw new Error('Not your job');
+  await supabase.from('jobs').update({ status: 'sent', submitted_at: null }).eq('id', id);
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}

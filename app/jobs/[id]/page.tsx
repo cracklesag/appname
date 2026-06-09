@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { JobWorkflow } from '@/components/JobWorkflow';
 import { loadJob, loadSettings, loadAllProducts } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { deleteJob } from '@/lib/actions';
@@ -14,12 +15,16 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   if (!settings.onboarded) redirect('/welcome');
   if (!data) redirect('/jobs');
   const ctx = await getFarmContext();
-  const isAdmin = !!ctx?.isAdmin;
   const { job, fields } = data;
+
+  const isAdmin = !!ctx?.isAdmin && job.user_id === ctx?.ownerId;
+  const isAssignee = !!ctx && job.assignee_user_id === ctx.userId;
+  const role: 'admin' | 'assignee' | 'viewer' = isAdmin ? 'admin' : isAssignee ? 'assignee' : 'viewer';
+  const autoLog = !!ctx && job.user_id === ctx.ownerId; // farm staff/admin log immediately
   const def = jobTypeDef(job.job_type);
+  const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
   const areaUnit = settings.unitSystem === 'acres' ? 'ac' : 'ha';
-  const toUnit = (ha: number) => (settings.unitSystem === 'acres' ? ha * 2.47105 : ha);
 
   const instructionLine = (() => {
     if (def?.commitsTo === 'applications') return `${product?.name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${def.rateNoun}` : ''}`;
@@ -29,6 +34,16 @@ export default async function JobPage({ params }: { params: { id: string } }) {
     }
     return job.instruction ?? '';
   })();
+
+  const wFields = fields.map((f) => ({
+    id: f.id,
+    name: f.field_name,
+    area: f.area_ha,
+    plannedRate: f.planned_rate_value,
+    plannedUnit: f.planned_rate_unit,
+    status: f.status,
+    actualRate: f.actual_rate_value,
+  }));
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -44,22 +59,21 @@ export default async function JobPage({ params }: { params: { id: string } }) {
         </div>
 
         <div className="label" style={{ marginBottom: 8 }}>Fields <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· {fields.length}</span></div>
-        {fields.map((f) => (
-          <div key={f.id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{f.field_name}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
-              {f.area_ha != null ? `${toUnit(f.area_ha).toFixed(2)} ${areaUnit}` : ''}
-              {f.planned_rate_value != null ? ` · ${f.planned_rate_value} ${f.planned_rate_unit ?? ''}` : ''}
-            </div>
-          </div>
-        ))}
+        <JobWorkflow
+          jobId={job.id}
+          status={job.status}
+          role={role}
+          autoLog={autoLog}
+          rateNoun={def?.rateNoun ?? null}
+          hasRate={hasRate}
+          fields={wFields}
+          unitSystem={settings.unitSystem}
+          fmtDateStr={job.approved_at ? fmtDate(job.approved_at.slice(0, 10)) : null}
+          approvedAt={job.approved_at}
+        />
 
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14, padding: '0 2px' }}>
-          Sending this out (share-link or to someone&apos;s app), the operator ticking off each field, and it logging back as applications — all coming in the next builds.
-        </div>
-
-        {isAdmin && (
-          <form action={deleteJob} style={{ marginTop: 16 }}>
+        {isAdmin && job.status !== 'approved' && (
+          <form action={deleteJob} style={{ marginTop: 20 }}>
             <input type="hidden" name="id" value={job.id} />
             <button type="submit" className="btn-ghost" style={{ width: '100%', color: 'var(--clay, #b06a37)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Trash2 size={16} /> Delete job sheet
