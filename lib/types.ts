@@ -462,9 +462,12 @@ export interface Settings {
    */
   sprayer?: {
     widthM: number | null;
-    nozzleFlowLMin: number | null;
-    nozzleCount: number | null;
+    /** Total boom output (all nozzles together) in L/min — drives the calculator. */
+    totalFlowLMin: number | null;
     defaultSpeedKmh: number | null;
+    /** Legacy (pre 2026-06-09) — derived into totalFlowLMin when present. */
+    nozzleFlowLMin?: number | null;
+    nozzleCount?: number | null;
   };
   /**
    * Agronomist-editable RB209 overrides (partial — only the values changed
@@ -505,7 +508,7 @@ export const DEFAULT_SETTINGS: Settings = {
     planLeadTimeDays: 7,
   },
   hiddenGrassSystemIds: [],
-  sprayer: { widthM: null, nozzleFlowLMin: null, nozzleCount: null, defaultSpeedKmh: null },
+  sprayer: { widthM: null, totalFlowLMin: null, defaultSpeedKmh: null },
   onboarded: false,
 };
 

@@ -2944,8 +2944,7 @@ export async function saveSprayerSettings(formData: FormData) {
   const existing = (existingRow?.data as Record<string, unknown>) || {};
   const sprayer = {
     widthM: numOrNullField(formData, 'width_m'),
-    nozzleFlowLMin: numOrNullField(formData, 'nozzle_flow_l_min'),
-    nozzleCount: numOrNullField(formData, 'nozzle_count'),
+    totalFlowLMin: numOrNullField(formData, 'total_flow_l_min'),
     defaultSpeedKmh: numOrNullField(formData, 'default_speed_kmh'),
   };
   const data = { ...existing, sprayer };

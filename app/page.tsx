@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, Calendar, ChevronRight, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan } from 'lucide-react';
+import { Plus, FileUp, ChevronRight, ClipboardList, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -157,25 +157,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
               </div>
             </Link>
 
-            {/* Plan ahead — grazing dressings + gentle P/K review nudge */}
-            {(grazingDue.length > 0 || pkReviewCount > 0) && (
-              <Link href="/plan?from=/" style={{ display: 'block', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 13px', marginBottom: 14, textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <Calendar size={15} style={{ color: 'var(--forest)' }} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Plan ahead</span>
-                  </div>
-                  <ChevronRight size={15} style={{ color: 'var(--stone)' }} />
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
-                  {grazingDue.length > 0 && grazingDue.slice(0, 1).map((c) => (
-                    <span key={c.fieldId}>{c.fieldName} grazing — dressing {(c.daysUntil ?? 0) <= 0 ? 'due now' : `in ~${c.daysUntil} days`}.{' '}</span>
-                  ))}
-                  {pkReviewCount > 0 && <>{pkReviewCount} field{pkReviewCount === 1 ? '' : 's'} below target for P/K.</>}
-                </div>
-              </Link>
-            )}
-
             {/* The Plan — consolidated "what to apply" (replaces P&K status,
                 fertiliser plan, spread report and field snapshot). */}
             <Link href="/plan?from=/" style={{ display: 'block', background: 'var(--forest)', border: '1px solid var(--forest)', borderRadius: 10, padding: '14px 15px', marginBottom: 9, textDecoration: 'none' }}>
@@ -184,6 +165,11 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--brand-cream)' }}>Plan</div>
                   <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.85)', lineHeight: 1.4 }}>What to spread on every field — slurry first, then granular.</div>
+                  {pkReviewCount > 0 && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#FAC775', marginTop: 4 }}>
+                      {pkReviewCount} field{pkReviewCount === 1 ? '' : 's'} below target for P/K
+                    </div>
+                  )}
                 </div>
                 <ChevronRight size={16} style={{ color: 'rgba(239,231,214,0.85)', flexShrink: 0 }} />
               </div>

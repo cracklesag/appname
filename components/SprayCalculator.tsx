@@ -1,18 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, X, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
+import { Plus, X, RotateCcw, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
 import { computeSprayMix, type SprayLine } from '@/lib/spray';
 
 interface CalcField { id: string; name: string; ha: number; }
 interface CalcProduct { id: string; name: string; default_l_per_ha: number | null; }
 interface SprayerCfg {
   widthM: number | null;
-  nozzleFlowLMin: number | null;
-  nozzleCount: number | null;
+  totalFlowLMin: number | null;
   defaultSpeedKmh: number | null;
 }
+
+// Inputs survive navigating to the sprayer-settings page and back (and a reload).
+const STORAGE_KEY = 'swardly:spray-calc';
 
 interface Line { key: number; productId: string; name: string; lPerHa: string; }
 
@@ -35,6 +37,40 @@ export function SprayCalculator({
   const [manualArea, setManualArea] = useState<string>('');
   const [speed, setSpeed] = useState<string>(sprayer.defaultSpeedKmh != null ? String(sprayer.defaultSpeedKmh) : '');
   const [lines, setLines] = useState<Line[]>([{ key: 1, productId: '', name: '', lPerHa: '' }]);
+  const [restored, setRestored] = useState(false);
+
+  // Restore once on mount (client only — keeps SSR markup stable).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const v = JSON.parse(raw) as Partial<{ areaMode: 'field' | 'manual'; fieldId: string; manualArea: string; speed: string; lines: Line[] }>;
+        if (v.areaMode === 'field' || v.areaMode === 'manual') setAreaMode(v.areaMode);
+        if (typeof v.fieldId === 'string') setFieldId(v.fieldId);
+        if (typeof v.manualArea === 'string') setManualArea(v.manualArea);
+        if (typeof v.speed === 'string' && v.speed !== '') setSpeed(v.speed);
+        if (Array.isArray(v.lines) && v.lines.length > 0) setLines(v.lines);
+      }
+    } catch { /* ignore */ }
+    setRestored(true);
+  }, []);
+
+  // Persist after restore so the initial restore doesn't clobber saved data.
+  useEffect(() => {
+    if (!restored) return;
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ areaMode, fieldId, manualArea, speed, lines }));
+    } catch { /* ignore */ }
+  }, [restored, areaMode, fieldId, manualArea, speed, lines]);
+
+  const clearAll = () => {
+    setAreaMode(fields.length ? 'field' : 'manual');
+    setFieldId(fields[0]?.id ?? '');
+    setManualArea('');
+    setSpeed(sprayer.defaultSpeedKmh != null ? String(sprayer.defaultSpeedKmh) : '');
+    setLines([{ key: 1, productId: '', name: '', lPerHa: '' }]);
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  };
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -59,17 +95,16 @@ export function SprayCalculator({
     () => computeSprayMix({
       areaHa,
       widthM: sprayer.widthM,
-      nozzleFlowLMin: sprayer.nozzleFlowLMin,
-      nozzleCount: sprayer.nozzleCount,
+      totalFlowLMin: sprayer.totalFlowLMin,
       speedKmh: parseFloat(speed) || null,
       lines: calcLines,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [areaHa, sprayer.widthM, sprayer.nozzleFlowLMin, sprayer.nozzleCount, speed, JSON.stringify(calcLines)],
+    [areaHa, sprayer.widthM, sprayer.totalFlowLMin, speed, JSON.stringify(calcLines)],
   );
 
-  const sprayerSet = !!(sprayer.widthM && sprayer.nozzleFlowLMin && sprayer.nozzleCount);
-  const totalFlow = (sprayer.nozzleFlowLMin ?? 0) * (sprayer.nozzleCount ?? 0);
+  const sprayerSet = !!(sprayer.widthM && sprayer.totalFlowLMin);
+  const totalFlow = sprayer.totalFlowLMin ?? 0;
 
   const setLine = (key: number, patch: Partial<Line>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -97,7 +132,10 @@ export function SprayCalculator({
     <div className="card" style={{ padding: 14, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <CalcIcon size={18} style={{ color: 'var(--forest)' }} />
-        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)' }}>Spray calculator</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', flex: 1 }}>Spray calculator</div>
+        <button type="button" onClick={clearAll} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12.5, cursor: 'pointer', padding: 4 }}>
+          <RotateCcw size={13} /> Clear
+        </button>
       </div>
 
       {/* Area */}
@@ -161,7 +199,7 @@ export function SprayCalculator({
       </div>
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
         {sprayerSet ? (
-          <>Sprayer: <strong>{sprayer.widthM} m</strong> wide · <strong>{fmt(totalFlow)} L/min</strong> total flow ({sprayer.nozzleFlowLMin} × {sprayer.nozzleCount}). <Link href="/spray/sprayer" style={{ color: 'var(--forest)' }}>Change</Link></>
+          <>Sprayer: <strong>{sprayer.widthM} m</strong> wide · <strong>{fmt(totalFlow)} L/min</strong> total output. <Link href="/spray/sprayer" style={{ color: 'var(--forest)' }}>Change</Link></>
         ) : (
           <span style={{ color: 'var(--clay, #b06a37)' }}>
             <SettingsIcon size={12} style={{ verticalAlign: -1 }} /> Set your sprayer width, flow rate and nozzles to calculate volumes. <Link href="/spray/sprayer" style={{ color: 'var(--forest)', fontWeight: 700 }}>Set up sprayer →</Link>

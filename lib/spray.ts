@@ -1,4 +1,4 @@
-import { SprayProduct, SprayPurchase, SprayRecord } from './types';
+import { SprayProduct, SprayPurchase, SprayRecord, Settings } from './types';
 
 // ---- Stock --------------------------------------------------------------
 // Stock is computed, never stored: SUM(purchases) − SUM(usage on records that
@@ -56,13 +56,12 @@ export interface SprayCalcResult {
 export function computeSprayMix(args: {
   areaHa: number;
   widthM: number | null;
-  nozzleFlowLMin: number | null;
-  nozzleCount: number | null;
+  totalFlowLMin: number | null;
   speedKmh: number | null;
   lines: SprayLine[];
 }): SprayCalcResult {
-  const { areaHa, widthM, nozzleFlowLMin, nozzleCount, speedKmh, lines } = args;
-  const totalFlowLMin = (nozzleFlowLMin ?? 0) * (nozzleCount ?? 0);
+  const { areaHa, widthM, speedKmh, lines } = args;
+  const totalFlowLMin = args.totalFlowLMin ?? 0;
   const emptyLines = lines.map((l) => ({ name: l.name, lPerHa: l.lPerHa, volumeL: 0 }));
 
   if (!(areaHa > 0)) {
@@ -87,5 +86,24 @@ export function computeSprayMix(args: {
     waterL: Math.max(0, waterL),
     totalSprayL,
     waterNegative: waterL < 0,
+  };
+}
+
+
+/** Resolve sprayer settings to the shape the calculator needs, deriving total
+ *  boom flow from legacy per-nozzle × count data if that's all that's saved. */
+export function readSprayerSettings(settings: Settings): {
+  widthM: number | null;
+  totalFlowLMin: number | null;
+  defaultSpeedKmh: number | null;
+} {
+  const sp = settings.sprayer;
+  const total =
+    sp?.totalFlowLMin ??
+    (sp?.nozzleFlowLMin != null && sp?.nozzleCount != null ? sp.nozzleFlowLMin * sp.nozzleCount : null);
+  return {
+    widthM: sp?.widthM ?? null,
+    totalFlowLMin: total ?? null,
+    defaultSpeedKmh: sp?.defaultSpeedKmh ?? null,
   };
 }

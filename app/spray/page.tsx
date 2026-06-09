@@ -6,6 +6,7 @@ import { SprayRecordsList, type SprayView } from '@/components/SprayRecordsList'
 import { SprayCalculator } from '@/components/SprayCalculator';
 import { loadSprayRecords, loadFields, loadSettings, loadSprayProducts } from '@/lib/data';
 import { fmtDate } from '@/lib/rules';
+import { readSprayerSettings } from '@/lib/spray';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function SprayRecordsPage({
 
   const nameById = new Map(fields.map((f) => [f.id, f.name]));
   const backHref = searchParams.from && searchParams.from.startsWith('/') ? searchParams.from : '/';
-  const sprayer = settings.sprayer ?? { widthM: null, nozzleFlowLMin: null, nozzleCount: null, defaultSpeedKmh: null };
+  const sprayer = readSprayerSettings(settings);
 
   const calcFields = fields.filter((f) => !f.needs_setup).map((f) => ({ id: f.id, name: f.name, ha: f.ha }));
   const calcProducts = sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }));
