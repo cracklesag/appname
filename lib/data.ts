@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -379,4 +379,21 @@ export async function loadSprayPurchases(): Promise<SprayPurchase[]> {
     .order('purchase_date', { ascending: false });
   if (error) return [];
   return (data as SprayPurchase[]) ?? [];
+}
+
+
+export async function loadJobs(): Promise<Job[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('jobs').select('*').order('created_at', { ascending: false });
+  if (error) return [];
+  return (data as Job[]) ?? [];
+}
+
+export async function loadJob(id: string): Promise<{ job: Job; fields: JobField[] } | null> {
+  const supabase = createClient();
+  const { data: job, error } = await supabase.from('jobs').select('*').eq('id', id).maybeSingle();
+  if (error || !job) return null;
+  const { data: fields } = await supabase
+    .from('job_fields').select('*').eq('job_id', id).order('sort_order');
+  return { job: job as Job, fields: (fields as JobField[]) ?? [] };
 }

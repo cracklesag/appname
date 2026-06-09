@@ -633,3 +633,53 @@ export interface SprayPurchase {
   notes: string | null;
   created_at: string;
 }
+
+
+// ---- Job sheets ---------------------------------------------------------
+export type JobStatus = 'draft' | 'sent' | 'submitted' | 'approved' | 'archived';
+export type JobFieldStatus = 'pending' | 'done' | 'partial' | 'skipped';
+
+export interface SpraySpecLine { name: string; spray_product_id: string | null; l_per_ha: number | null; }
+
+export interface Job {
+  id: string;
+  user_id: string;
+  created_by: string | null;
+  title: string;
+  job_type: string;
+  status: JobStatus;
+  product_id: number | null;
+  rate_value: number | null;
+  rate_unit: string | null;
+  water_l_per_ha: number | null;
+  spray_spec: SpraySpecLine[] | null;
+  instruction: string | null;
+  notes: string | null;
+  due_date: string | null;
+  assignee_user_id: string | null;
+  contractor_label: string | null;
+  share_token: string | null;
+  share_pin: string | null;
+  share_expires_at: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
+export interface JobField {
+  id: string;
+  job_id: string;
+  field_id: string | null;
+  field_name: string;
+  boundary: unknown | null;
+  area_ha: number | null;
+  planned_rate_value: number | null;
+  planned_rate_unit: string | null;
+  status: JobFieldStatus;
+  actual_rate_value: number | null;
+  completion_note: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface JobWithFields extends Job { fields: JobField[]; }

@@ -10,6 +10,7 @@ import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 import { STARTER_PRODUCTS } from '@/lib/starter-products';
+import { jobTypeDef } from '@/lib/jobTypes';
 
 /**
  * Season start used for cut renumbering. Mirrors getSeasonStart() in
@@ -2993,4 +2994,98 @@ export async function saveSprayerSettings(formData: FormData) {
   revalidatePath('/spray/sprayer');
   revalidatePath('/spray');
   redirect('/spray');
+}
+
+
+// ---------------------------------------------------------------------------
+// Job sheets — Phase 1: create + delete (admin). Recipient completion, review
+// → commit, share links and contractor accounts follow in later phases.
+// ---------------------------------------------------------------------------
+export async function createJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const strOrNull = (k: string): string | null => {
+    const v = String(formData.get(k) ?? '').trim();
+    return v === '' ? null : v;
+  };
+
+  const title = String(formData.get('title') ?? '').trim();
+  const jobType = String(formData.get('job_type') ?? '').trim();
+  const def = jobTypeDef(jobType);
+  if (!def) throw new Error('Pick a job type');
+  if (!title) throw new Error('Give the job a title');
+
+  let fieldRows: { field_id?: string; field_name?: string; boundary?: unknown; area_ha?: number }[];
+  try {
+    fieldRows = JSON.parse(String(formData.get('fields') ?? ''));
+  } catch {
+    throw new Error('Could not read the selected fields — try again');
+  }
+  if (!Array.isArray(fieldRows) || fieldRows.length === 0) throw new Error('Pick at least one field');
+
+  let productId: number | null = null;
+  if (def.commitsTo === 'applications') {
+    const v = parseInt(String(formData.get('product_id') ?? ''), 10);
+    productId = Number.isFinite(v) ? v : null;
+    if (!productId) throw new Error('Choose a product for this job');
+  }
+
+  const rateValue = numOrNullField(formData, 'rate_value');
+  const rateUnit = def.defaultUnit ? (String(formData.get('rate_unit') ?? '').trim() || def.defaultUnit) : null;
+
+  let spraySpec: unknown = null;
+  if (def.id === 'spray') {
+    try {
+      const arr = JSON.parse(String(formData.get('spray_spec') ?? '[]'));
+      if (Array.isArray(arr) && arr.length > 0) spraySpec = arr;
+    } catch { /* ignore */ }
+  }
+
+  const { data: job, error } = await supabase.from('jobs').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    title,
+    job_type: jobType,
+    status: 'sent',
+    product_id: productId,
+    rate_value: rateValue,
+    rate_unit: rateUnit,
+    water_l_per_ha: def.id === 'spray' ? numOrNullField(formData, 'water_l_per_ha') : null,
+    spray_spec: spraySpec,
+    instruction: strOrNull('instruction'),
+    notes: strOrNull('notes'),
+    due_date: strOrNull('due_date'),
+    assignee_user_id: strOrNull('assignee_user_id'),
+    contractor_label: strOrNull('contractor_label'),
+  }).select('id').single();
+  if (error || !job) throw new Error(error?.message ?? 'Could not create the job');
+
+  const fieldsInsert = fieldRows.map((f, i) => ({
+    job_id: job.id as string,
+    field_id: f.field_id ?? null,
+    field_name: String(f.field_name ?? 'Field'),
+    boundary: f.boundary ?? null,
+    area_ha: typeof f.area_ha === 'number' ? f.area_ha : null,
+    planned_rate_value: rateValue,
+    planned_rate_unit: rateUnit,
+    sort_order: i,
+  }));
+  const { error: fErr } = await supabase.from('job_fields').insert(fieldsInsert);
+  if (fErr) throw new Error(fErr.message);
+
+  revalidatePath('/jobs');
+  revalidatePath('/');
+  redirect(`/jobs/${job.id}`);
+}
+
+export async function deleteJob(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+  const { error } = await supabase.from('jobs').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/jobs');
+  revalidatePath('/');
+  redirect('/jobs');
 }
