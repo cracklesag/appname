@@ -456,6 +456,17 @@ export interface Settings {
    */
   hiddenGrassSystemIds: string[];
   /**
+   * Sprayer calibration settings for the spray calculator. Total boom flow =
+   * nozzleFlowLMin × nozzleCount; application volume (L/ha) = totalFlow × 600
+   * ÷ (speed km/h × width m).
+   */
+  sprayer?: {
+    widthM: number | null;
+    nozzleFlowLMin: number | null;
+    nozzleCount: number | null;
+    defaultSpeedKmh: number | null;
+  };
+  /**
    * Agronomist-editable RB209 overrides (partial — only the values changed
    * from the built-in defaults are stored). Undefined = use RB209 defaults.
    */
@@ -494,6 +505,7 @@ export const DEFAULT_SETTINGS: Settings = {
     planLeadTimeDays: 7,
   },
   hiddenGrassSystemIds: [],
+  sprayer: { widthM: null, nozzleFlowLMin: null, nozzleCount: null, defaultSpeedKmh: null },
   onboarded: false,
 };
 
@@ -580,6 +592,31 @@ export interface SprayRecord {
   temp_c: number | null;
   weather_note: string | null;
   targets: string[] | null;
+  notes: string | null;
+  /** Links to a catalogue spray_product so usage draws down stock; null for free-text one-offs. */
+  spray_product_id: string | null;
+  created_at: string;
+}
+
+export interface SprayProduct {
+  id: string;
+  user_id: string;
+  created_by: string | null;
+  name: string;
+  default_l_per_ha: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface SprayPurchase {
+  id: string;
+  user_id: string;
+  created_by: string | null;
+  product_id: string;
+  purchase_date: string;
+  litres: number;
+  unit_cost: number | null;
+  supplier: string | null;
   notes: string | null;
   created_at: string;
 }

@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase } from './types';
 
 export async function loadAllProducts(): Promise<Product[]> {
   const supabase = createClient();
@@ -361,4 +361,22 @@ export async function loadSprayRecordsForField(fieldId: string): Promise<SprayRe
     .eq('field_id', fieldId)
     .order('date_applied', { ascending: false });
   return (data as SprayRecord[]) ?? [];
+}
+
+
+export async function loadSprayProducts(): Promise<SprayProduct[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('spray_products').select('*').order('name');
+  if (error) return [];
+  return (data as SprayProduct[]) ?? [];
+}
+
+export async function loadSprayPurchases(): Promise<SprayPurchase[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('spray_purchases')
+    .select('*')
+    .order('purchase_date', { ascending: false });
+  if (error) return [];
+  return (data as SprayPurchase[]) ?? [];
 }

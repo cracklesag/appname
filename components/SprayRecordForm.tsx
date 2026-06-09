@@ -13,11 +13,13 @@ const COMMON_TARGETS = ['Docks', 'Thistles', 'Buttercup', 'Chickweed', 'Nettles'
 
 export function SprayRecordForm({
   fields,
+  sprayProducts,
   unitSystem,
   defaultFieldId,
   returnTo = '/spray',
 }: {
   fields: Field[];
+  sprayProducts: { id: string; name: string }[];
   unitSystem: 'acres' | 'hectares';
   defaultFieldId?: string;
   returnTo?: string;
@@ -25,6 +27,7 @@ export function SprayRecordForm({
   const usable = fields.filter((f) => !f.needs_setup);
   const [fieldId, setFieldId] = useState<string>(defaultFieldId ?? usable[0]?.id ?? '');
   const [productName, setProductName] = useState('');
+  const [productId, setProductId] = useState('');
   const [windDir, setWindDir] = useState<string>('');
   const [targets, setTargets] = useState<string[]>([]);
   const [targetInput, setTargetInput] = useState('');
@@ -48,6 +51,7 @@ export function SprayRecordForm({
     setTargets((prev) => (prev.some((x) => x.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]));
   };
   const removeTarget = (t: string) => setTargets((prev) => prev.filter((x) => x !== t));
+  const effectiveName = productId ? (sprayProducts.find((p) => p.id === productId)?.name ?? '') : productName;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,7 +70,7 @@ export function SprayRecordForm({
     return (
       <PartApplicationDraw
         boundary={boundary}
-        productName={productName || 'Spray'}
+        productName={effectiveName || 'Spray'}
         k2oPerHa={0}
         showLoading={false}
         unitSystem={unitSystem}
@@ -107,14 +111,32 @@ export function SprayRecordForm({
           <input type="date" name="date_applied" className="input" defaultValue={today} max={today} required />
         </div>
 
-        {/* Spray name */}
+        {/* Spray used — pick from the stock list (draws down stock) or type a one-off */}
         <div style={{ marginBottom: 14 }}>
           <div className="label">Spray used</div>
-          <input
-            type="text" name="product_name" className="input"
-            value={productName} onChange={(e) => setProductName(e.target.value)}
-            placeholder="e.g. Doxstar Pro" required maxLength={120}
-          />
+          {sprayProducts.length > 0 && (
+            <select
+              className="input"
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              style={{ marginBottom: productId === '' ? 8 : 0 }}
+            >
+              <option value="">Other (type below)</option>
+              {sprayProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          {productId === '' && (
+            <input
+              type="text" className="input"
+              value={productName} onChange={(e) => setProductName(e.target.value)}
+              placeholder="e.g. Doxstar Pro" required maxLength={120}
+            />
+          )}
+          <input type="hidden" name="product_name" value={effectiveName} />
+          {productId && <input type="hidden" name="spray_product_id" value={productId} />}
+          {sprayProducts.length > 0 && productId && (
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Logging litres used will draw this product down in your stock list.</div>
+          )}
         </div>
 
         {/* Rates */}

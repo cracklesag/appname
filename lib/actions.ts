@@ -2811,6 +2811,7 @@ export async function createSprayRecord(formData: FormData) {
     weather_note: strOrNull('weather_note'),
     targets: parseTargets(formData.get('targets')),
     notes: strOrNull('notes'),
+    spray_product_id: strOrNull('spray_product_id'),
   });
   if (error) throw new Error(error.message);
 
@@ -2831,5 +2832,130 @@ export async function deleteSprayRecord(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath('/spray');
   revalidatePath('/');
+  redirect('/spray');
+}
+
+// ---------------------------------------------------------------------------
+// Spray stock: products, purchases, and sprayer calibration settings.
+// Catalogue + purchases are farm config (admin-managed); stock is computed.
+// ---------------------------------------------------------------------------
+function numOrNullField(formData: FormData, key: string): number | null {
+  const raw = formData.get(key);
+  if (raw == null || String(raw).trim() === '') return null;
+  const n = parseFloat(String(raw));
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function createSprayProduct(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) throw new Error('Name is required');
+  const defRaw = numOrNullField(formData, 'default_l_per_ha');
+  const { error } = await supabase.from('spray_products').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    name,
+    default_l_per_ha: defRaw != null && defRaw >= 0 ? defRaw : null,
+    notes: (() => { const v = String(formData.get('notes') ?? '').trim(); return v === '' ? null : v; })(),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/spray/stock');
+  revalidatePath('/spray');
+  redirect('/spray/stock');
+}
+
+export async function updateSprayProduct(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing product id');
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) throw new Error('Name is required');
+  const defRaw = numOrNullField(formData, 'default_l_per_ha');
+  const { error } = await supabase.from('spray_products').update({
+    name,
+    default_l_per_ha: defRaw != null && defRaw >= 0 ? defRaw : null,
+    notes: (() => { const v = String(formData.get('notes') ?? '').trim(); return v === '' ? null : v; })(),
+  }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/spray/stock');
+  revalidatePath(`/spray/stock/${id}`);
+  revalidatePath('/spray');
+  redirect(`/spray/stock/${id}`);
+}
+
+export async function deleteSprayProduct(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing product id');
+  const { error } = await supabase.from('spray_products').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/spray/stock');
+  revalidatePath('/spray');
+  redirect('/spray/stock');
+}
+
+export async function addSprayPurchase(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const productId = String(formData.get('product_id') ?? '');
+  const purchaseDate = String(formData.get('purchase_date') ?? '');
+  const litres = numOrNullField(formData, 'litres');
+  if (!productId || !purchaseDate) throw new Error('Product and date are required');
+  if (litres == null || litres <= 0) throw new Error('Enter the litres purchased');
+  const unitCost = numOrNullField(formData, 'unit_cost');
+  const { error } = await supabase.from('spray_purchases').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    product_id: productId,
+    purchase_date: purchaseDate,
+    litres,
+    unit_cost: unitCost != null && unitCost >= 0 ? unitCost : null,
+    supplier: (() => { const v = String(formData.get('supplier') ?? '').trim(); return v === '' ? null : v; })(),
+    notes: (() => { const v = String(formData.get('notes') ?? '').trim(); return v === '' ? null : v; })(),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/spray/stock/${productId}`);
+  revalidatePath('/spray/stock');
+  revalidatePath('/spray');
+  redirect(`/spray/stock/${productId}`);
+}
+
+export async function deleteSprayPurchase(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  const productId = String(formData.get('product_id') ?? '');
+  if (!id) throw new Error('Missing purchase id');
+  const { error } = await supabase.from('spray_purchases').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  if (productId) revalidatePath(`/spray/stock/${productId}`);
+  revalidatePath('/spray/stock');
+  revalidatePath('/spray');
+  redirect(productId ? `/spray/stock/${productId}` : '/spray/stock');
+}
+
+export async function saveSprayerSettings(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const { data: existingRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
+  const existing = (existingRow?.data as Record<string, unknown>) || {};
+  const sprayer = {
+    widthM: numOrNullField(formData, 'width_m'),
+    nozzleFlowLMin: numOrNullField(formData, 'nozzle_flow_l_min'),
+    nozzleCount: numOrNullField(formData, 'nozzle_count'),
+    defaultSpeedKmh: numOrNullField(formData, 'default_speed_kmh'),
+  };
+  const data = { ...existing, sprayer };
+  const { error } = await supabase.from('settings').upsert({
+    user_id: ctx.ownerId,
+    data,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/spray/sprayer');
+  revalidatePath('/spray');
   redirect('/spray');
 }
