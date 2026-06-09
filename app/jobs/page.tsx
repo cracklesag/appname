@@ -44,7 +44,7 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{j.title}</div>
                   <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
-                    {def?.label ?? j.job_type}{j.due_date ? ` · due ${fmtDate(j.due_date)}` : ''}{j.contractor_label ? ` · ${j.contractor_label}` : ''}
+                    {isContractor && j.farm_name ? `${j.farm_name} · ` : ''}{def?.label ?? j.job_type}{j.due_date ? ` · due ${fmtDate(j.due_date)}` : ''}{!isContractor && j.contractor_label ? ` · ${j.contractor_label}` : ''}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

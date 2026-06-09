@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { NotificationToggle } from '@/components/NotificationToggle';
 import { redirect } from 'next/navigation';
 import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical, ListChecks, HardHat } from 'lucide-react';
 import { ResetDataSection } from '@/components/ResetDataSection';
@@ -141,6 +142,10 @@ export default async function SettingsPage() {
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
+      </div>
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>Notifications</div>
+        <NotificationToggle />
       </div>
       <form action={saveSettings}>
         <div style={{ padding: 16 }}>

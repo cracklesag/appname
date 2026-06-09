@@ -12,6 +12,7 @@ import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { randomBytes } from 'crypto';
+import { sendPushToUser } from '@/lib/push';
 
 /**
  * Season start used for cut renumbering. Mirrors getSeasonStart() in
@@ -3119,6 +3120,9 @@ export async function createJob(formData: FormData) {
   const { error: fErr } = await supabase.from('job_fields').insert(fieldsInsert);
   if (fErr) throw new Error(fErr.message);
 
+  const notifyAssignee = strOrNull('assignee_user_id');
+  if (notifyAssignee) await sendPushToUser(notifyAssignee, { title: 'New job', body: `${farmName ?? 'A farm'}: ${title}`, url: '/jobs', tag: `job-${job.id}` });
+
   revalidatePath('/jobs');
   revalidatePath('/');
   redirect(`/jobs/${job.id}`);
@@ -3283,6 +3287,7 @@ export async function saveJobCompletion(formData: FormData) {
     await supabase.from('jobs').update({ status: 'approved', submitted_at: new Date().toISOString(), approved_at: new Date().toISOString() }).eq('id', id);
   } else {
     await supabase.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', id);
+    await sendPushToUser(job.user_id, { title: 'Job submitted for approval', body: 'A contractor has finished a job — tap to review.', url: `/jobs/${id}`, tag: `job-${id}` });
   }
   revalidatePath(`/jobs/${id}`);
   revalidatePath('/jobs');
@@ -3368,7 +3373,7 @@ interface SharedJobResult {
     id: string; title: string; job_type: string; instruction: string | null;
     product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null;
     water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null;
-    notes: string | null; due_date: string | null; contractor_label: string | null; status: string;
+    notes: string | null; due_date: string | null; contractor_label: string | null; status: string; farm_name: string | null;
   };
   fields?: { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null }[];
 }
@@ -3410,6 +3415,7 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
       due_date: (j.due_date as string) ?? null,
       contractor_label: (j.contractor_label as string) ?? null,
       status: j.status as string,
+      farm_name: (j.farm_name as string) ?? null,
     },
     fields: ((fields ?? []) as Record<string, unknown>[]).map((f) => ({
       id: f.id as string,
@@ -3449,6 +3455,7 @@ export async function submitSharedJob(token: string, pin: string | undefined, co
     }).eq('id', c.id);
   }
   await svc.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', j.id as string);
+  await sendPushToUser(j.user_id as string, { title: 'Job submitted for approval', body: 'A shared job sheet was completed — tap to review.', url: `/jobs/${j.id}`, tag: `job-${j.id}` });
   return { ok: true };
 }
 
@@ -3546,6 +3553,7 @@ export async function forwardJob(formData: FormData) {
   }
   const { error } = await supabase.from('jobs').update({ delegated_to_user_id: delegate }).eq('id', id);
   if (error) throw new Error(error.message);
+  if (delegate) await sendPushToUser(delegate, { title: 'Job forwarded to you', body: 'You have a new job to do — tap to open.', url: '/jobs', tag: `job-${id}` });
   revalidatePath(`/jobs/${id}`);
   redirect(`/jobs/${id}`);
 }
@@ -3603,4 +3611,29 @@ export async function setJobMinutes(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/jobs/${id}`);
   redirect(`/jobs/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Web push subscriptions — store/remove the browser's push endpoint.
+// ---------------------------------------------------------------------------
+export async function savePushSubscription(subJson: string): Promise<{ ok: boolean }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  let sub: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+  try { sub = JSON.parse(subJson); } catch { return { ok: false }; }
+  if (!sub.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) return { ok: false };
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    { user_id: user.id, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    { onConflict: 'endpoint' },
+  );
+  return { ok: !error };
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<{ ok: boolean }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+  return { ok: !error };
 }

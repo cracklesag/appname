@@ -61,6 +61,9 @@ export default async function JobPage({ params }: { params: { id: string } }) {
       <Header title={job.title} subtitle={def?.label ?? job.job_type} backHref="/jobs" />
       <div style={{ padding: 16 }}>
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+{job.farm_name && !!ctx && job.user_id !== ctx.ownerId && (
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--forest-dark)', marginBottom: 8 }}>From {job.farm_name}</div>
+          )}
           <div className="label" style={{ marginBottom: 6 }}>Instruction</div>
           <div style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.45 }}>{instructionLine || '—'}</div>
           {job.notes && <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 8 }}>{job.notes}</div>}

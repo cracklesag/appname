@@ -7,7 +7,7 @@
 //   back to cache only when offline — so logged farm data is always fresh.
 // Data sync (queue writes when offline) is a later milestone.
 
-const CACHE_NAME = 'app-shell-v3';
+const CACHE_NAME = 'app-shell-v4';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -69,5 +69,34 @@ self.addEventListener('fetch', (event) => {
         return res;
       })
       .catch(() => caches.match(req).then((cached) => cached || caches.match('/')))
+  );
+});
+
+
+// --- Web push (added Phase 5) ---------------------------------------------
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'Swardly', body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'Swardly';
+  const options = {
+    body: data.body || '',
+    tag: data.tag || undefined,
+    data: { url: data.url || '/' },
+    icon: '/icons/swardly-mark.png',
+    badge: '/icons/swardly-mark.png',
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) { try { c.navigate(target); } catch (e) {} return c.focus(); }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
   );
 });
