@@ -44,10 +44,48 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
 }
 
 function renderMarkdown(md: string): React.ReactNode {
-  const blocks = md.trim().split(/\n{2,}/);
+  // Ensure pipe-table runs sit in their own block, even when the model glues a
+  // heading line directly above them (single newline). Without this they'd
+  // fall into the paragraph branch and show as raw pipes.
+  const rawLines = md.trim().split('\n');
+  const padded: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i].trim().startsWith('|');
+    const prev = i > 0 && rawLines[i - 1].trim().startsWith('|');
+    if (cur && !prev && padded.length > 0 && padded[padded.length - 1].trim() !== '') padded.push('');
+    if (!cur && prev && rawLines[i].trim() !== '') padded.push('');
+    padded.push(rawLines[i]);
+  }
+  const blocks = padded.join('\n').split(/\n{2,}/);
   return blocks.map((block, bi) => {
     const lines = block.split('\n').filter((l) => l.trim().length > 0);
     if (lines.length === 0) return null;
+
+    // Pipe table -> real table (safety net; the model is told not to emit these).
+    const isTable = lines.length >= 2 && lines.every((l) => l.trim().startsWith('|'));
+    if (isTable) {
+      const parseRow = (l: string) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      const isSep = (cells: string[]) => cells.every((c) => /^:?-{2,}:?$/.test(c) || c === '');
+      const rows = lines.map(parseRow).filter((cells) => !isSep(cells));
+      if (rows.length > 0) {
+        const [head, ...body] = rows;
+        const cellStyle: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--line)', textAlign: 'left', fontSize: 13, verticalAlign: 'top' };
+        return (
+          <div key={`t${bi}`} style={{ overflowX: 'auto', margin: '0 0 10px' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>{head.map((c, ci) => <th key={`t${bi}h${ci}`} style={{ ...cellStyle, fontWeight: 700, borderBottom: '2px solid var(--line)' }}>{renderInline(c, `t${bi}h${ci}`)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {body.map((r, ri) => (
+                  <tr key={`t${bi}r${ri}`}>{r.map((c, ci) => <td key={`t${bi}r${ri}c${ci}`} style={cellStyle}>{renderInline(c, `t${bi}r${ri}c${ci}`)}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+    }
 
     const isBullet = lines.every((l) => /^\s*[-*]\s+/.test(l));
     if (isBullet) {

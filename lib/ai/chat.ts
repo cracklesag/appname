@@ -11,7 +11,9 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 // Sonnet is the sweet spot for this app: explanation + lookups + light
 // reasoning. Bump to an Opus string here if quality ever needs it.
-const MODEL = 'claude-sonnet-4-6';
+// Model is overridable per-deployment: set ASSISTANT_MODEL in Vercel env
+// (e.g. 'claude-haiku-4-5' to trial the cheaper tier) — no code change needed.
+const MODEL = process.env.ASSISTANT_MODEL || 'claude-sonnet-4-6';
 const MAX_TOKENS = 2048;
 const MAX_TOOL_ITERATIONS = 5;
 
