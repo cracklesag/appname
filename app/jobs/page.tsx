@@ -17,23 +17,24 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
   if (!settings.onboarded) redirect('/welcome');
   const ctx = await getFarmContext();
   const isAdmin = !!ctx?.isAdmin;
+  const isContractor = settings.accountType === 'contractor';
   const backHref = searchParams.from && searchParams.from.startsWith('/') ? searchParams.from : '/';
 
   return (
     <div style={{ paddingBottom: 80 }}>
       <Header
         title="Job sheets"
-        subtitle="Send work out"
+        subtitle={isContractor ? 'Jobs sent to you' : 'Send work out'}
         backHref={backHref}
-        right={isAdmin ? <Link href="/jobs/new" className="icon-btn" aria-label="New job"><Plus size={22} /></Link> : undefined}
+        right={isAdmin && !isContractor ? <Link href="/jobs/new" className="icon-btn" aria-label="New job"><Plus size={22} /></Link> : undefined}
       />
       <div style={{ padding: 16 }}>
         {jobs.length === 0 ? (
           <div className="card" style={{ padding: 24, textAlign: 'center' }}>
             <ClipboardList size={26} style={{ color: 'var(--muted)' }} />
-            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 10 }}>No job sheets yet</div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>Build a job to send to staff or a contractor — what to spread or spray, on which fields.</div>
-            {isAdmin && <Link href="/jobs/new" className="btn-primary" style={{ display: 'inline-block', marginTop: 14, textDecoration: 'none' }}>New job sheet</Link>}
+            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 10 }}>{isContractor ? 'No jobs sent to you yet' : 'No job sheets yet'}</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>{isContractor ? 'When a farm sends you a job sheet, it shows up here to tick off.' : 'Build a job to send to staff or a contractor — what to spread or spray, on which fields.'}</div>
+            {isAdmin && !isContractor && <Link href="/jobs/new" className="btn-primary" style={{ display: 'inline-block', marginTop: 14, textDecoration: 'none' }}>New job sheet</Link>}
           </div>
         ) : (
           jobs.map((j) => {

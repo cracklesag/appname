@@ -1378,6 +1378,47 @@ export async function completeOnboarding(unit: 'acres' | 'ha', farmName?: string
   redirect('/');
 }
 
+// Lighter onboarding for a contractor-only account: no farm setup — just a
+// business name, a self-admin membership (so their own RLS works), and a
+// contractor profile (with a shareable code). Lands them on their jobs.
+export async function completeContractorOnboarding(businessName?: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  await supabase.from('farm_members').insert({ owner_id: user.id, member_id: user.id, role: 'admin' });
+
+  const name = businessName && businessName.trim() ? businessName.trim() : null;
+  const { data: prof } = await supabase.from('contractor_profiles').select('user_id').eq('user_id', user.id).maybeSingle();
+  if (!prof) {
+    let lastErr: string | null = null;
+    for (let i = 0; i < 4; i++) {
+      const { error } = await supabase.from('contractor_profiles').insert({ user_id: user.id, code: makeContractorCode(), business_name: name });
+      if (!error) { lastErr = null; break; }
+      lastErr = error.message;
+      if (!/duplicate|unique/i.test(error.message)) break;
+    }
+    if (lastErr) throw new Error(lastErr);
+  } else if (name) {
+    await supabase.from('contractor_profiles').update({ business_name: name }).eq('user_id', user.id);
+  }
+
+  const { data: existing } = await supabase.from('settings').select('data').eq('user_id', user.id).maybeSingle();
+  const current = (existing?.data as Record<string, unknown>) || {};
+  const next = {
+    ...current,
+    accountType: 'contractor',
+    unitSystem: current.unitSystem ?? 'hectares',
+    onboarded: true,
+    ...(name ? { farmName: name } : {}),
+  };
+  const { error } = await supabase.from('settings').upsert({ user_id: user.id, data: next, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Could not save: ${error.message}`);
+
+  revalidatePath('/');
+  redirect('/jobs');
+}
+
 // =====================================================================
 // CUSTOM PRODUCTS
 // =====================================================================

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { BottomNav } from '@/components/BottomNav';
+import { loadSettings } from '@/lib/data';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SplashController } from '@/components/SplashController';
 
@@ -48,7 +49,9 @@ export const viewport: Viewport = {
 const HOLD_MS = 2300;
 const FADE_MS = 500;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const settings = await loadSettings();
+  const accountType = settings.accountType ?? 'farm';
   return (
     <html lang="en-GB">
       <head>
@@ -122,7 +125,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <div className="app-shell">{children}</div>
-        <BottomNav />
+        <BottomNav accountType={accountType} />
         <ServiceWorkerRegister />
       </body>
     </html>

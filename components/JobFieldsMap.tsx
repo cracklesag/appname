@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Map as MlMap, StyleSpecification } from 'maplibre-gl';
 
 interface MapField { field_name: string; boundary: unknown | null; }

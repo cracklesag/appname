@@ -476,6 +476,8 @@ export interface Settings {
    * from the built-in defaults are stored). Undefined = use RB209 defaults.
    */
   agronomy?: AgronomyOverrides;
+  /** 'farm' (default) or 'contractor' (lighter, jobs-only account). */
+  accountType?: 'farm' | 'contractor';
   onboarded: boolean;
 }
 
@@ -511,6 +513,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   hiddenGrassSystemIds: [],
   sprayer: { widthM: null, totalFlowLMin: null, defaultSpeedKmh: null, tankLitres: null },
+  accountType: 'farm',
   onboarded: false,
 };
 

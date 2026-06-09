@@ -23,6 +23,7 @@ export const dynamic = 'force-dynamic';
 export default async function HomePage({ searchParams }: { searchParams: { setup?: string } }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
+  if (settings.accountType === 'contractor') redirect('/jobs');
 
   const [fields, products, applications, cuts] = await Promise.all([
     loadFields(),
