@@ -662,6 +662,9 @@ export interface Job {
   assignee_user_id: string | null;
   delegated_to_user_id: string | null;
   contractor_label: string | null;
+  work_started_at: string | null;
+  work_minutes: number | null;
+  farm_name: string | null;
   share_token: string | null;
   share_pin: string | null;
   share_expires_at: string | null;

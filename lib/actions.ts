@@ -3083,9 +3083,13 @@ export async function createJob(formData: FormData) {
     } catch { /* ignore */ }
   }
 
+  const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
+  const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? null;
+
   const { data: job, error } = await supabase.from('jobs').insert({
     user_id: ctx.ownerId,
     created_by: ctx.userId,
+    farm_name: farmName,
     title,
     job_type: jobType,
     status: 'sent',
@@ -3541,6 +3545,61 @@ export async function forwardJob(formData: FormData) {
     delegate = target;
   }
   const { error } = await supabase.from('jobs').update({ delegated_to_user_id: delegate }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Job sheets — Phase 5: time tracking. The person doing the job (assignee,
+// forwarded operator, or a farm member) runs a timer or enters minutes by hand.
+// ---------------------------------------------------------------------------
+
+async function canWorkJob(supabase: ReturnType<typeof createClient>, jobId: string) {
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const { data: job } = await supabase.from('jobs').select('id, user_id, assignee_user_id, delegated_to_user_id, work_started_at, work_minutes').eq('id', jobId).maybeSingle();
+  if (!job) throw new Error('Job not found');
+  const j = job as { user_id: string; assignee_user_id: string | null; delegated_to_user_id: string | null; work_started_at: string | null; work_minutes: number | null };
+  const allowed = j.assignee_user_id === ctx.userId || j.delegated_to_user_id === ctx.userId || j.user_id === ctx.ownerId;
+  if (!allowed) throw new Error('You cannot record time on this job');
+  return j;
+}
+
+export async function startJobTimer(formData: FormData) {
+  const supabase = createClient();
+  const id = String(formData.get('id') ?? '');
+  const j = await canWorkJob(supabase, id);
+  if (!j.work_started_at) {
+    const { error } = await supabase.from('jobs').update({ work_started_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}
+
+export async function stopJobTimer(formData: FormData) {
+  const supabase = createClient();
+  const id = String(formData.get('id') ?? '');
+  const j = await canWorkJob(supabase, id);
+  if (j.work_started_at) {
+    const elapsedMin = Math.max(0, Math.floor((Date.now() - new Date(j.work_started_at).getTime()) / 60000));
+    const total = (j.work_minutes ?? 0) + elapsedMin;
+    const { error } = await supabase.from('jobs').update({ work_started_at: null, work_minutes: total }).eq('id', id);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}`);
+}
+
+export async function setJobMinutes(formData: FormData) {
+  const supabase = createClient();
+  const id = String(formData.get('id') ?? '');
+  await canWorkJob(supabase, id);
+  const raw = String(formData.get('minutes') ?? '').trim();
+  const mins = raw === '' ? null : Math.max(0, Math.round(Number(raw)));
+  if (raw !== '' && !Number.isFinite(Number(raw))) throw new Error('Invalid minutes');
+  const { error } = await supabase.from('jobs').update({ work_minutes: mins, work_started_at: null }).eq('id', id);
   if (error) throw new Error(error.message);
   revalidatePath(`/jobs/${id}`);
   redirect(`/jobs/${id}`);

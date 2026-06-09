@@ -413,3 +413,69 @@ export async function loadFarmContractors(): Promise<FarmContractor[]> {
   if (error) return [];
   return (data as FarmContractor[]) ?? [];
 }
+
+export interface TimesheetJob {
+  id: string;
+  title: string;
+  job_type: string;
+  farm_name: string | null;
+  status: string;
+  work_minutes: number | null;
+  work_started_at: string | null;
+  work_date: string; // ISO — best estimate of when the work happened
+  area_done_ha: number;
+  field_count: number;
+}
+
+// Jobs this user actually worked (assigned to them, or forwarded to them).
+export async function loadTimesheetJobs(): Promise<TimesheetJob[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('id, title, job_type, farm_name, status, work_minutes, work_started_at, submitted_at, approved_at, due_date, created_at')
+    .or(`assignee_user_id.eq.${user.id},delegated_to_user_id.eq.${user.id}`)
+    .order('created_at', { ascending: false });
+  const list = (jobs ?? []) as Record<string, unknown>[];
+  if (list.length === 0) return [];
+
+  const ids = list.map((j) => j.id as string);
+  const { data: fieldRows } = await supabase.from('job_fields').select('job_id, area_ha, status').in('job_id', ids);
+  const byJob = new Map<string, { area: number; count: number }>();
+  for (const f of (fieldRows ?? []) as Record<string, unknown>[]) {
+    const jid = f.job_id as string;
+    const cur = byJob.get(jid) ?? { area: 0, count: 0 };
+    if (f.status === 'done' || f.status === 'partial') {
+      cur.area += Number(f.area_ha) || 0;
+      cur.count += 1;
+    }
+    byJob.set(jid, cur);
+  }
+
+  return list.map((j) => ({
+    id: j.id as string,
+    title: j.title as string,
+    job_type: j.job_type as string,
+    farm_name: (j.farm_name as string) ?? null,
+    status: j.status as string,
+    work_minutes: (j.work_minutes as number) ?? null,
+    work_started_at: (j.work_started_at as string) ?? null,
+    work_date: (j.submitted_at as string) ?? (j.approved_at as string) ?? (j.due_date as string) ?? (j.created_at as string),
+    area_done_ha: byJob.get(j.id as string)?.area ?? 0,
+    field_count: byJob.get(j.id as string)?.count ?? 0,
+  }));
+}
+
+// Count of new (sent, not yet started) jobs waiting for this user — for the nav badge.
+export async function countNewJobs(): Promise<number> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+  const { count } = await supabase
+    .from('jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
+    .or(`assignee_user_id.eq.${user.id},delegated_to_user_id.eq.${user.id}`);
+  return count ?? 0;
+}

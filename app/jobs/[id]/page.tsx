@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { JobWorkflow } from '@/components/JobWorkflow';
 import { ShareLinkPanel } from '@/components/ShareLinkPanel';
+import { JobTimer } from '@/components/JobTimer';
 import { loadJob, loadSettings, loadAllProducts, loadFarmMembers } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { deleteJob, forwardJob } from '@/lib/actions';
@@ -25,6 +26,7 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const autoLog = !!ctx && job.user_id === ctx.ownerId; // farm staff/admin log immediately
   const isContractorOnThisJob = isAssignee && !!ctx && job.user_id !== ctx.ownerId; // received from another account
   const myStaff = members.filter((m) => m.role === 'staff');
+  const canWork = !!ctx && (job.assignee_user_id === ctx.userId || job.delegated_to_user_id === ctx.userId || job.user_id === ctx.ownerId);
   const def = jobTypeDef(job.job_type);
   const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
@@ -92,6 +94,8 @@ export default async function JobPage({ params }: { params: { id: string } }) {
         {job.delegated_to_user_id && (isAdmin || isContractorOnThisJob) && (
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, padding: '0 2px' }}>Forwarded to an operator.</div>
         )}
+
+        <JobTimer jobId={job.id} workStartedAt={job.work_started_at} workMinutes={job.work_minutes} editable={canWork && job.status !== 'approved'} />
 
         <div className="label" style={{ marginBottom: 8 }}>Fields <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· {fields.length}</span></div>
         <JobWorkflow

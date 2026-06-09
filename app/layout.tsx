@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { BottomNav } from '@/components/BottomNav';
-import { loadSettings } from '@/lib/data';
+import { loadSettings, countNewJobs } from '@/lib/data';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SplashController } from '@/components/SplashController';
 
@@ -52,6 +52,7 @@ const FADE_MS = 500;
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const settings = await loadSettings();
   const accountType = settings.accountType ?? 'farm';
+  const jobBadge = accountType === 'contractor' ? await countNewJobs() : 0;
   return (
     <html lang="en-GB">
       <head>
@@ -125,7 +126,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </div>
 
         <div className="app-shell">{children}</div>
-        <BottomNav accountType={accountType} />
+        <BottomNav accountType={accountType} jobBadge={jobBadge} />
         <ServiceWorkerRegister />
       </body>
     </html>

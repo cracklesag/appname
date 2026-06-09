@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Layers, FileText, ClipboardList, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
+import { Home, Layers, FileText, ClipboardList, Clock, Users, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 
 interface NavItem { id: string; label: string; icon: LucideIcon; href: string }
 
@@ -16,10 +16,12 @@ const FARM_ITEMS: NavItem[] = [
 // Contractors have no fields/activity — their world is the jobs sent to them.
 const CONTRACTOR_ITEMS: NavItem[] = [
   { id: 'jobs', label: 'Jobs', icon: ClipboardList, href: '/jobs' },
+  { id: 'timesheets', label: 'Timesheets', icon: Clock, href: '/timesheets' },
+  { id: 'team', label: 'Team', icon: Users, href: '/settings/team' },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, href: '/settings' },
 ];
 
-export function BottomNav({ accountType = 'farm' }: { accountType?: 'farm' | 'contractor' }) {
+export function BottomNav({ accountType = 'farm', jobBadge = 0 }: { accountType?: 'farm' | 'contractor'; jobBadge?: number }) {
   const pathname = usePathname();
   const items = accountType === 'contractor' ? CONTRACTOR_ITEMS : FARM_ITEMS;
   const topLevel = new Set(items.map((i) => i.href));
@@ -32,7 +34,12 @@ export function BottomNav({ accountType = 'farm' }: { accountType?: 'farm' | 'co
         const isActive = pathname === item.href;
         return (
           <Link key={item.id} href={item.href} className={`bottom-nav-btn ${isActive ? 'active' : ''}`}>
-            <Icon size={20} />
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <Icon size={20} />
+              {item.id === 'jobs' && jobBadge > 0 && (
+                <span style={{ position: 'absolute', top: -5, right: -8, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--clay, #b06a37)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{jobBadge > 9 ? '9+' : jobBadge}</span>
+              )}
+            </span>
             <span>{item.label}</span>
           </Link>
         );

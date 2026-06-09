@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { getFarmContext } from '@/lib/farm';
-import { loadFarmMembers, loadFarmInvites } from '@/lib/data';
+import { loadFarmMembers, loadFarmInvites, loadSettings } from '@/lib/data';
 import { createFarmInvite, deleteFarmInvite, removeFarmMember } from '@/lib/actions';
 import { InviteCodeCard } from '@/components/InviteCodeCard';
 import { Plus, UserMinus } from 'lucide-react';
@@ -14,20 +14,21 @@ export default async function TeamPage() {
   // Staff can't manage the team — bounce them to settings.
   if (!ctx.isAdmin) redirect('/settings');
 
-  const [members, invites] = await Promise.all([loadFarmMembers(), loadFarmInvites()]);
+  const [members, invites, settings] = await Promise.all([loadFarmMembers(), loadFarmInvites(), loadSettings()]);
+  const isContractor = settings.accountType === 'contractor';
 
   const staff = members.filter((m) => m.role === 'staff');
   const pendingInvites = invites.filter((i) => !i.used_at);
 
   return (
     <div style={{ paddingBottom: 90 }}>
-      <Header title="Team" subtitle="People who can use this farm" backHref="/settings" />
+      <Header title="Team" subtitle={isContractor ? 'Your operators' : 'People who can use this farm'} backHref="/settings" />
 
       <div style={{ padding: '14px 16px' }}>
         <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 18 }}>
-          Staff can log cuts, fertiliser, slurry, manure and lime, and edit their own entries.
-          They can see everything but can&apos;t change fields, soil, groups, products or settings —
-          those stay with you.
+          {isContractor
+            ? 'Operators can open jobs sent to your business, tick off fields and log their time. They only see jobs forwarded to them — not your full job list or settings.'
+            : 'Staff can log cuts, fertiliser, slurry, manure and lime, and edit their own entries. They can see everything but can\u2019t change fields, soil, groups, products or settings \u2014 those stay with you.'}
         </p>
 
         {/* Members */}
@@ -46,7 +47,7 @@ export default async function TeamPage() {
           {staff.map((m, i) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: i < staff.length - 1 ? '1px solid var(--line-soft)' : 'none' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>Staff member</div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{isContractor ? 'Operator' : 'Staff member'}</div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Joined {new Date(m.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
               </div>
               <form action={removeFarmMember}>
@@ -60,7 +61,7 @@ export default async function TeamPage() {
 
           {staff.length === 0 && (
             <div style={{ padding: '13px 15px', fontSize: 13, color: 'var(--muted)' }}>
-              No staff yet. Generate an invite code below to add someone.
+              {isContractor ? 'No operators yet. Generate an invite code below to add one.' : 'No staff yet. Generate an invite code below to add someone.'}
             </div>
           )}
         </div>
