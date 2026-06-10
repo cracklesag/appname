@@ -7,6 +7,7 @@ import { SprayCalculator } from '@/components/SprayCalculator';
 import { loadSprayRecords, loadFields, loadSettings, loadSprayProducts } from '@/lib/data';
 import { fmtDate } from '@/lib/rules';
 import { readSprayerSettings } from '@/lib/spray';
+import { bboxOfGeometry, centroidOfBbox, type FieldGeometry } from '@/lib/geo';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,13 @@ export default async function SprayRecordsPage({
   const backHref = searchParams.from && searchParams.from.startsWith('/') ? searchParams.from : '/';
   const sprayer = readSprayerSettings(settings);
 
-  const calcFields = fields.filter((f) => !f.needs_setup).map((f) => ({ id: f.id, name: f.name, ha: f.ha }));
+  const calcFields = fields.filter((f) => !f.needs_setup).map((f) => {
+    let lat: number | null = null, lng: number | null = null;
+    if (f.boundary) {
+      try { const c = centroidOfBbox(bboxOfGeometry(f.boundary as FieldGeometry)); lat = c.lat; lng = c.lng; } catch { /* unmapped */ }
+    }
+    return { id: f.id, name: f.name, ha: f.ha, lat, lng };
+  });
   const calcProducts = sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }));
 
   const views: SprayView[] = records.map((r) => ({

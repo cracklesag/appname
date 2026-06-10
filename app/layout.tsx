@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { BottomNav } from '@/components/BottomNav';
+import { OfflineSync } from '@/components/OfflineSync';
 import { loadSettings, countNewJobs } from '@/lib/data';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SplashController } from '@/components/SplashController';
@@ -127,6 +128,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         <div className="app-shell">{children}</div>
         <BottomNav accountType={accountType} jobBadge={jobBadge} />
+        <OfflineSync />
         <ServiceWorkerRegister />
       </body>
     </html>

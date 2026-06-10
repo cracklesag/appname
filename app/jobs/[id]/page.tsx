@@ -10,6 +10,8 @@ import { getFarmContext } from '@/lib/farm';
 import { deleteJob, forwardJob, duplicateJob } from '@/lib/actions';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { fmtDate } from '@/lib/rules';
+import { bboxOfGeometry, centroidOfBbox, type FieldGeometry } from '@/lib/geo';
+import { SprayWeather } from '@/components/SprayWeather';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,14 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
   const areaUnit = settings.unitSystem === 'acres' ? 'ac' : 'ha';
+  // Spray jobs: forecast at the first mapped field's centroid.
+  let weatherSpot: { lat: number; lng: number; name: string } | null = null;
+  if (def?.id === 'spray') {
+    const wf = fields.find((f) => f.boundary);
+    if (wf?.boundary) {
+      try { const c = centroidOfBbox(bboxOfGeometry(wf.boundary as FieldGeometry)); weatherSpot = { lat: c.lat, lng: c.lng, name: wf.field_name }; } catch { /* unmapped */ }
+    }
+  }
   const h = headers();
   const host = h.get('host');
   const proto = h.get('x-forwarded-proto') ?? 'https';
@@ -97,6 +107,10 @@ export default async function JobPage({ params }: { params: { id: string } }) {
 
         {job.delegated_to_user_id && (isAdmin || isContractorOnThisJob) && (
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, padding: '0 2px' }}>Forwarded to an operator.</div>
+        )}
+
+        {weatherSpot && job.status !== 'approved' && (
+          <SprayWeather lat={weatherSpot.lat} lng={weatherSpot.lng} label={weatherSpot.name} />
         )}
 
         <JobTimer jobId={job.id} workStartedAt={job.work_started_at} workMinutes={job.work_minutes} editable={canWork && job.status !== 'approved'} />

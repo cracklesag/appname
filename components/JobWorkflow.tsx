@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { JobFieldsMap } from './JobFieldsMap';
 import { CheckCircle2, Clock } from 'lucide-react';
 import { saveJobCompletion, approveJob, reopenJob } from '@/lib/actions';
+import { enqueue, isOfflineError } from '@/lib/offline/queue';
 
 type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
 interface WField {
@@ -87,6 +88,8 @@ export function JobWorkflow({
   }));
   const anyMarked = lines.some((l) => l.status !== 'pending');
 
+  const [queuedOffline, setQueuedOffline] = useState(false);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -95,7 +98,14 @@ export function JobWorkflow({
     try {
       await saveJobCompletion(fd);
     } catch (err) {
-      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) setError(err.message);
+      if (err instanceof Error && err.message.includes('NEXT_REDIRECT')) return;
+      if (isOfflineError(err)) {
+        await enqueue('job_completion', { fd });
+        setQueuedOffline(true);
+        setSubmitting(false);
+        return;
+      }
+      if (err instanceof Error) setError(err.message);
       setSubmitting(false);
     }
   }
@@ -214,6 +224,11 @@ export function JobWorkflow({
           )}
         </div>
       ))}
+      {queuedOffline && (
+        <div style={{ margin: '4px 0 10px', padding: 12, background: '#fdf0dd', color: '#9a6320', fontSize: 13, borderRadius: 8, lineHeight: 1.45 }}>
+          No signal — your tick-off is saved on this phone and will submit automatically when you're back in coverage.
+        </div>
+      )}
       {error && <div style={{ margin: '4px 0 10px', padding: 10, background: 'var(--red-soft, #ffe5e5)', color: 'var(--red, #b00)', fontSize: 13, borderRadius: 6 }}>{error}</div>}
       <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: 4 }} disabled={submitting || !anyMarked}>
         {submitting ? 'Saving…' : autoLog ? 'Submit & log' : 'Submit for approval'}

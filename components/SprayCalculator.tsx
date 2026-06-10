@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X, RotateCcw, ClipboardList, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
 import { computeSprayMix, computeLoadSplit, type SprayLine } from '@/lib/spray';
+import { SprayWeather } from './SprayWeather';
 
-interface CalcField { id: string; name: string; ha: number; }
+interface CalcField { id: string; name: string; ha: number; lat?: number | null; lng?: number | null; }
 interface CalcProduct { id: string; name: string; default_l_per_ha: number | null; }
 interface SprayerCfg {
   widthM: number | null;
@@ -323,6 +324,10 @@ export function SprayCalculator({
           </div>
         )
       )}
-    </div>
+          {(() => {
+        const f = fields.find((x) => x.id === fieldId);
+        return f && f.lat != null && f.lng != null ? <SprayWeather lat={f.lat} lng={f.lng} label={f.name} /> : null;
+      })()}
+</div>
   );
 }

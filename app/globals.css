@@ -399,3 +399,5 @@ a { color: inherit; text-decoration: none; }
 .maplibregl-ctrl-bottom-right {
   margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
 }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

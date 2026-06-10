@@ -6,6 +6,7 @@ import { Save, MapPin, Pencil, X, Plus } from 'lucide-react';
 import { Field } from '@/lib/types';
 import type { FieldGeometry } from '@/lib/geo';
 import { createSprayRecord } from '@/lib/actions';
+import { enqueue, isOfflineError } from '@/lib/offline/queue';
 import PartApplicationDraw from './PartApplicationDraw';
 
 const WIND_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
@@ -100,6 +101,8 @@ export function SprayRecordForm({
   );
   const usesStock = lines.some((l) => l.productId);
 
+  const [queuedOffline, setQueuedOffline] = useState(false);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitError(null);
@@ -108,9 +111,25 @@ export function SprayRecordForm({
     try {
       await createSprayRecord(fd);
     } catch (err) {
-      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) setSubmitError(err.message);
+      if (err instanceof Error && err.message.includes('NEXT_REDIRECT')) return;
+      if (isOfflineError(err)) {
+        await enqueue('spray_record', { fd });
+        setQueuedOffline(true);
+        setSubmitting(false);
+        return;
+      }
+      if (err instanceof Error) setSubmitError(err.message);
       setSubmitting(false);
     }
+  }
+
+  if (queuedOffline) {
+    return (
+      <div className="card" style={{ padding: 18, textAlign: 'center', margin: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink)', marginBottom: 6 }}>Saved on this phone</div>
+        <div style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>No signal just now — this spray record is queued and will log itself automatically when you're back in coverage. You can carry on working.</div>
+      </div>
+    );
   }
 
   if (drawing && boundary) {
