@@ -7,7 +7,7 @@
 //   back to cache only when offline — so logged farm data is always fresh.
 // Data sync (queue writes when offline) is a later milestone.
 
-const CACHE_NAME = 'app-shell-v4';
+const CACHE_NAME = 'app-shell-v5';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
