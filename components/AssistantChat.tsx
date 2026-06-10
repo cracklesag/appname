@@ -199,8 +199,8 @@ export function AssistantChat() {
     setLoading(true);
     setError(null);
     try {
-      const { reply, toolsUsed, model } = await askAssistant(history);
-      setMessages([...history, { role: 'assistant', content: reply, model, tools: toolsUsed }]);
+      const { reply } = await askAssistant(history);
+      setMessages([...history, { role: 'assistant', content: reply }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {
@@ -333,11 +333,6 @@ export function AssistantChat() {
                 }}
               >
                 {m.role === 'user' ? m.content : <div className="assistant-md">{renderMarkdown(m.content)}</div>}
-                {m.role === 'assistant' && (m.model || (m.tools && m.tools.length > 0)) && (
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6, opacity: 0.85 }}>
-                    {m.model}{m.tools && m.tools.length > 0 ? ` · ${m.tools.join(', ')}` : ''}
-                  </div>
-                )}
               </div>
             </div>
           ))}

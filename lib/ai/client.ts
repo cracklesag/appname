@@ -6,15 +6,11 @@
 export interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
-  /** Set on assistant messages by the UI: which model served it + tools used. */
-  model?: string;
-  tools?: string[];
 }
 
 export interface AssistantReply {
   reply: string;
   toolsUsed: string[];
-  model?: string;
 }
 
 /**

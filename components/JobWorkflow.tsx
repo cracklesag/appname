@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { JobFieldsMap } from './JobFieldsMap';
 import { CheckCircle2, Clock } from 'lucide-react';
 import { saveJobCompletion, approveJob, reopenJob } from '@/lib/actions';
 
@@ -10,7 +9,6 @@ interface WField {
   id: string; name: string; area: number | null;
   plannedRate: number | null; plannedUnit: string | null;
   status: FStatus; actualRate: number | null;
-  boundary: unknown | null;
 }
 interface Line extends WField { actualStr: string; }
 
@@ -21,7 +19,7 @@ const STATUS_OPTS: { v: FStatus; label: string }[] = [
 ];
 
 export function JobWorkflow({
-  jobId, status, role, autoLog, rateNoun, hasRate, fields, unitSystem, fmtDateStr, approvedAt, detailLine,
+  jobId, status, role, autoLog, rateNoun, hasRate, fields, unitSystem, fmtDateStr, approvedAt,
 }: {
   jobId: string;
   status: 'draft' | 'sent' | 'submitted' | 'approved' | 'archived';
@@ -33,7 +31,6 @@ export function JobWorkflow({
   unitSystem: 'acres' | 'hectares';
   fmtDateStr: string | null;
   approvedAt: string | null;
-  detailLine?: string | null;
 }) {
   const areaUnit = unitSystem === 'acres' ? 'ac' : 'ha';
   const toUnit = (ha: number) => (unitSystem === 'acres' ? ha * 2.47105 : ha);
@@ -55,29 +52,6 @@ export function JobWorkflow({
       return next;
     }));
   const setActual = (id: string, s: string) => setLines((prev) => prev.map((l) => (l.id === id ? { ...l, actualStr: s } : l)));
-
-  // Map confirm sets directly (no toggle-off), pre-filling actual from planned.
-  const setStatusDirect = (id: string, v: FStatus) =>
-    setLines((prev) => prev.map((l) => {
-      if (l.id !== id) return l;
-      const next = { ...l, status: v };
-      if ((v === 'done' || v === 'partial') && next.actualStr.trim() === '' && next.plannedRate != null) next.actualStr = String(next.plannedRate);
-      return next;
-    }));
-
-  const mapBlock = (editable: boolean) =>
-    lines.some((l) => l.boundary) ? (
-      <div style={{ marginBottom: 12 }}>
-        <JobFieldsMap
-          fields={lines.map((l) => ({ id: l.id, field_name: l.name, boundary: l.boundary, area_ha: l.area, planned_rate_value: l.plannedRate, planned_rate_unit: l.plannedUnit }))}
-          statuses={Object.fromEntries(lines.map((l) => [l.id, l.status]))}
-          onSetStatus={editable ? setStatusDirect : undefined}
-          detailLine={detailLine ?? null}
-          rateNoun={rateNoun}
-          areaUnit={unitSystem === 'acres' ? 'ac' : 'ha'}
-        />
-      </div>
-    ) : null;
 
   const completions = lines.map((l) => ({
     id: l.id,
@@ -118,7 +92,6 @@ export function JobWorkflow({
           <CheckCircle2 size={18} style={{ color: 'var(--forest-dark)' }} />
           <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>Logged{fmtDateStr ? ` on ${fmtDateStr}` : ''}. Records were written to the relevant fields.</div>
         </div>
-        {mapBlock(false)}
         {lines.map((l) => (
           <div key={l.id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -143,7 +116,6 @@ export function JobWorkflow({
           <Clock size={17} style={{ color: '#b06a37' }} />
           <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>Submitted — review and approve to log the records.</div>
         </div>
-        {mapBlock(false)}
         {lines.map((l) => (
           <div key={l.id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -189,8 +161,7 @@ export function JobWorkflow({
     <form onSubmit={handleSubmit}>
       <input type="hidden" name="job_id" value={jobId} />
       <input type="hidden" name="completions" value={JSON.stringify(completions)} />
-      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10 }}>Tick off each field as you go — in the list or on the map — then submit.</div>
-      {mapBlock(true)}
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10 }}>Tick off each field as you go, then submit.</div>
       {lines.map((l) => (
         <div key={l.id} className="card" style={{ padding: 12, marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>

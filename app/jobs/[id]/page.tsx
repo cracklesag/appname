@@ -54,7 +54,6 @@ export default async function JobPage({ params }: { params: { id: string } }) {
     plannedUnit: f.planned_rate_unit,
     status: f.status,
     actualRate: f.actual_rate_value,
-    boundary: f.boundary ?? null,
   }));
 
   return (
@@ -113,7 +112,6 @@ export default async function JobPage({ params }: { params: { id: string } }) {
           unitSystem={settings.unitSystem}
           fmtDateStr={job.approved_at ? fmtDate(job.approved_at.slice(0, 10)) : null}
           approvedAt={job.approved_at}
-          detailLine={instructionLine || null}
         />
 
         {isAdmin && job.status !== 'approved' && (

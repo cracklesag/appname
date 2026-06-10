@@ -42,9 +42,8 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const { reply, toolsUsed, model } = await runAssistant(messages as PlainMessage[], framing);
-    console.log(`[assistant] env ASSISTANT_MODEL=${process.env.ASSISTANT_MODEL ?? '(unset)'} served=${model}`);
-    return NextResponse.json({ reply, toolsUsed, model });
+    const { reply, toolsUsed } = await runAssistant(messages as PlainMessage[], framing);
+    return NextResponse.json({ reply, toolsUsed });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Assistant error.';
     return NextResponse.json({ error: message }, { status: 500 });
