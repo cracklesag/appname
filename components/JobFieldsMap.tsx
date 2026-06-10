@@ -123,17 +123,32 @@ export function JobFieldsMap({
           if (!cen) return;
           // 40px hit area around a 26px face — tractor-glove friendly.
           const hit = document.createElement('div');
-          hit.style.cssText = 'width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer';
+          hit.style.cssText = 'width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation';
           const face = document.createElement('div');
           paintMarker(face, statusesRef.current?.[x.id] ?? 'pending', x.idx);
           hit.appendChild(face);
           markerEls.current.set(x.id, face);
-          hit.addEventListener('click', (e) => {
-            e.stopPropagation();
+          // Distance-based tap detection: a bare 'click' is unreliable on map
+          // canvases (a few px of finger wobble and the pan handler eats it).
+          const activate = () => {
             if (!interactiveRef.current) return;
             setSelected(x.id);
             setConfirming(null);
             setFull(true);
+          };
+          let downX = 0, downY = 0, downT = 0, handled = false;
+          hit.addEventListener('pointerdown', (e) => {
+            downX = e.clientX; downY = e.clientY; downT = Date.now(); handled = false;
+            e.stopPropagation();
+          });
+          hit.addEventListener('pointerup', (e) => {
+            const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+            if (moved <= 14 && Date.now() - downT < 800) { handled = true; e.stopPropagation(); e.preventDefault(); activate(); }
+          });
+          hit.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!handled) activate(); // desktop / fallback path
+            handled = false;
           });
           const m = new maplibregl.Marker({ element: hit }).setLngLat(cen as [number, number]).addTo(map);
           markersRef.current.push(m);
@@ -173,14 +188,48 @@ export function JobFieldsMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statuses]);
 
-  // ---- fullscreen: resize the map + lock body scroll ----
+  // ---- fullscreen: move the whole wrapper onto <body> so position:fixed can
+  // never be trapped by an ancestor (overflow, transform, webview quirks).
+  const outerRef = useRef<HTMLDivElement>(null);
+  const homeRef = useRef<{ parent: Node; next: Node | null } | null>(null);
   useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    if (full && el.parentNode !== document.body) {
+      homeRef.current = { parent: el.parentNode as Node, next: el.nextSibling };
+      document.body.appendChild(el);
+      document.body.style.overflow = 'hidden';
+    } else if (!full && homeRef.current && el.parentNode === document.body) {
+      const { parent, next } = homeRef.current;
+      if (next && next.parentNode === parent) parent.insertBefore(el, next); else parent.appendChild(el);
+      homeRef.current = null;
+      document.body.style.overflow = '';
+    }
     const t1 = requestAnimationFrame(() => mapRef.current?.resize());
-    const t2 = setTimeout(() => mapRef.current?.resize(), 260);
-    if (full) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
+    const t2 = setTimeout(() => mapRef.current?.resize(), 280);
     return () => { cancelAnimationFrame(t1); clearTimeout(t2); document.body.style.overflow = ''; };
   }, [full]);
+
+  // If we unmount while parked on <body> (e.g. navigation mid-fullscreen),
+  // put the node back first so React's removeChild finds it where it expects.
+  useEffect(() => () => {
+    const el = outerRef.current;
+    if (el && homeRef.current && el.parentNode === document.body) {
+      const { parent, next } = homeRef.current;
+      if (next && next.parentNode === parent) parent.insertBefore(el, next);
+      else (parent as Element).appendChild(el);
+    }
+    document.body.style.overflow = '';
+  }, []);
+
+  // Belt-and-braces: resize whenever the container's size changes (fullscreen,
+  // rotation, webview chrome appearing/disappearing).
+  useEffect(() => {
+    if (!ref.current || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => mapRef.current?.resize());
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
 
   if (feats.length === 0) return null;
 
@@ -195,7 +244,7 @@ export function JobFieldsMap({
   const chip: React.CSSProperties = { position: 'absolute', borderRadius: 8, background: 'rgba(13,19,43,0.82)', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '7px 11px', zIndex: 5 };
 
   return (
-    <div style={wrapStyle}>
+    <div ref={outerRef} style={wrapStyle}>
       <div ref={ref} style={{ width: '100%', height: '100%', flex: 1 }} />
 
       {/* progress chip */}
@@ -206,7 +255,7 @@ export function JobFieldsMap({
         type="button"
         aria-label={full ? 'Close map' : 'Expand map'}
         onClick={() => { setFull(!full); setSelected(null); setConfirming(null); }}
-        style={{ ...chip, top: full ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 8, right: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+        style={{ ...chip, top: full ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 8, right: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, touchAction: 'manipulation' }}
       >
         {full ? <X size={16} /> : <Expand size={15} />}{full ? 'Close' : interactive ? 'Tick off on map' : 'Expand'}
       </button>
