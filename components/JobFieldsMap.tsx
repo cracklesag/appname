@@ -92,6 +92,18 @@ export function JobFieldsMap({
       const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), center: [-2.7, 54.0], zoom: 11, attributionControl: false });
       mapRef.current = map;
 
+      // "Where am I?" — off by default; tapping it triggers the browser's own
+      // location-permission prompt, then shows a blue dot + accuracy ring and
+      // follows the user (tap again to stop). Pure client-side: the position
+      // never leaves the phone.
+      map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true, timeout: 10000 },
+        trackUserLocation: true,
+        showUserLocation: true,
+        showAccuracyCircle: true,
+        fitBoundsOptions: { maxZoom: 17 },
+      }), 'bottom-right');
+
       map.on('load', () => {
         const st = statusesRef.current;
         const fc = {
@@ -262,7 +274,7 @@ export function JobFieldsMap({
 
       {/* hint */}
       {full && interactive && !sel && (
-        <div style={{ position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)', left: 16, right: 16, textAlign: 'center', zIndex: 5 }}>
+        <div style={{ position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)', left: 16, right: 16, textAlign: 'center', zIndex: 5, pointerEvents: 'none' }}>
           <span style={{ background: 'rgba(13,19,43,0.82)', color: '#fff', fontSize: 13, padding: '8px 14px', borderRadius: 99 }}>Tap a field number to tick it off</span>
         </div>
       )}
