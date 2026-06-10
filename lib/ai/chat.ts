@@ -37,6 +37,7 @@ interface AnthropicMessage {
 interface AnthropicResponse {
   content: Block[];
   stop_reason: string;
+  model?: string; // the resolved model ID that actually served the request
 }
 
 async function callAnthropic(system: string, messages: AnthropicMessage[]): Promise<AnthropicResponse> {
@@ -83,16 +84,18 @@ async function callAnthropic(system: string, messages: AnthropicMessage[]): Prom
 export async function runAssistant(
   history: PlainMessage[],
   framing: FarmFraming,
-): Promise<{ reply: string; toolsUsed: string[] }> {
+): Promise<{ reply: string; toolsUsed: string[]; model: string }> {
   const system = buildSystemPrompt(framing);
   const messages: AnthropicMessage[] = history
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map((m) => ({ role: m.role, content: m.content }));
 
   const toolsUsed: string[] = [];
+  let servedModel = MODEL;
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const resp = await callAnthropic(system, messages);
+    if (resp.model) servedModel = resp.model;
 
     if (resp.stop_reason === 'tool_use') {
       // Echo the assistant's tool-call turn back into the working history.
@@ -114,11 +117,12 @@ export async function runAssistant(
       .map((b) => b.text)
       .join('\n')
       .trim();
-    return { reply: reply || "I didn't catch that — could you rephrase?", toolsUsed };
+    return { reply: reply || "I didn't catch that — could you rephrase?", toolsUsed, model: servedModel };
   }
 
   return {
     reply: "Sorry — I couldn't finish working that out just now. Try asking a slightly simpler question?",
     toolsUsed,
+    model: servedModel,
   };
 }
