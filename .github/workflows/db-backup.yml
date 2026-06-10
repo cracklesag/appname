@@ -46,6 +46,8 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version
           STAMP=$(date -u +%Y%m%d-%H%M%SZ)
           mkdir -p out
           # All farm/app data lives in the public schema — captured in a compressed
