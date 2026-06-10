@@ -1,10 +1,23 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Map as MlMap, StyleSpecification } from 'maplibre-gl';
+import { Expand, X } from 'lucide-react';
+import type { Map as MlMap, GeoJSONSource, StyleSpecification, Marker } from 'maplibre-gl';
 
-interface MapField { field_name: string; boundary: unknown | null; }
+type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
+
+interface MapField {
+  id?: string;
+  field_name: string;
+  boundary: unknown | null;
+  area_ha?: number | null;
+  planned_rate_value?: number | null;
+  planned_rate_unit?: string | null;
+}
+
+const STATUS_LABEL: Record<Exclude<FStatus, 'pending'>, string> = { done: 'done', partial: 'part done', skipped: 'not done' };
+const HA_TO_AC = 2.47105;
 
 function satelliteStyle(): StyleSpecification {
   return {
@@ -14,7 +27,6 @@ function satelliteStyle(): StyleSpecification {
   } as unknown as StyleSpecification;
 }
 
-// Rough centroid from all coordinates of a Polygon / MultiPolygon geometry.
 function centroidOf(geometry: { type: string; coordinates: unknown }): [number, number] | null {
   let sx = 0, sy = 0, n = 0;
   const walk = (c: unknown) => {
@@ -25,29 +37,76 @@ function centroidOf(geometry: { type: string; coordinates: unknown }): [number, 
   return n > 0 ? [sx / n, sy / n] : null;
 }
 
-export function JobFieldsMap({ fields, height = 240 }: { fields: MapField[]; height?: number }) {
+// Marker face per status: hollow = still to do, solid green tick = done.
+function paintMarker(el: HTMLDivElement, status: FStatus, idx: number) {
+  const base = 'width:26px;height:26px;border-radius:50%;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.45);transition:background .15s';
+  if (status === 'done') { el.style.cssText = `${base};background:#15803d;border:2px solid #fff;color:#fff`; el.textContent = '✓'; }
+  else if (status === 'partial') { el.style.cssText = `${base};background:#f59e0b;border:2px solid #fff;color:#fff`; el.textContent = String(idx); }
+  else if (status === 'skipped') { el.style.cssText = `${base};background:#64748b;border:2px solid #fff;color:#fff`; el.textContent = '✕'; }
+  else { el.style.cssText = `${base};background:#fff;border:2.5px solid #15803d;color:#15803d`; el.textContent = String(idx); }
+}
+
+export function JobFieldsMap({
+  fields, height = 240, statuses, onSetStatus, detailLine, rateNoun, areaUnit = 'ha',
+}: {
+  fields: MapField[];
+  height?: number;
+  statuses?: Record<string, FStatus>;
+  onSetStatus?: (id: string, s: FStatus) => void;
+  detailLine?: string | null;
+  rateNoun?: string | null;
+  areaUnit?: 'ha' | 'ac';
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
+  const loadedRef = useRef(false);
+  const markerEls = useRef<globalThis.Map<string, HTMLDivElement>>(new globalThis.Map());
+  const markersRef = useRef<Marker[]>([]);
+  const fieldsRef = useRef(fields);
+  const statusesRef = useRef(statuses);
+  const interactiveRef = useRef(!!onSetStatus);
+  statusesRef.current = statuses;
+  interactiveRef.current = !!onSetStatus;
 
+  const [full, setFull] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<FStatus | null>(null);
+
+  const interactive = !!onSetStatus;
+  const feats = useMemo(
+    () => fieldsRef.current
+      .map((f, i) => ({ idx: i + 1, id: f.id ?? String(i), f, geometry: f.boundary as { type: string; coordinates: unknown } | null }))
+      .filter((x) => x.geometry && x.geometry.coordinates),
+    [],
+  );
+  const statusOf = (id: string): FStatus => statuses?.[id] ?? 'pending';
+  const doneCount = feats.filter((x) => statusOf(x.id) === 'done').length;
+
+  // ---- init the map ONCE (fields are a per-job snapshot; never re-create) ----
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const maplibregl = (await import('maplibre-gl')).default;
-      if (cancelled || !ref.current || mapRef.current) return;
-
-      const feats = fields
-        .map((f, i) => ({ idx: i + 1, name: f.field_name, geometry: f.boundary as { type: string; coordinates: unknown } | null }))
-        .filter((f) => f.geometry && f.geometry.coordinates);
-      if (feats.length === 0) return;
+      if (cancelled || !ref.current || mapRef.current || feats.length === 0) return;
 
       const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), center: [-2.7, 54.0], zoom: 11, attributionControl: false });
       mapRef.current = map;
 
       map.on('load', () => {
-        const fc = { type: 'FeatureCollection', features: feats.map((f) => ({ type: 'Feature', properties: { idx: f.idx }, geometry: f.geometry })) };
+        const st = statusesRef.current;
+        const fc = {
+          type: 'FeatureCollection',
+          features: feats.map((x) => ({ type: 'Feature', properties: { idx: x.idx, fid: x.id, status: st?.[x.id] ?? 'pending' }, geometry: x.geometry })),
+        };
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         map.addSource('fields', { type: 'geojson', data: fc as any });
-        map.addLayer({ id: 'fields-fill', type: 'fill', source: 'fields', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.22 } });
+        map.addLayer({
+          id: 'fields-fill', type: 'fill', source: 'fields',
+          paint: {
+            'fill-color': ['match', ['get', 'status'], 'done', '#16a34a', 'partial', '#f59e0b', 'skipped', '#64748b', '#f59e0b'],
+            'fill-opacity': ['match', ['get', 'status'], 'done', 0.34, 'partial', 0.34, 'skipped', 0.25, 0.18],
+          },
+        });
         map.addLayer({ id: 'fields-line', type: 'line', source: 'fields', paint: { 'line-color': '#ffffff', 'line-width': 2 } });
 
         let minLng = 180, minLat = 90, maxLng = -180, maxLat = -90;
@@ -58,21 +117,150 @@ export function JobFieldsMap({ fields, height = 240 }: { fields: MapField[]; hei
             if (lng > maxLng) maxLng = lng; if (lat > maxLat) maxLat = lat;
           } else if (Array.isArray(c)) c.forEach(walk);
         };
-        feats.forEach((f) => {
-          walk(f.geometry!.coordinates);
-          const cen = centroidOf(f.geometry!);
-          if (cen) {
-            const el = document.createElement('div');
-            el.textContent = String(f.idx);
-            el.style.cssText = 'width:22px;height:22px;border-radius:50%;background:#15803d;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)';
-            new maplibregl.Marker({ element: el }).setLngLat(cen as [number, number]).addTo(map);
-          }
+        feats.forEach((x) => {
+          walk(x.geometry!.coordinates);
+          const cen = centroidOf(x.geometry!);
+          if (!cen) return;
+          // 40px hit area around a 26px face — tractor-glove friendly.
+          const hit = document.createElement('div');
+          hit.style.cssText = 'width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer';
+          const face = document.createElement('div');
+          paintMarker(face, statusesRef.current?.[x.id] ?? 'pending', x.idx);
+          hit.appendChild(face);
+          markerEls.current.set(x.id, face);
+          hit.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!interactiveRef.current) return;
+            setSelected(x.id);
+            setConfirming(null);
+            setFull(true);
+          });
+          const m = new maplibregl.Marker({ element: hit }).setLngLat(cen as [number, number]).addTo(map);
+          markersRef.current.push(m);
         });
         if (minLng <= maxLng) map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 44, maxZoom: 16, duration: 0 });
+        loadedRef.current = true;
       });
     })();
-    return () => { cancelled = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
-  }, [fields]);
+    return () => {
+      cancelled = true;
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+      loadedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return <div ref={ref} style={{ width: '100%', height, borderRadius: 10, overflow: 'hidden', background: '#0b132b' }} />;
+  // ---- repaint markers + polygons when statuses change ----
+  useEffect(() => {
+    feats.forEach((x) => {
+      const el = markerEls.current.get(x.id);
+      if (el) paintMarker(el, statusOf(x.id), x.idx);
+    });
+    const map = mapRef.current;
+    if (map && loadedRef.current) {
+      const src = map.getSource('fields') as GeoJSONSource | undefined;
+      if (src) {
+        const fc = {
+          type: 'FeatureCollection',
+          features: feats.map((x) => ({ type: 'Feature', properties: { idx: x.idx, fid: x.id, status: statusOf(x.id) }, geometry: x.geometry })),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        src.setData(fc as any);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statuses]);
+
+  // ---- fullscreen: resize the map + lock body scroll ----
+  useEffect(() => {
+    const t1 = requestAnimationFrame(() => mapRef.current?.resize());
+    const t2 = setTimeout(() => mapRef.current?.resize(), 260);
+    if (full) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { cancelAnimationFrame(t1); clearTimeout(t2); document.body.style.overflow = ''; };
+  }, [full]);
+
+  if (feats.length === 0) return null;
+
+  const sel = selected ? feats.find((x) => x.id === selected) ?? null : null;
+  const fmtArea = (ha: number | null | undefined) =>
+    ha == null ? '' : areaUnit === 'ac' ? `${(ha * HA_TO_AC).toFixed(2)} ac` : `${ha.toFixed(2)} ha`;
+
+  const wrapStyle: React.CSSProperties = full
+    ? { position: 'fixed', inset: 0, zIndex: 2000, background: '#0b132b', display: 'flex', flexDirection: 'column' }
+    : { position: 'relative', width: '100%', height, borderRadius: 10, overflow: 'hidden', background: '#0b132b' };
+
+  const chip: React.CSSProperties = { position: 'absolute', borderRadius: 8, background: 'rgba(13,19,43,0.82)', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '7px 11px', zIndex: 5 };
+
+  return (
+    <div style={wrapStyle}>
+      <div ref={ref} style={{ width: '100%', height: '100%', flex: 1 }} />
+
+      {/* progress chip */}
+      {interactive && <div style={{ ...chip, top: full ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 8, left: 8 }}>{doneCount} of {feats.length} done</div>}
+
+      {/* expand / close */}
+      <button
+        type="button"
+        aria-label={full ? 'Close map' : 'Expand map'}
+        onClick={() => { setFull(!full); setSelected(null); setConfirming(null); }}
+        style={{ ...chip, top: full ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 8, right: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        {full ? <X size={16} /> : <Expand size={15} />}{full ? 'Close' : interactive ? 'Tick off on map' : 'Expand'}
+      </button>
+
+      {/* hint */}
+      {full && interactive && !sel && (
+        <div style={{ position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)', left: 16, right: 16, textAlign: 'center', zIndex: 5 }}>
+          <span style={{ background: 'rgba(13,19,43,0.82)', color: '#fff', fontSize: 13, padding: '8px 14px', borderRadius: 99 }}>Tap a field number to tick it off</span>
+        </div>
+      )}
+
+      {/* field card */}
+      {full && sel && (
+        <div style={{ position: 'absolute', left: 10, right: 10, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', zIndex: 6, background: 'var(--card, #fff)', borderRadius: 12, padding: 14, boxShadow: '0 6px 24px rgba(0,0,0,0.35)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink, #2b2b2b)' }}>
+                <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#15803d', color: '#fff', fontSize: 11, alignItems: 'center', justifyContent: 'center', marginRight: 8, verticalAlign: 'text-bottom' }}>{sel.idx}</span>
+                {sel.f.field_name}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted, #777)', marginTop: 4 }}>
+                {fmtArea(sel.f.area_ha)}{sel.f.planned_rate_value != null ? ` · ${sel.f.planned_rate_value} ${sel.f.planned_rate_unit ?? rateNoun ?? ''}` : ''}
+              </div>
+              {detailLine && <div style={{ fontSize: 12.5, color: 'var(--ink-soft, #555)', marginTop: 4, lineHeight: 1.4 }}>{detailLine}</div>}
+            </div>
+            <button type="button" aria-label="Close" onClick={() => { setSelected(null); setConfirming(null); }} style={{ background: 'none', border: 'none', color: 'var(--muted, #777)', cursor: 'pointer', padding: 2 }}><X size={17} /></button>
+          </div>
+
+          {confirming ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink, #2b2b2b)', marginBottom: 10 }}>Mark {sel.f.field_name} as {STATUS_LABEL[confirming as Exclude<FStatus, 'pending'>]}?</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-ghost" style={{ flex: 1 }} onClick={() => setConfirming(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={() => { onSetStatus?.(sel.id, confirming); setConfirming(null); setSelected(null); }}
+                >
+                  Yes — {STATUS_LABEL[confirming as Exclude<FStatus, 'pending'>]}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="toggle-group" style={{ marginTop: 12 }}>
+              {(['done', 'partial', 'skipped'] as const).map((v) => (
+                <button key={v} type="button" className={`toggle-btn ${statusOf(sel.id) === v ? 'active' : ''}`} onClick={() => setConfirming(v)}>
+                  {v === 'done' ? 'Done' : v === 'partial' ? 'Part' : 'Not done'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

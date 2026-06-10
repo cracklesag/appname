@@ -57,6 +57,14 @@ export function SharedJobView({ token }: { token: string }) {
       if ((next.uiStatus === 'done' || next.uiStatus === 'partial') && next.actualStr.trim() === '' && next.planned_rate_value != null) next.actualStr = String(next.planned_rate_value);
       return next;
     }));
+  // Map confirm sets directly (no toggle-off), pre-filling actual from planned.
+  const setStatusDirect = (id: string, v: FStatus) =>
+    setLines((prev) => prev.map((l) => {
+      if (l.id !== id) return l;
+      const next = { ...l, uiStatus: v };
+      if ((v === 'done' || v === 'partial') && next.actualStr.trim() === '' && next.planned_rate_value != null) next.actualStr = String(next.planned_rate_value);
+      return next;
+    }));
   const setActual = (id: string, s: string) => setLines((prev) => prev.map((l) => (l.id === id ? { ...l, actualStr: s } : l)));
   const anyMarked = lines.some((l) => l.uiStatus !== 'pending');
 
@@ -118,7 +126,18 @@ export function SharedJobView({ token }: { token: string }) {
         {job?.due_date && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 8 }}>Due {job.due_date}</div>}
       </div>
 
-      {lines.some((l) => l.boundary) && <div style={{ marginBottom: 12 }}><JobFieldsMap fields={lines.map((l) => ({ field_name: l.field_name, boundary: l.boundary }))} /></div>}
+      {lines.some((l) => l.boundary) && (
+        <div style={{ marginBottom: 12 }}>
+          <JobFieldsMap
+            fields={lines.map((l) => ({ id: l.id, field_name: l.field_name, boundary: l.boundary, area_ha: l.area_ha, planned_rate_value: l.planned_rate_value, planned_rate_unit: l.planned_rate_unit }))}
+            statuses={Object.fromEntries(lines.map((l) => [l.id, l.uiStatus]))}
+            onSetStatus={setStatusDirect}
+            detailLine={instructionLine || null}
+            rateNoun={job?.rate_noun ?? null}
+            areaUnit="ha"
+          />
+        </div>
+      )}
 
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', margin: '4px 0 8px' }}>Fields — tick off as you go</div>
       {lines.map((l, i) => (
