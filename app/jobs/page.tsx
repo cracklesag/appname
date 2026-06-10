@@ -12,13 +12,35 @@ export const dynamic = 'force-dynamic';
 const STATUS_LABEL: Record<string, string> = { draft: 'Draft', sent: 'Sent', submitted: 'Submitted', approved: 'Logged', archived: 'Archived' };
 const STATUS_COLOUR: Record<string, string> = { sent: 'var(--muted)', submitted: '#b06a37', approved: 'var(--forest-dark)', draft: 'var(--muted)', archived: 'var(--muted)' };
 
-export default async function JobsPage({ searchParams }: { searchParams: { from?: string } }) {
+export default async function JobsPage({ searchParams }: { searchParams: { from?: string; status?: string } }) {
   const [jobs, settings] = await Promise.all([loadJobs(), loadSettings()]);
   if (!settings.onboarded) redirect('/welcome');
   const ctx = await getFarmContext();
   const isAdmin = !!ctx?.isAdmin;
   const isContractor = settings.accountType === 'contractor';
   const backHref = searchParams.from && searchParams.from.startsWith('/') ? searchParams.from : '/';
+
+  // Status filter chips. "needs" = submitted (waiting for approval), the one
+  // an admin most needs to find once the list grows.
+  const filter = ['needs', 'out', 'done'].includes(searchParams.status ?? '') ? searchParams.status! : 'all';
+  const visible = jobs.filter((j) => {
+    if (filter === 'needs') return j.status === 'submitted';
+    if (filter === 'out') return j.status === 'sent' || j.status === 'draft';
+    if (filter === 'done') return j.status === 'approved' || j.status === 'archived';
+    return true;
+  });
+  const needsCount = jobs.filter((j) => j.status === 'submitted').length;
+  const chip = (key: string, label: string) => {
+    const active = filter === key;
+    const qs = new URLSearchParams();
+    if (searchParams.from) qs.set('from', searchParams.from);
+    if (key !== 'all') qs.set('status', key);
+    return (
+      <Link key={key} href={`/jobs${qs.toString() ? `?${qs.toString()}` : ''}`} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: active ? 'var(--forest)' : 'var(--card)', color: active ? '#fff' : 'var(--ink)', border: `1px solid ${active ? 'var(--forest)' : 'var(--line)'}` }}>
+        {label}
+      </Link>
+    );
+  };
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -29,15 +51,23 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
         right={isAdmin && !isContractor ? <Link href="/jobs/new" className="icon-btn" aria-label="New job"><Plus size={22} /></Link> : undefined}
       />
       <div style={{ padding: 16 }}>
-        {jobs.length === 0 ? (
+        {jobs.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            {chip('all', 'All')}
+            {chip('needs', needsCount > 0 ? `Needs approval (${needsCount})` : 'Needs approval')}
+            {chip('out', 'Out')}
+            {chip('done', 'Done')}
+          </div>
+        )}
+        {visible.length === 0 ? (
           <div className="card" style={{ padding: 24, textAlign: 'center' }}>
             <ClipboardList size={26} style={{ color: 'var(--muted)' }} />
-            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 10 }}>{isContractor ? 'No jobs sent to you yet' : 'No job sheets yet'}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginTop: 10 }}>{jobs.length > 0 ? 'Nothing in this filter' : isContractor ? 'No jobs sent to you yet' : 'No job sheets yet'}</div>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>{isContractor ? 'When a farm sends you a job sheet, it shows up here to tick off.' : 'Build a job to send to staff or a contractor — what to spread or spray, on which fields.'}</div>
             {isAdmin && !isContractor && <Link href="/jobs/new" className="btn-primary" style={{ display: 'inline-block', marginTop: 14, textDecoration: 'none' }}>New job sheet</Link>}
           </div>
         ) : (
-          jobs.map((j) => {
+          visible.map((j) => {
             const def = jobTypeDef(j.job_type);
             return (
               <Link key={j.id} href={`/jobs/${j.id}`} className="card" style={{ padding: 14, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, textDecoration: 'none' }}>

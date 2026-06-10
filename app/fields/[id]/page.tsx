@@ -11,7 +11,7 @@ import { NextActionPicker } from '@/components/NextActionPicker';
 import { DeleteFieldSection } from '@/components/DeleteFieldSection';
 import { DeleteFieldEventButton } from '@/components/DeleteFieldEventButton';
 import {
-  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups, loadFieldEvents,
+  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups, loadFieldEvents, loadSprayRecordsForField,
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import {
@@ -36,9 +36,10 @@ export default async function FieldDetailPage({
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
-  const [field, applications, cuts, products, settings, groups, grassSystems, farmCtx] = await Promise.all([
+  const [field, applications, sprayRecords, cuts, products, settings, groups, grassSystems, farmCtx] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),
+    loadSprayRecordsForField(params.id),
     loadCutsForField(params.id),
     loadAllProducts(),
     loadSettings(),
@@ -476,6 +477,32 @@ export default async function FieldDetailPage({
               })
             )}
           </div>
+
+          {/* Spray records — read-only history; logging stays in the Spray hub */}
+          {sprayRecords.length > 0 && (
+            <div className="card" style={{ padding: 14, marginTop: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div className="label" style={{ margin: 0 }}>Spray records ({sprayRecords.length})</div>
+                <Link href={`/spray?from=/fields/${field.id}`} style={{ fontSize: 12, color: 'var(--forest)', textDecoration: 'none', fontWeight: 600 }}>Spray hub</Link>
+              </div>
+              {sprayRecords.slice(0, 6).map((sr) => (
+                <div key={sr.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sr.product_name}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1 }}>
+                      {fmtDate(sr.date_applied)}{sr.coverage === 'partial' ? ' · part field' : ''}{sr.water_l_per_ha != null ? ` · ${sr.water_l_per_ha} L/ha water` : ''}
+                    </div>
+                  </div>
+                  {sr.targets && sr.targets.length > 0 && (
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', flexShrink: 0 }}>{sr.targets.join(', ')}</div>
+                  )}
+                </div>
+              ))}
+              {sprayRecords.length > 6 && (
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>+{sprayRecords.length - 6} more in the Spray hub</div>
+              )}
+            </div>
+          )}
 
           {/* Field events */}
           <div className="card" style={{ padding: 14, marginTop: 14 }}>

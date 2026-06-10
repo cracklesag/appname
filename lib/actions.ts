@@ -2557,6 +2557,12 @@ export async function redeemInvite(formData: FormData) {
     throw new Error(result?.error || 'Could not join farm');
   }
 
+  // Stamp the display name on the membership the RPC just created.
+  const name = String(formData.get('name') ?? '').trim().slice(0, 60);
+  if (name) {
+    await supabase.from('farm_members').update({ member_name: name }).eq('member_id', user.id);
+  }
+
   revalidatePath('/');
   revalidatePath('/settings');
   redirect('/?joined=1');
@@ -3154,6 +3160,7 @@ interface JobRowForCommit {
   product_id: number | null; rate_value: number | null; rate_unit: string | null;
   water_l_per_ha: number | null; spray_spec: { name: string; spray_product_id: string | null; l_per_ha: number | null }[] | null;
   title: string; contractor_label: string | null;
+  assignee_user_id: string | null;
 }
 interface JobFieldRowForCommit {
   id: string; field_id: string | null; field_name: string; area_ha: number | null;
@@ -3168,6 +3175,13 @@ async function commitJobRecords(
   job: JobRowForCommit,
   fields: JobFieldRowForCommit[],
 ) {
+  // Name the person on the record when the job was assigned to a known member.
+  let assigneeName: string | null = null;
+  if (job.assignee_user_id) {
+    const { data: mem } = await supabase.from('farm_members').select('member_name').eq('owner_id', job.user_id).eq('member_id', job.assignee_user_id).maybeSingle();
+    assigneeName = (mem as { member_name: string | null } | null)?.member_name ?? null;
+  }
+
   const def = jobTypeDef(job.job_type);
   if (!def) return;
   const today = new Date().toISOString().slice(0, 10);
@@ -3190,7 +3204,7 @@ async function commitJobRecords(
           rate_unit: unit,
           method: null,
           notes: `From job sheet: ${job.title}`,
-          applied_by: job.contractor_label ?? 'Job sheet',
+          applied_by: job.contractor_label ?? assigneeName ?? 'Job sheet',
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -3636,4 +3650,82 @@ export async function deletePushSubscription(endpoint: string): Promise<{ ok: bo
   if (!user) return { ok: false };
   const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
   return { ok: !error };
+}
+
+
+// Rename a team member (admins for their farm; anyone for their own row).
+export async function renameFarmMember(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const memberId = String(formData.get('member_id') ?? '');
+  const name = String(formData.get('name') ?? '').trim().slice(0, 60);
+  if (!memberId) throw new Error('Missing member');
+  const { error } = await supabase
+    .from('farm_members')
+    .update({ member_name: name || null })
+    .eq('owner_id', ctx.ownerId)
+    .eq('member_id', memberId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/team');
+  redirect('/settings/team');
+}
+
+// Duplicate a job: fresh copy of the spec + field snapshots, statuses reset,
+// share link / timestamps / forwarding cleared. "Same round as last month."
+export async function duplicateJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing job id');
+
+  const { data: src } = await supabase.from('jobs').select('*').eq('id', id).maybeSingle();
+  if (!src || (src as { user_id: string }).user_id !== ctx.ownerId) throw new Error('Not your job');
+  const j = src as Record<string, unknown>;
+
+  const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
+  const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? (j.farm_name as string) ?? null;
+
+  const { data: created, error } = await supabase.from('jobs').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    farm_name: farmName,
+    title: j.title,
+    job_type: j.job_type,
+    status: 'sent',
+    product_id: j.product_id,
+    rate_value: j.rate_value,
+    rate_unit: j.rate_unit,
+    water_l_per_ha: j.water_l_per_ha,
+    spray_spec: j.spray_spec,
+    instruction: j.instruction,
+    notes: j.notes,
+    due_date: null,
+    assignee_user_id: j.assignee_user_id,
+    contractor_label: j.contractor_label,
+  }).select('id').single();
+  if (error || !created) throw new Error(error?.message ?? 'Could not duplicate');
+  const newId = (created as { id: string }).id;
+
+  const { data: fields } = await supabase.from('job_fields').select('*').eq('job_id', id).order('sort_order');
+  const copies = ((fields ?? []) as Record<string, unknown>[]).map((f) => ({
+    job_id: newId,
+    field_id: f.field_id,
+    field_name: f.field_name,
+    boundary: f.boundary,
+    area_ha: f.area_ha,
+    planned_rate_value: f.planned_rate_value,
+    planned_rate_unit: f.planned_rate_unit,
+    status: 'pending',
+    sort_order: f.sort_order,
+  }));
+  if (copies.length > 0) {
+    const { error: fErr } = await supabase.from('job_fields').insert(copies);
+    if (fErr) throw new Error(fErr.message);
+  }
+
+  if (j.assignee_user_id) await sendPushToUser(j.assignee_user_id as string, { title: 'New job', body: `${farmName ?? 'A farm'}: ${j.title}`, url: '/jobs', tag: `job-${newId}` });
+
+  revalidatePath('/jobs');
+  redirect(`/jobs/${newId}`);
 }

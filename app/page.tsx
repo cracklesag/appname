@@ -8,8 +8,7 @@ import {
   loadFields,
   loadAllApplications,
   loadAllCuts,
-  loadSettings,
-} from '@/lib/data';
+  loadSettings, countJobsAwaitingApproval } from '@/lib/data';
 import {
   getComingUpForField,
   getSeasonLabel,
@@ -24,6 +23,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
   if (settings.accountType === 'contractor') redirect('/jobs');
+  const jobsAwaiting = await countJobsAwaitingApproval();
 
   const [fields, products, applications, cuts] = await Promise.all([
     loadFields(),
@@ -199,8 +199,13 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spray records</span>
               </Link>
               <Link href="/jobs?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <ClipboardCheck size={21} style={{ color: '#c2683a' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Job sheets</span>
+                <span style={{ position: 'relative', display: 'inline-flex' }}>
+                  <ClipboardCheck size={21} style={{ color: '#c2683a' }} />
+                  {jobsAwaiting > 0 && (
+                    <span style={{ position: 'absolute', top: -6, right: -10, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#b06a37', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{jobsAwaiting > 9 ? '9+' : jobsAwaiting}</span>
+                  )}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>{jobsAwaiting > 0 ? 'Jobs to approve' : 'Job sheets'}</span>
               </Link>
               <Link href="/map" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <MapIcon size={21} style={{ color: '#2f7d6a' }} />

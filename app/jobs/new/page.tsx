@@ -19,7 +19,7 @@ export default async function NewJobPage() {
   const bFields = fields.filter((f) => !f.needs_setup).map((f) => ({ id: f.id, name: f.name, ha: f.ha, boundary: f.boundary ?? null }));
   const bProducts = products.map((p) => ({ id: p.id, name: p.name, type: p.type }));
   const bSpray = sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }));
-  const staff = members.filter((m) => m.role === 'staff').map((m, i) => ({ id: m.member_id, label: `Staff member ${i + 1}` }));
+  const staff = members.filter((m) => m.role === 'staff').map((m, i) => ({ id: m.member_id, label: m.member_name ?? `Staff member ${i + 1}` }));
   const contractors = farmContractors.map((c) => ({ id: c.contractor_user_id, label: c.label ?? 'Contractor' }));
 
   return (

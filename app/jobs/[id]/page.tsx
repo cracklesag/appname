@@ -7,7 +7,7 @@ import { ShareLinkPanel } from '@/components/ShareLinkPanel';
 import { JobTimer } from '@/components/JobTimer';
 import { loadJob, loadSettings, loadAllProducts, loadFarmMembers } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
-import { deleteJob, forwardJob } from '@/lib/actions';
+import { deleteJob, forwardJob, duplicateJob } from '@/lib/actions';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { fmtDate } from '@/lib/rules';
 
@@ -85,7 +85,7 @@ export default async function JobPage({ params }: { params: { id: string } }) {
               <>
                 <select name="operator_id" className="input" defaultValue={job.delegated_to_user_id ?? ''} style={{ marginBottom: 10 }}>
                   <option value="">Me — I&apos;ll do it</option>
-                  {myStaff.map((m, i) => <option key={m.member_id} value={m.member_id}>Operator {i + 1}</option>)}
+                  {myStaff.map((m, i) => <option key={m.member_id} value={m.member_id}>{m.member_name ?? `Operator ${i + 1}`}</option>)}
                 </select>
                 <button type="submit" className="btn-ghost" style={{ width: '100%' }}>Update who&apos;s doing it</button>
               </>
@@ -116,8 +116,15 @@ export default async function JobPage({ params }: { params: { id: string } }) {
           detailLine={instructionLine || null}
         />
 
+        {isAdmin && (
+          <form action={duplicateJob} style={{ marginTop: 20 }}>
+            <input type="hidden" name="id" value={job.id} />
+            <button type="submit" className="btn-ghost" style={{ width: '100%' }}>Duplicate this job</button>
+          </form>
+        )}
+
         {isAdmin && job.status !== 'approved' && (
-          <form action={deleteJob} style={{ marginTop: 20 }}>
+          <form action={deleteJob} style={{ marginTop: 8 }}>
             <input type="hidden" name="id" value={job.id} />
             <button type="submit" className="btn-ghost" style={{ width: '100%', color: 'var(--clay, #b06a37)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Trash2 size={16} /> Delete job sheet

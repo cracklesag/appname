@@ -219,6 +219,7 @@ export interface FarmMemberRow {
   owner_id: string;
   member_id: string;
   role: 'admin' | 'staff';
+  member_name: string | null;
   created_at: string;
 }
 
@@ -477,5 +478,17 @@ export async function countNewJobs(): Promise<number> {
     .select('id', { count: 'exact', head: true })
     .eq('status', 'sent')
     .or(`assignee_user_id.eq.${user.id},delegated_to_user_id.eq.${user.id}`);
+  return count ?? 0;
+}
+
+// Submitted jobs on this farm waiting for the admin's approval (home badge).
+export async function countJobsAwaitingApproval(): Promise<number> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+  const { count } = await supabase
+    .from('jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'submitted');
   return count ?? 0;
 }

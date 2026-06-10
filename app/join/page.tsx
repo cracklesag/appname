@@ -44,6 +44,15 @@ export default async function JoinPage({ searchParams }: { searchParams: { error
             <form action={redeemInvite}>
               <input
                 type="text"
+                name="name"
+                placeholder="Your name (shown to the team)"
+                maxLength={60}
+                autoComplete="name"
+                className="input"
+                style={{ marginBottom: 10 }}
+              />
+              <input
+                type="text"
                 name="code"
                 placeholder="XXXX-XXXX"
                 autoCapitalize="characters"

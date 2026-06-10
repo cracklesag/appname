@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { getFarmContext } from '@/lib/farm';
 import { loadFarmMembers, loadFarmInvites, loadSettings } from '@/lib/data';
-import { createFarmInvite, deleteFarmInvite, removeFarmMember } from '@/lib/actions';
+import { createFarmInvite, deleteFarmInvite, removeFarmMember, renameFarmMember } from '@/lib/actions';
 import { InviteCodeCard } from '@/components/InviteCodeCard';
 import { Plus, UserMinus } from 'lucide-react';
 
@@ -47,7 +47,12 @@ export default async function TeamPage() {
           {staff.map((m, i) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: i < staff.length - 1 ? '1px solid var(--line-soft)' : 'none' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{isContractor ? 'Operator' : 'Staff member'}</div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{m.member_name ?? (isContractor ? 'Operator' : 'Staff member')}</div>
+                <form action={renameFarmMember} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <input type="hidden" name="member_id" value={m.member_id} />
+                  <input type="text" name="name" defaultValue={m.member_name ?? ''} placeholder="Set name" maxLength={60} className="input" style={{ flex: 1, fontSize: 13, padding: '6px 9px' }} />
+                  <button type="submit" className="btn-ghost" style={{ fontSize: 12.5, padding: '6px 10px' }}>Save</button>
+                </form>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>Joined {new Date(m.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
               </div>
               <form action={removeFarmMember}>
