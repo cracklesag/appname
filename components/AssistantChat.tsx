@@ -195,11 +195,21 @@ export function AssistantChat() {
   // it stayed one line tall.)
   useEffect(() => { grow(); }, [input, grow]);
 
+  const convoRef = useRef<string | null>(null);
+  const convoId = () => {
+    if (!convoRef.current) {
+      convoRef.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `c-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    return convoRef.current;
+  };
+
   const runTurn = useCallback(async (history: AssistantMessage[]) => {
     setLoading(true);
     setError(null);
     try {
-      const { reply, toolsUsed, model } = await askAssistant(history);
+      const { reply, toolsUsed, model } = await askAssistant(history, convoId());
       setMessages([...history, { role: 'assistant', content: reply, model, tools: toolsUsed }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');

@@ -28,11 +28,11 @@ export interface AssistantReply {
  *   const { reply } = await askAssistant(next);
  *   setMessages([...next, { role: 'assistant', content: reply }]);
  */
-export async function askAssistant(messages: AssistantMessage[]): Promise<AssistantReply> {
+export async function askAssistant(messages: AssistantMessage[], conversationId?: string): Promise<AssistantReply> {
   const res = await fetch('/api/assistant', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, conversationId }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
