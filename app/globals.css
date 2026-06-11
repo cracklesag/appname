@@ -401,3 +401,13 @@ a { color: inherit; text-decoration: none; }
 }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+
+/* Forest-tone page header — the brand-green bar, unified with the home hero */
+.page-header--forest {
+  background: var(--forest-dark);
+  border-bottom-color: var(--forest-dark);
+}
+.page-header--forest .page-header-title { color: var(--brand-cream); }
+.page-header--forest .page-header-subtitle { color: rgba(239, 231, 214, 0.75); }
+.page-header--forest .icon-btn { color: var(--brand-cream); }

@@ -44,7 +44,7 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header
+      <Header tone="forest"
         title="Job sheets"
         subtitle={isContractor ? 'Jobs sent to you' : 'Send work out'}
         backHref={backHref}

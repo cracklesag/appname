@@ -21,7 +21,7 @@ export default async function SprayStockPage() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Spray stock" subtitle="Products & current stock" backHref="/spray" />
+      <Header tone="forest" title="Spray stock" subtitle="Products & current stock" backHref="/spray" />
       <div style={{ padding: 16 }}>
         {products.length === 0 ? (
           <div className="card" style={{ padding: 22, textAlign: 'center', marginBottom: 16 }}>

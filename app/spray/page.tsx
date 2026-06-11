@@ -53,7 +53,7 @@ export default async function SprayRecordsPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header
+      <Header tone="forest"
         title="Spray records"
         subtitle="Plant protection"
         backHref={backHref}

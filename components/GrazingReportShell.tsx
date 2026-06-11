@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
@@ -80,7 +81,10 @@ export function GrazingReportShell({
   // URL-backed state.
   const groupFilter = params.get('group') ?? 'all';
   const windowWeeks = clampWindowWeeks(parseInt(params.get('window') ?? '4', 10));
-  const dueOnly = params.get('due') === '1';
+  const legacyDue = params.get('due') === '1';
+  const bucketParam = params.get('bucket');
+  const bucket: 'overdue' | 'due' | 'later' | null =
+    bucketParam === 'overdue' || bucketParam === 'due' || bucketParam === 'later' ? bucketParam : legacyDue ? 'due' : null;
   const showLastApp = params.get('lastapp') !== '0';
 
   const cadenceKgN = settings.reportDefaults.grazingCadenceKgN;
@@ -89,7 +93,7 @@ export function GrazingReportShell({
   const cadenceDisp = Math.round(nutrientPerArea(cadenceKgN, settings.unitSystem));
 
   const writeUrl = useCallback(
-    (next: { group?: string; windowWeeks?: number; dueOnly?: boolean; showLastApp?: boolean }) => {
+    (next: { group?: string; windowWeeks?: number; dueOnly?: boolean; showLastApp?: boolean; bucket?: 'overdue' | 'due' | 'later' | null }) => {
       const sp = new URLSearchParams(params.toString());
       if (next.group !== undefined) {
         if (next.group === 'all') sp.delete('group');
@@ -102,6 +106,11 @@ export function GrazingReportShell({
       if (next.dueOnly !== undefined) {
         if (next.dueOnly) sp.set('due', '1');
         else sp.delete('due');
+      }
+      if (next.bucket !== undefined) {
+        sp.delete('due');
+        if (next.bucket) sp.set('bucket', next.bucket);
+        else sp.delete('bucket');
       }
       if (next.showLastApp !== undefined) {
         if (next.showLastApp) sp.delete('lastapp');
@@ -138,12 +147,17 @@ export function GrazingReportShell({
     [fields, applications, cuts, products, grassSystems, settings, seasonStart, todayIso],
   );
 
-  // Apply group + window + due-only filters.
-  const visibleStates: FieldState[] = useMemo(() => {
+  // Which triage bucket a state belongs to (tiles + grouped list share this).
+  const bucketOf = (s2: FieldState): 'overdue' | 'due' | 'later' =>
+    s2.status.kind === 'overdue' ? 'overdue'
+      : s2.status.kind === 'due_now' || (s2.status.kind === 'upcoming' && s2.status.days <= 7) ? 'due'
+      : s2.status.kind === 'upcoming' ? 'later' : 'due';
+
+  // Group + window only — the tiles count over this, regardless of bucket tap.
+  const baseStates: FieldState[] = useMemo(() => {
     const windowDays = windowWeeks * 7;
     return allGrazedStates
       .filter((s) => {
-        // Group filter
         if (groupFilter !== 'all') {
           if (groupFilter === 'unassigned') {
             if (s.field.group_id) return false;
@@ -151,26 +165,34 @@ export function GrazingReportShell({
             return false;
           }
         }
-        // Window: only show fields due within the next windowDays days.
-        // Overdue is always shown — the user wants to know.
         if (s.daysToNextDue > windowDays) return false;
-        // Due-only: hide upcoming, show due_now / overdue / no_history.
-        if (dueOnly && s.status.kind === 'upcoming') return false;
         return true;
       })
       .sort((a, b) => a.daysToNextDue - b.daysToNextDue);
-  }, [allGrazedStates, groupFilter, windowWeeks, dueOnly]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allGrazedStates, groupFilter, windowWeeks]);
+
+  // Apply group + window + due-only filters.
+  const visibleStates: FieldState[] = useMemo(
+    () => (bucket ? baseStates.filter((s) => bucketOf(s) === bucket) : baseStates),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseStates, bucket],
+  );
 
   // Summary counts.
   const summary = useMemo(() => {
-    let overdue = 0, dueNow = 0, upcoming = 0;
-    visibleStates.forEach((s) => {
-      if (s.status.kind === 'overdue') overdue++;
-      else if (s.status.kind === 'due_now') dueNow++;
-      else if (s.status.kind === 'upcoming') upcoming++;
+    let overdue = 0, dueNow = 0, upcoming = 0, dueSoon = 0, later = 0;
+    baseStates.forEach((s) => {
+      const b = bucketOf(s);
+      if (b === 'overdue') overdue++;
+      else if (b === 'due') dueSoon++;
+      else later++;
+      if (s.status.kind === 'due_now') dueNow++;
+      if (s.status.kind === 'upcoming') upcoming++;
     });
-    return { overdue, dueNow, upcoming };
-  }, [visibleStates]);
+    return { overdue, dueNow, upcoming, dueSoon, later };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseStates]);
 
   // Group chip options (only show if user has groups).
   const groupChipOpts = groups.length === 0 ? null : (() => {
@@ -329,60 +351,62 @@ export function GrazingReportShell({
         {' · '}<a href="/settings" style={{ color: 'var(--forest-dark, #3d5b29)' }}>change in settings</a>
       </div>
 
-      {/* Group chip */}
-      {groupChipOpts && (
-        <div style={{ marginBottom: 12 }}>
-          <div className="label" style={{ marginBottom: 6 }}>Group</div>
-          <div className="no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 10, WebkitOverflowScrolling: 'touch' }}>
-            {groupChipOpts.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
-                onClick={() => writeUrl({ group: o.value })}
-                style={{ fontSize: 13, padding: '6px 12px', flexShrink: 0, whiteSpace: 'nowrap' }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Triage tiles — tap to filter, tap again for all */}
+      <div className="no-print" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+        {([
+          { key: 'overdue' as const, n: summary.overdue, label: 'Overdue', bg: '#f6e3dd', fg: '#9c4a2f', edge: 'var(--red, #b85b3a)' },
+          { key: 'due' as const, n: summary.dueSoon, label: 'Due soon', bg: '#fdf0dd', fg: '#9a6320', edge: '#d99a3d' },
+          { key: 'later' as const, n: summary.later, label: 'Upcoming', bg: 'var(--forest-soft, #e1e6d9)', fg: 'var(--forest-dark, #2b4129)', edge: 'var(--forest, #3b5a3a)' },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => writeUrl({ bucket: bucket === t.key ? null : t.key })}
+            style={{
+              background: t.bg, border: `2px solid ${bucket === t.key ? t.edge : 'transparent'}`,
+              borderRadius: 10, padding: '10px 6px', textAlign: 'center', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <div style={{ fontSize: 22, fontWeight: 800, color: t.fg, lineHeight: 1.1 }}>{t.n}</div>
+            <div style={{ fontSize: 11.5, color: t.fg, marginTop: 2 }}>{t.label}</div>
+          </button>
+        ))}
+      </div>
 
-      {/* Window picker + due-only */}
-      <div style={{ marginBottom: 12 }}>
-        <div className="label" style={{ marginBottom: 6 }}>Window</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          {WINDOW_PRESETS_WEEKS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              className={`toggle-btn ${windowWeeks === n ? 'active' : ''}`}
-              onClick={() => writeUrl({ windowWeeks: n })}
-              style={{ fontSize: 13, padding: '6px 12px' }}
-            >
-              Next {n}w
-            </button>
-          ))}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, fontSize: 13, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={dueOnly}
-              onChange={(e) => writeUrl({ dueOnly: e.target.checked })}
-              style={{ width: 16, height: 16 }}
-            />
-            <span style={{ color: 'var(--ink)' }}>Due / overdue only</span>
-          </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, fontSize: 13, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showLastApp}
-              onChange={(e) => writeUrl({ showLastApp: e.target.checked })}
-              style={{ width: 16, height: 16 }}
-            />
-            <span style={{ color: 'var(--ink)' }}>Show last application</span>
-          </label>
-        </div>
+      {/* One-row filters: group · window · last-app */}
+      <div className="no-print no-scrollbar" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 12, WebkitOverflowScrolling: 'touch', alignItems: 'center' }}>
+        {groupChipOpts && groupChipOpts.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
+            onClick={() => writeUrl({ group: o.value })}
+            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            {o.label}
+          </button>
+        ))}
+        <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', flexShrink: 0, margin: '4px 2px' }} />
+        {WINDOW_PRESETS_WEEKS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            className={`toggle-btn ${windowWeeks === n ? 'active' : ''}`}
+            onClick={() => writeUrl({ windowWeeks: n })}
+            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            {n}w
+          </button>
+        ))}
+        <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', flexShrink: 0, margin: '4px 2px' }} />
+        <button
+          type="button"
+          className={`toggle-btn ${showLastApp ? 'active' : ''}`}
+          onClick={() => writeUrl({ showLastApp: !showLastApp })}
+          style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          Last app
+        </button>
       </div>
 
       {/* Print-only header */}
@@ -393,38 +417,37 @@ export function GrazingReportShell({
         </div>
       </div>
 
-      {/* Summary card */}
-      <div
-        className="card report-summary"
-        style={{ padding: 14, marginBottom: 12, background: 'var(--forest-soft, #eef0e8)' }}
-      >
-        <div className="label" style={{ marginBottom: 6 }}>Summary</div>
-        <div style={{ fontSize: 13, color: 'var(--ink)' }}>
-          <strong>{visibleStates.length}</strong> field{visibleStates.length === 1 ? '' : 's'} in view ·
-          {' '}<strong>{summary.overdue}</strong> overdue ·
-          {' '}<strong>{summary.dueNow}</strong> due now ·
-          {' '}<strong>{summary.upcoming}</strong> upcoming
-        </div>
-      </div>
-
       {/* Per-field cards */}
       {visibleStates.length === 0 ? (
         <div className="card" style={{ padding: 14, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
-          {dueOnly
-            ? 'Nothing due or overdue in this window.'
-            : 'No grazing fields match the current filters.'}
+          {bucket ? 'Nothing in this bucket — tap the tile again to see everything.' : 'No grazing fields match the current filters.'}
         </div>
       ) : (
-        visibleStates.map((s) => (
-          <GrazingFieldCard
-            key={s.field.id}
-            state={s}
-            settings={settings}
-            cadenceKgN={cadenceKgN}
-            showLastApp={showLastApp}
-            groupName={s.field.group_id ? (groups.find((g) => g.id === s.field.group_id)?.name ?? null) : null}
-          />
-        ))
+        ([
+          { key: 'overdue' as const, title: 'Overdue', fg: '#9c4a2f' },
+          { key: 'due' as const, title: 'Due soon', fg: '#9a6320' },
+          { key: 'later' as const, title: 'Later', fg: 'var(--muted)' },
+        ]).map((g) => {
+          const items = visibleStates.filter((st) => bucketOf(st) === g.key);
+          if (items.length === 0) return null;
+          return (
+            <div key={g.key}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: g.fg, margin: '12px 2px 8px' }}>
+                {g.title} ({items.length})
+              </div>
+              {items.map((st) => (
+                <GrazingFieldCard
+                  key={st.field.id}
+                  state={st}
+                  settings={settings}
+                  cadenceKgN={cadenceKgN}
+                  showLastApp={showLastApp}
+                  groupName={st.field.group_id ? (groups.find((gr) => gr.id === st.field.group_id)?.name ?? null) : null}
+                />
+              ))}
+            </div>
+          );
+        })
       )}
 
       {/* Other fields in this group, not on a grazing plan */}
@@ -527,12 +550,15 @@ function GrazingFieldCard({
   const { field: f, lastNApp, nextDueIso, daysToNextDue, seasonNApplied, nCap, status } = state;
   const area = displayFieldArea(f, settings.unitSystem);
 
-  // Status pill colour + text.
+  // Status pill: red strictly for overdue; amber for due; neutral for later.
   const statusInfo =
-    status.kind === 'overdue'  ? { tone: 'var(--red, #b85b3a)', label: `Overdue by ${status.days}d` } :
-    status.kind === 'due_now'  ? { tone: 'var(--red, #b85b3a)', label: 'Due now' } :
-    status.kind === 'upcoming' ? { tone: 'var(--forest-dark, #3d5b29)', label: `In ${status.days}d` } :
-                                  { tone: 'var(--ink-soft, #6a6055)', label: 'Awaiting first dose' };
+    status.kind === 'overdue'  ? { bg: '#f6e3dd', fg: '#9c4a2f', label: `Overdue ${status.days}d` } :
+    status.kind === 'due_now'  ? { bg: '#fdf0dd', fg: '#9a6320', label: 'Due now' } :
+    status.kind === 'upcoming' && status.days <= 7 ? { bg: '#fdf0dd', fg: '#9a6320', label: `In ${status.days}d` } :
+    status.kind === 'upcoming' ? { bg: 'var(--paper-deep, #ede5d4)', fg: 'var(--ink-soft, #6a6055)', label: `In ${status.days}d` } :
+                                  { bg: 'var(--paper-deep, #ede5d4)', fg: 'var(--muted, #8a8378)', label: 'Not started' };
+  const isOverdueCard = status.kind === 'overdue';
+  const needsAction = status.kind === 'overdue' || status.kind === 'due_now';
 
   const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
   const cv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
@@ -544,7 +570,7 @@ function GrazingFieldCard({
   const overCap = seasonNApplied > nCap;
 
   return (
-    <div className="card report-field-card" style={{ padding: 14, marginBottom: 10 }}>
+    <div className="card report-field-card" style={{ padding: 14, marginBottom: 10, ...(isOverdueCard ? { borderLeft: '3px solid var(--red, #b85b3a)' } : {}) }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -554,16 +580,23 @@ function GrazingFieldCard({
             {groupName && <> · {groupName}</>}
           </div>
         </div>
-        <span style={{
-          fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-          color: statusInfo.tone, flexShrink: 0,
-          padding: '4px 8px',
-          border: `1px solid ${statusInfo.tone}`,
-          borderRadius: 4,
-          whiteSpace: 'nowrap',
-        }}>
-          {statusInfo.label}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+          <span style={{
+            fontSize: 11.5, fontWeight: 700, color: statusInfo.fg, background: statusInfo.bg,
+            padding: '3px 10px', borderRadius: 99, whiteSpace: 'nowrap',
+          }}>
+            {statusInfo.label}
+          </span>
+          {needsAction && (
+            <Link
+              href={`/fields/${f.id}/log?from=/reports/grazing`}
+              className="btn-primary"
+              style={{ fontSize: 12, padding: '6px 14px', textDecoration: 'none', display: 'inline-block' }}
+            >
+              Log N
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Last N application */}

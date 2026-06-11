@@ -29,7 +29,7 @@ export default async function GrazingHubPage() {
 
   return (
     <div style={{ paddingBottom: 60 }}>
-      <div style={{ background: 'linear-gradient(135deg, #3d5b29 0%, #2c4220 100%)', color: 'var(--brand-cream, #efe7d6)', padding: '18px 16px 20px' }}>
+      <div style={{ background: 'var(--forest-dark)', color: 'var(--brand-cream, #efe7d6)', padding: '18px 16px 20px' }}>
         <Link href="/" className="hero-back" style={{ color: 'rgba(239,231,214,0.85)' }}>
           <ArrowLeft size={15} /> Home
         </Link>

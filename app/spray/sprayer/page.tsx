@@ -16,7 +16,7 @@ export default async function SprayerSettingsPage() {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Sprayer settings" subtitle="Used by the spray calculator" backHref="/spray" />
+      <Header tone="forest" title="Sprayer settings" subtitle="Used by the spray calculator" backHref="/spray" />
       <form action={saveSprayerSettings} style={{ padding: 16 }}>
         <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5, marginBottom: 16 }}>
           The calculator uses these to work out your application volume (litres per hectare):

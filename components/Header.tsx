@@ -6,14 +6,17 @@ export function Header({
   subtitle,
   backHref,
   right,
+  tone = 'paper',
 }: {
   title: string;
   subtitle?: string;
   backHref?: string;
   right?: React.ReactNode;
+  /** 'forest' = the brand-green bar used on feature/report pages. */
+  tone?: 'paper' | 'forest';
 }) {
   return (
-    <div className="page-header">
+    <div className={`page-header ${tone === 'forest' ? 'page-header--forest' : ''}`}>
       <div className="page-header-row">
         {backHref && (
           <Link href={backHref} className="icon-btn" aria-label="Back" style={{ marginLeft: -4 }}>

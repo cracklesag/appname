@@ -26,7 +26,7 @@ export default async function SprayProductPage({ params }: { params: { id: strin
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title={product.name} subtitle="Spray product" backHref="/spray/stock" />
+      <Header tone="forest" title={product.name} subtitle="Spray product" backHref="/spray/stock" />
       <div style={{ padding: 16 }}>
         {/* Stock summary */}
         <div className="card" style={{ padding: 16, marginBottom: 14, display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>

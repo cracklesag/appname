@@ -36,7 +36,7 @@ export default async function GrazingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header title="Grazing top-up" subtitle="N cadence schedule" backHref={searchParams.from || '/'} />
+      <Header tone="forest" title="Grazing top-up" subtitle="N cadence schedule" backHref={searchParams.from || '/'} />
       <GrazingReportShell
         fields={fields}
         applications={applications}

@@ -10,7 +10,7 @@ export default async function TimesheetsPage() {
   if (!settings.onboarded) redirect('/welcome');
   return (
     <div style={{ paddingBottom: 90 }}>
-      <Header title="Timesheets" subtitle="Hours and work done — by farm and period" backHref={settings.accountType === 'contractor' ? '/jobs' : '/'} />
+      <Header tone="forest" title="Timesheets" subtitle="Hours and work done — by farm and period" backHref={settings.accountType === 'contractor' ? '/jobs' : '/'} />
       <div style={{ padding: 16 }}>
         <TimesheetView jobs={jobs} unitSystem={settings.unitSystem === 'acres' ? 'acres' : 'hectares'} />
       </div>
