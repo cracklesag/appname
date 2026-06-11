@@ -1,4 +1,3 @@
-import { QuickLogCard } from '@/components/QuickLogCard';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus, FileUp, ChevronRight, ClipboardList, ClipboardCheck, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan } from 'lucide-react';
@@ -176,10 +175,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 <ChevronRight size={16} style={{ color: 'rgba(239,231,214,0.85)', flexShrink: 0 }} />
               </div>
             </Link>
-
-            <div style={{ marginBottom: 10 }}>
-              <QuickLogCard fields={fields.map((f) => ({ id: f.id, name: f.name, boundary: f.boundary ?? null }))} />
-            </div>
 
             {/* Quick-access cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>

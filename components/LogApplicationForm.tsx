@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Droplets, Sprout, Mountain, Save, Tractor, Trash2, Pencil } from 'lucide-react';
+import { Droplets, Sprout, Mountain, Save, Tractor, Trash2, Pencil, LocateFixed } from 'lucide-react';
 import {
   Application, Field, Product, ProductType, Settings, SlurryMethod, SolidMethod,
   ApplicationMethod,
@@ -16,6 +16,7 @@ import { saveApplication, updateApplication, saveBatchApplications, deleteApplic
 import { validateApplicationRate, validateDate } from '@/lib/validation';
 import PartApplicationDraw from './PartApplicationDraw';
 import type { FieldGeometry } from '@/lib/geo';
+import { bboxOfGeometry, centroidOfBbox, locateFieldAtPoint, type LocatableField } from '@/lib/geo';
 import { KG_PER_HA_TO_KG_PER_AC } from '@/lib/partials';
 import { InlineWarning, ErrorBanner } from './InlineWarning';
 
@@ -559,6 +560,51 @@ export function LogApplicationForm({
   const canDrawPartial =
     (type === 'slurry' || type === 'solid_manure') && !!partialBoundary && (!isBatch || picked.size === 1);
 
+  const [locState, setLocState] = useState<'idle' | 'locating' | 'done' | 'error'>('idle');
+  const [locMsg, setLocMsg] = useState<string | null>(null);
+
+  // "Find my field": GPS fix -> tick the field you're standing in and scroll
+  // to it. Position is used on-device only.
+  function findMyField() {
+    if (!batchFields || !('geolocation' in navigator)) {
+      setLocState('error'); setLocMsg('Location not available on this device.');
+      return;
+    }
+    setLocState('locating'); setLocMsg(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const locatable: LocatableField[] = batchFields
+          .filter((f) => f.boundary)
+          .map((f) => {
+            const geometry = f.boundary as FieldGeometry;
+            let centroid: { lng: number; lat: number } | null = null;
+            try { centroid = centroidOfBbox(bboxOfGeometry(geometry)); } catch { /* skip */ }
+            return { id: f.id, geometry, centroid };
+          });
+        const loc = locateFieldAtPoint([pos.coords.longitude, pos.coords.latitude], locatable);
+        const targetId = loc.insideId ?? (loc.nearestMeters != null && loc.nearestMeters <= 150 ? loc.nearestId : null);
+        if (targetId) {
+          const target = batchFields.find((f) => f.id === targetId);
+          setPicked((prev) => new Set(prev).add(targetId));
+          setGroupFilter('all');
+          setLocState('done');
+          setLocMsg(loc.insideId ? `You're in ${target?.name ?? 'this field'} — ticked.` : `Nearest field ticked: ${target?.name ?? ''} (~${Math.round(loc.nearestMeters ?? 0)} m).`);
+          setTimeout(() => {
+            document.getElementById(`log-field-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 60);
+        } else {
+          setLocState('error');
+          setLocMsg(`You don't seem to be in a mapped field (GPS accuracy ±${Math.round(pos.coords.accuracy)} m).`);
+        }
+      },
+      (err) => {
+        setLocState('error');
+        setLocMsg(err.code === err.PERMISSION_DENIED ? 'Location is blocked — allow it for this site in your browser settings.' : 'Could not get a GPS fix — try again outside.');
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    );
+  }
+
   function toggleField(id: string) {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -988,6 +1034,20 @@ export function LogApplicationForm({
               </button>
             )}
 
+            <button
+              type="button"
+              onClick={findMyField}
+              disabled={locState === 'locating'}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', marginBottom: 7, background: 'var(--card)', border: '2px solid var(--forest)', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+            >
+              <LocateFixed size={17} style={{ color: 'var(--forest)', flexShrink: 0 }} />
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--forest-dark)', flex: 1 }}>
+                {locState === 'locating' ? 'Finding your field…' : 'Find my field'}
+              </span>
+            </button>
+            {locMsg && (
+              <div style={{ fontSize: 12, color: locState === 'error' ? 'var(--clay, #b06a37)' : 'var(--forest-dark)', margin: '0 2px 8px' }}>{locMsg}</div>
+            )}
             <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
               {batchFields!
                 .filter((f) => groupFilter === 'all' || (groupFilter === 'ungrouped' ? !f.group_id : f.group_id === groupFilter))
@@ -995,7 +1055,7 @@ export function LogApplicationForm({
                 const on = picked.has(f.id);
                 const a = displayFieldArea(f, settings.unitSystem);
                 return (
-                  <div key={f.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--line-soft)', background: on ? 'var(--forest-soft)' : 'var(--card)' }}>
+                  <div key={f.id} id={`log-field-${f.id}`} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--line-soft)', background: on ? 'var(--forest-soft)' : 'var(--card)' }}>
                     <button
                       type="button"
                       onClick={() => toggleField(f.id)}
