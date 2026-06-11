@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { NotificationToggle } from '@/components/NotificationToggle';
 import { redirect } from 'next/navigation';
-import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical, ListChecks, HardHat } from 'lucide-react';
+import { Save, LogOut, ChevronRight, Users, UserPlus, SlidersHorizontal, FlaskConical, ListChecks, HardHat, FileDown } from 'lucide-react';
 import { ResetDataSection } from '@/components/ResetDataSection';
 import { ExportDataSection } from '@/components/ExportDataSection';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
@@ -132,7 +132,17 @@ export default async function SettingsPage() {
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
-        <Link href="/join" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
+        <a href="/api/reports/inspection" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <FileDown size={18} style={{ color: 'var(--forest)' }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Inspection pack (PDF)</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Soil analysis, this season&apos;s applications and sprays — for Red Tractor and farm assurance</div>
+            </div>
+          </div>
+          <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+        </a>
+                <Link href="/join" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 4, textDecoration: 'none', color: 'inherit' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
             <UserPlus size={18} style={{ color: 'var(--forest)' }} />
             <div>
