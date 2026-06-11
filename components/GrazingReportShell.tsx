@@ -354,16 +354,17 @@ export function GrazingReportShell({
       {/* Triage tiles — tap to filter, tap again for all */}
       <div className="no-print" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
         {([
-          { key: 'overdue' as const, n: summary.overdue, label: 'Overdue', bg: '#f6e3dd', fg: '#9c4a2f', edge: 'var(--red, #b85b3a)' },
-          { key: 'due' as const, n: summary.dueSoon, label: 'Due soon', bg: '#fdf0dd', fg: '#9a6320', edge: '#d99a3d' },
-          { key: 'later' as const, n: summary.later, label: 'Upcoming', bg: 'var(--forest-soft, #e1e6d9)', fg: 'var(--forest-dark, #2b4129)', edge: 'var(--forest, #3b5a3a)' },
+          { key: 'overdue' as const, n: summary.overdue, label: 'Overdue', bg: '#f6e3dd', fg: '#9c4a2f', edge: 'var(--red, #b85b3a)', edgeSoft: 'rgba(184, 91, 58, 0.45)' },
+          { key: 'due' as const, n: summary.dueSoon, label: 'Due soon', bg: '#fdf0dd', fg: '#9a6320', edge: '#c9882f', edgeSoft: 'rgba(201, 136, 47, 0.45)' },
+          { key: 'later' as const, n: summary.later, label: 'Upcoming', bg: 'var(--forest-soft, #e1e6d9)', fg: 'var(--forest-dark, #2b4129)', edge: 'var(--forest, #3b5a3a)', edgeSoft: 'rgba(59, 90, 58, 0.4)' },
         ]).map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => writeUrl({ bucket: bucket === t.key ? null : t.key })}
             style={{
-              background: t.bg, border: `2px solid ${bucket === t.key ? t.edge : 'transparent'}`,
+              background: t.bg, border: `2px solid ${bucket === t.key ? t.edge : t.edgeSoft}`,
+              boxShadow: bucket === t.key ? `inset 0 0 0 1px ${t.edge}` : 'none',
               borderRadius: 10, padding: '10px 6px', textAlign: 'center', cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
@@ -381,7 +382,7 @@ export function GrazingReportShell({
             type="button"
             className={`toggle-btn ${groupFilter === o.value ? 'active' : ''}`}
             onClick={() => writeUrl({ group: o.value })}
-            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 99, border: groupFilter === o.value ? '1px solid var(--forest-dark, #2b4129)' : '1px solid var(--line)', background: groupFilter === o.value ? 'var(--forest-dark, #2b4129)' : 'var(--card)', color: groupFilter === o.value ? 'var(--brand-cream, #efe7d6)' : undefined }}
           >
             {o.label}
           </button>
@@ -393,7 +394,7 @@ export function GrazingReportShell({
             type="button"
             className={`toggle-btn ${windowWeeks === n ? 'active' : ''}`}
             onClick={() => writeUrl({ windowWeeks: n })}
-            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+            style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 99, border: windowWeeks === n ? '1px solid var(--forest-dark, #2b4129)' : '1px solid var(--line)', background: windowWeeks === n ? 'var(--forest-dark, #2b4129)' : 'var(--card)', color: windowWeeks === n ? 'var(--brand-cream, #efe7d6)' : undefined }}
           >
             {n}w
           </button>
@@ -403,7 +404,7 @@ export function GrazingReportShell({
           type="button"
           className={`toggle-btn ${showLastApp ? 'active' : ''}`}
           onClick={() => writeUrl({ showLastApp: !showLastApp })}
-          style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          style={{ fontSize: 12.5, padding: '6px 11px', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 99, border: showLastApp ? '1px solid var(--forest-dark, #2b4129)' : '1px solid var(--line)', background: showLastApp ? 'var(--forest-dark, #2b4129)' : 'var(--card)', color: showLastApp ? 'var(--brand-cream, #efe7d6)' : undefined }}
         >
           Last app
         </button>
