@@ -36,7 +36,7 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
     if (searchParams.from) qs.set('from', searchParams.from);
     if (key !== 'all') qs.set('status', key);
     return (
-      <Link key={key} href={`/jobs${qs.toString() ? `?${qs.toString()}` : ''}`} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: active ? 'var(--forest)' : 'var(--card)', color: active ? '#fff' : 'var(--ink)', border: `1px solid ${active ? 'var(--forest)' : 'var(--line)'}` }}>
+      <Link key={key} href={`/jobs${qs.toString() ? `?${qs.toString()}` : ''}`} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: active ? 'var(--forest-dark)' : 'var(--card)', color: active ? 'var(--brand-cream)' : 'var(--ink)', border: `1px solid ${active ? 'var(--forest-dark)' : 'var(--line)'}` }}>
         {label}
       </Link>
     );

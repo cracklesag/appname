@@ -85,7 +85,7 @@ a { color: inherit; text-decoration: none; }
 .btn-primary:disabled { background: var(--muted); cursor: not-allowed; }
 
 .btn-ghost {
-  background: transparent;
+  background: var(--card);
   color: var(--ink-soft);
   border: 1px solid var(--line);
   padding: 12px 18px;
@@ -155,40 +155,45 @@ a { color: inherit; text-decoration: none; }
 }
 .field-row:hover, .field-row:active { background: var(--paper-deep); }
 
+/* Toggle buttons — outlined pills; selected fills brand green. The group is
+   a transparent gapped row rather than a grey segmented box, so options read
+   as distinct tappable pills (the grazing top-up clarity treatment, applied
+   app-wide). */
 .toggle-group {
   display: flex;
-  background: var(--paper-deep);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 3px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  gap: 6px;
 }
 .toggle-btn {
   flex: 1;
-  padding: 10px 12px;
-  border: none;
-  background: transparent;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
   font-size: 14px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--ink-soft);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 99px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
 .toggle-btn.active {
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  background: var(--forest-dark);
+  color: var(--brand-cream);
+  border-color: var(--forest-dark);
 }
 /* When the toggle wraps a radio input, follow the actual checked state so
    tapping an option moves the highlight immediately (no client JS needed).
    This makes uncontrolled radio toggle-groups feel responsive. */
 .toggle-btn:has(input:checked) {
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  background: var(--forest-dark);
+  color: var(--brand-cream);
+  border-color: var(--forest-dark);
 }
 
 .tabs {

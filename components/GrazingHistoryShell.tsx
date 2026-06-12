@@ -67,8 +67,8 @@ export function GrazingHistoryShell({
               onClick={() => setView(v)}
               style={{
                 flex: 1, padding: '8px', fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: 'pointer',
-                background: view === v ? 'var(--forest)' : 'var(--card)',
-                color: view === v ? '#fff' : 'var(--ink-soft)',
+                background: view === v ? 'var(--forest-dark)' : 'var(--card)',
+                color: view === v ? 'var(--brand-cream)' : 'var(--ink-soft)',
                 border: `1px solid ${view === v ? 'var(--forest)' : 'var(--line)'}`,
               }}
             >
@@ -96,8 +96,8 @@ export function GrazingHistoryShell({
                     onClick={() => setGroupId(c.v)}
                     style={{
                       flexShrink: 0, whiteSpace: 'nowrap',
-                      background: groupId === c.v ? 'var(--forest)' : 'var(--card)',
-                      color: groupId === c.v ? '#fff' : 'var(--ink-soft)',
+                      background: groupId === c.v ? 'var(--forest-dark)' : 'var(--card)',
+                      color: groupId === c.v ? 'var(--brand-cream)' : 'var(--ink-soft)',
                       border: `1px solid ${groupId === c.v ? 'var(--forest)' : 'var(--line)'}`,
                       borderRadius: 999, padding: '6px 13px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                     }}
