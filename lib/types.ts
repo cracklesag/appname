@@ -477,7 +477,7 @@ export interface Settings {
    */
   agronomy?: AgronomyOverrides;
   /** 'farm' (default) or 'contractor' (lighter, jobs-only account). */
-  accountType?: 'farm' | 'contractor';
+  accountType?: 'farm' | 'contractor' | 'agronomist';
   onboarded: boolean;
 }
 
@@ -639,7 +639,7 @@ export interface SprayPurchase {
 
 
 // ---- Job sheets ---------------------------------------------------------
-export type JobStatus = 'draft' | 'sent' | 'submitted' | 'approved' | 'archived';
+export type JobStatus = 'draft' | 'sent' | 'submitted' | 'approved' | 'archived' | 'declined';
 export type JobFieldStatus = 'pending' | 'done' | 'partial' | 'skipped';
 
 export interface SpraySpecLine { name: string; spray_product_id: string | null; l_per_ha: number | null; }
@@ -670,6 +670,8 @@ export interface Job {
   share_expires_at: string | null;
   submitted_at: string | null;
   approved_at: string | null;
+  declined_reason: string | null;
+  declined_at: string | null;
   created_at: string;
 }
 

@@ -87,6 +87,24 @@ export const ASSISTANT_TOOLS: AnthropicTool[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_jobs',
+    description:
+      "Job sheets the farm has created (work sent to staff or contractors): title, type, status (draft/sent/submitted/approved/archived), who it's assigned to, due date, and per-field completion. Use for 'what jobs are outstanding', 'which jobs are waiting for approval', 'what has the contractor not done yet'. Optionally filter by status.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['draft', 'sent', 'submitted', 'approved', 'archived'], description: 'Optional — only jobs in this status.' },
+        limit: { type: 'integer', description: 'Max jobs (default 20).' },
+      },
+    },
+  },
+  {
+    name: 'get_spray_stock',
+    description:
+      "Current spray-chemical stock: per product, litres purchased, litres used and litres remaining in store. Use for 'how much glyphosate have I got left', 'what spray am I low on', 'spray stock'. Negative remaining means more has been recorded as used than purchased.",
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'submit_feature_request',
     description:
       "File a feature request to the developer. ONLY call this after the user has explicitly agreed to send one, and only for something the app genuinely cannot do. Do not promise delivery.",

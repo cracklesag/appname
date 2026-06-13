@@ -24,12 +24,12 @@ export default async function JobsPage({ searchParams }: { searchParams: { from?
   // an admin most needs to find once the list grows.
   const filter = ['needs', 'out', 'done'].includes(searchParams.status ?? '') ? searchParams.status! : 'all';
   const visible = jobs.filter((j) => {
-    if (filter === 'needs') return j.status === 'submitted';
+    if (filter === 'needs') return j.status === 'submitted' || j.status === 'declined';
     if (filter === 'out') return j.status === 'sent' || j.status === 'draft';
     if (filter === 'done') return j.status === 'approved' || j.status === 'archived';
     return true;
   });
-  const needsCount = jobs.filter((j) => j.status === 'submitted').length;
+  const needsCount = jobs.filter((j) => j.status === 'submitted' || j.status === 'declined').length;
   const chip = (key: string, label: string) => {
     const active = filter === key;
     const qs = new URLSearchParams();

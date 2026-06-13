@@ -14,7 +14,8 @@ import {
 } from '@/lib/types';
 import {
   displayBagAmount,
-  nutrientPerArea,
+  displayNutrient,
+  nutrientLabel,
   displayFieldArea,
   fmt,
   fmtDateShort,
@@ -89,8 +90,8 @@ export function GrazingReportShell({
 
   const cadenceKgN = settings.reportDefaults.grazingCadenceKgN;
   const cadenceWeeks = settings.reportDefaults.grazingCadenceWeeks;
-  const shellNUnit = settings.unitSystem === 'acres' ? 'kg N/ac' : 'kg N/ha';
-  const cadenceDisp = Math.round(nutrientPerArea(cadenceKgN, settings.unitSystem));
+  const shellNUnit = nutrientLabel(settings.bagFertUnit);
+  const cadenceDisp = Math.round(displayNutrient(cadenceKgN, settings.bagFertUnit).value);
 
   const writeUrl = useCallback(
     (next: { group?: string; windowWeeks?: number; dueOnly?: boolean; showLastApp?: boolean; bucket?: 'overdue' | 'due' | 'later' | null }) => {
@@ -561,8 +562,8 @@ function GrazingFieldCard({
   const isOverdueCard = status.kind === 'overdue';
   const needsAction = status.kind === 'overdue' || status.kind === 'due_now';
 
-  const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
-  const cv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+  const nUnit = nutrientLabel(settings.bagFertUnit);
+  const cv = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
   const recommendedNView = { value: cv(cadenceKgN), unit: nUnit };
   const totalNKg = cadenceKgN * f.ha;
 

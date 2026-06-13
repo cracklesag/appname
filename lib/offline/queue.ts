@@ -71,9 +71,13 @@ export async function updateQueue(items: QueueItem[]): Promise<void> {
   await writeQueue(items);
 }
 
-/** Heuristic: did this throw because we're offline / the request never landed? */
+/** Heuristic: did this throw because we're offline / the request never landed?
+ *  Deliberately matches only the browsers' actual network-failure strings
+ *  (Chrome "Failed to fetch", Firefox "NetworkError…", Safari "Load failed").
+ *  Broad words like "connection" or "timeout" used to match genuine SERVER
+ *  errors too, queueing them for retry — a second path to the double-log. */
 export function isOfflineError(err: unknown): boolean {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return true;
   const msg = err instanceof Error ? err.message : String(err);
-  return /fetch|network|load failed|failed to fetch|connection|timed?\s?out/i.test(msg);
+  return /failed to fetch|fetch failed|networkerror|network error|load failed|err_internet_disconnected/i.test(msg);
 }

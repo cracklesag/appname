@@ -209,8 +209,8 @@ export function AssistantChat() {
     setLoading(true);
     setError(null);
     try {
-      const { reply, toolsUsed, model } = await askAssistant(history, convoId());
-      setMessages([...history, { role: 'assistant', content: reply, model, tools: toolsUsed }]);
+      const { reply, toolsUsed, model, suggestions } = await askAssistant(history, convoId());
+      setMessages([...history, { role: 'assistant', content: reply, model, tools: toolsUsed, suggestions }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {
@@ -322,7 +322,8 @@ export function AssistantChat() {
               key={i}
               style={{
                 display: 'flex',
-                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                flexDirection: 'column',
+                alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
                 marginBottom: 10,
               }}
             >
@@ -349,6 +350,30 @@ export function AssistantChat() {
                   </div>
                 )}
               </div>
+              {m.role === 'assistant' && i === messages.length - 1 && !loading && m.suggestions && m.suggestions.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, maxWidth: '86%' }}>
+                  {m.suggestions.map((s, si) => (
+                    <button
+                      key={si}
+                      type="button"
+                      onClick={() => send(s)}
+                      style={{
+                        background: 'var(--forest-soft)',
+                        color: 'var(--forest-dark)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 14,
+                        padding: '6px 11px',
+                        fontSize: 12.5,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
 

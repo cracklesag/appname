@@ -2,28 +2,55 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/admin';
-import { getFarmContext, requireAdmin, requireMember } from '@/lib/farm';
+import { getFarmContext, requireAdmin, requireMember, requireAgronomistFor, AGRONOMIST_FARM_COOKIE } from '@/lib/farm';
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit, Product, ProductAnalysis } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { sendPushToUser } from '@/lib/push';
+import { getSeasonStart } from '@/lib/rules';
+import {
+  clampNotes, isValidIsoDate, RATE_UNITS_BY_TYPE, VALID_APPLICATION_METHODS,
+  FIELD_RANGES, NOTES_MAX_LEN,
+} from '@/lib/validation';
 
 /**
- * Season start used for cut renumbering. Mirrors getSeasonStart() in
- * lib/rules (the UK grass/fertiliser year runs 1st Oct → 30th Sep). Inlined
- * here so server actions don't import the rules module (which pulls product
- * types etc.). Keep these two in lock-step.
+ * Server-side structural validation for a single application write. The
+ * client forms warn/block too, but a crafted POST bypasses them — the lovely
+ * ranges in lib/validation.ts were enforced nowhere on the server until now.
+ * Verifies: real calendar date, finite positive rate, the rate unit is legal
+ * FOR THE PRODUCT'S TYPE, the method (if any) is a known value, and that the
+ * field and product actually exist on this farm (RLS scopes the reads, so a
+ * foreign UUID comes back null). Returns the product type for callers that
+ * need it. Throws a clean message on any failure.
  */
-function getSeasonStartIso(): string {
-  const now = new Date();
-  const startYear = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1;
-  return `${startYear}-10-01`;
+async function validateApplicationInput(
+  supabase: ReturnType<typeof createClient>,
+  args: { fieldId: string; productId: number; dateApplied: string; rateValue: number; rateUnit: string; method: string | null },
+): Promise<{ productType: keyof typeof RATE_UNITS_BY_TYPE }> {
+  if (!isValidIsoDate(args.dateApplied)) throw new Error('Invalid date — use the date picker');
+  if (!Number.isFinite(args.rateValue) || args.rateValue <= 0) throw new Error('Rate must be a number greater than 0');
+  if (args.method != null && !VALID_APPLICATION_METHODS.includes(args.method)) {
+    throw new Error('Unknown application method');
+  }
+  const [{ data: fieldRow }, { data: productRow }] = await Promise.all([
+    supabase.from('fields').select('id').eq('id', args.fieldId).maybeSingle(),
+    supabase.from('products').select('id, type').eq('id', args.productId).maybeSingle(),
+  ]);
+  if (!fieldRow) throw new Error('That field was not found on your farm');
+  if (!productRow) throw new Error('That product was not found');
+  const productType = (productRow as { type: string }).type as keyof typeof RATE_UNITS_BY_TYPE;
+  const allowed = RATE_UNITS_BY_TYPE[productType];
+  if (!allowed || !allowed.includes(args.rateUnit)) {
+    throw new Error(`'${args.rateUnit}' is not a valid rate unit for this product`);
+  }
+  return { productType };
 }
 
 /**
@@ -44,7 +71,7 @@ async function renumberCutsForField(
   userId: string,
   fieldId: string,
 ): Promise<void> {
-  const seasonStart = getSeasonStartIso();
+  const seasonStart = getSeasonStart();
   // Fetch cuts in correct chronological order.
   const { data: cuts, error } = await supabase
     .from('cuts')
@@ -84,11 +111,12 @@ export async function saveApplication(formData: FormData) {
   const rateValue = parseFloat(String(formData.get('rate_value')));
   const rateUnit = String(formData.get('rate_unit')) as RateUnit;
   const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  const notes = clampNotes(formData.get('notes'));
 
   if (!fieldId || !productId || !dateApplied || !rateValue || rateValue <= 0) {
     throw new Error('Missing required fields');
   }
+  await validateApplicationInput(supabase, { fieldId, productId, dateApplied, rateValue, rateUnit, method });
 
   // Partial (part-field) application: a drawn sub-area is posted as a GeoJSON
   // polygon. Such an application is held PENDING — excluded from the field's
@@ -214,11 +242,20 @@ export async function saveBatchApplications(formData: FormData) {
   const productId = parseInt(String(formData.get('product_id')), 10);
   const dateApplied = String(formData.get('date_applied'));
   const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  const notes = clampNotes(formData.get('notes'));
 
-  if (!productId || !dateApplied || !/^\d{4}-\d{2}-\d{2}$/.test(dateApplied)) {
+  if (!productId || !isValidIsoDate(dateApplied)) {
     throw new Error('Pick a product and a valid date');
   }
+  if (method != null && !VALID_APPLICATION_METHODS.includes(method)) {
+    throw new Error('Unknown application method');
+  }
+  // The product must exist (RLS-scoped read) and every row's unit must be
+  // legal for ITS type — the global unit list alone let a slurry go in as
+  // kg/ha, which silently wrecks the nutrient maths.
+  const { data: batchProduct } = await supabase.from('products').select('id, type').eq('id', productId).maybeSingle();
+  if (!batchProduct) throw new Error('That product was not found');
+  const batchUnits = RATE_UNITS_BY_TYPE[(batchProduct as { type: string }).type as keyof typeof RATE_UNITS_BY_TYPE] ?? [];
 
   let rows: Array<{ field_id: string; rate_value: number; rate_unit: string }>;
   try {
@@ -247,8 +284,8 @@ export async function saveBatchApplications(formData: FormData) {
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error('Every field needs a rate greater than zero');
     }
-    if (!VALID_UNITS.has(r.rate_unit)) {
-      throw new Error(`Invalid rate unit: ${r.rate_unit}`);
+    if (!VALID_UNITS.has(r.rate_unit) || !batchUnits.includes(r.rate_unit)) {
+      throw new Error(`Invalid rate unit for this product: ${r.rate_unit}`);
     }
     return {
       user_id: ctx.ownerId,
@@ -299,11 +336,12 @@ export async function updateApplication(formData: FormData) {
   const rateValue = parseFloat(String(formData.get('rate_value')));
   const rateUnit = String(formData.get('rate_unit')) as RateUnit;
   const method = (formData.get('method') ? String(formData.get('method')) : null) as ApplicationMethod | null;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  const notes = clampNotes(formData.get('notes'));
 
   if (!id || !fieldId || !productId || !dateApplied || !rateValue || rateValue <= 0) {
     throw new Error('Missing required fields');
   }
+  await validateApplicationInput(supabase, { fieldId, productId, dateApplied, rateValue, rateUnit, method });
 
   const { error } = await supabase
     .from('applications')
@@ -364,7 +402,7 @@ export async function saveCut(formData: FormData) {
   const cutDate = String(formData.get('cut_date'));
   const cutType = String(formData.get('cut_type')) as CutType;
   const yieldClass = String(formData.get('yield_class')) as YieldClass;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  const notes = clampNotes(formData.get('notes'));
   // What's next for this field. Stays nullable for legacy callers / older
   // forms that don't post the field; defaults to null then.
   const VALID_NEXT_ACTIONS = ['another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'];
@@ -372,6 +410,10 @@ export async function saveCut(formData: FormData) {
   const nextAction: string | null = VALID_NEXT_ACTIONS.includes(rawNextAction) ? rawNextAction : null;
 
   if (!fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
+  if (!isValidIsoDate(cutDate)) throw new Error('Invalid date — use the date picker');
+  if (!['silage', 'bales', 'grazing'].includes(cutType)) throw new Error('Unknown cut type');
+  if (!['light', 'average', 'heavy'].includes(yieldClass)) throw new Error('Unknown yield class');
+  if (!Number.isFinite(cutNumber) || cutNumber < 1 || cutNumber > 10) throw new Error('Cut number must be 1–10');
 
   const { error } = await supabase.from('cuts').insert({
     user_id: ctx.ownerId,
@@ -409,13 +451,17 @@ export async function updateCut(formData: FormData) {
   const cutDate = String(formData.get('cut_date'));
   const cutType = String(formData.get('cut_type')) as CutType;
   const yieldClass = String(formData.get('yield_class')) as YieldClass;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  const notes = clampNotes(formData.get('notes'));
   // Same as saveCut — accept next_action, fall back to null when missing.
   const VALID_NEXT_ACTIONS = ['another_cut_silage','another_cut_bales','rotational_grazing','maintenance_grazing'];
   const rawNextAction = String(formData.get('next_action') ?? '');
   const nextAction: string | null = VALID_NEXT_ACTIONS.includes(rawNextAction) ? rawNextAction : null;
 
   if (!id || !fieldId || !cutNumber || !cutDate) throw new Error('Missing required fields');
+  if (!isValidIsoDate(cutDate)) throw new Error('Invalid date — use the date picker');
+  if (!['silage', 'bales', 'grazing'].includes(cutType)) throw new Error('Unknown cut type');
+  if (!['light', 'average', 'heavy'].includes(yieldClass)) throw new Error('Unknown yield class');
+  if (!Number.isFinite(cutNumber) || cutNumber < 1 || cutNumber > 10) throw new Error('Cut number must be 1–10');
 
   const { error } = await supabase
     .from('cuts')
@@ -465,18 +511,44 @@ export async function deleteCut(formData: FormData) {
 }
 
 export async function saveSoil(formData: FormData) {
-  const supabase = createClient();
-  await requireAdmin();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  // Soil & grass can be set by the farm admin, OR by a linked agronomist on the
+  // farm's behalf. An agronomist has no write RLS, so their edit goes through
+  // the service client — scoped in code to the farm they're reviewing and to
+  // the agronomic columns only (no notes/history, no field create/delete).
+  const isAgronomistEdit = !ctx.isAdmin && ctx.accountType === 'agronomist';
+  if (!ctx.isAdmin && !isAgronomistEdit) {
+    throw new Error('Only the farm admin or a linked agronomist can change soil and grass.');
+  }
+  if (isAgronomistEdit) await requireAgronomistFor(ctx.ownerId);
+  const supabase = isAgronomistEdit ? createServiceClient() : createClient();
 
   const fieldId = String(formData.get('field_id'));
-  const ph = formData.get('ph') ? parseFloat(String(formData.get('ph'))) : null;
-  const pIdx = formData.get('p_idx') ? parseFloat(String(formData.get('p_idx'))) : null;
-  const kIdx = formData.get('k_idx') ? parseFloat(String(formData.get('k_idx'))) : null;
-  const mgIdx = formData.get('mg_idx') ? parseFloat(String(formData.get('mg_idx'))) : null;
-  const sampleDate = formData.get('sample_date') ? String(formData.get('sample_date')) : null;
-  const lastPloughed = formData.get('last_ploughed') ? String(formData.get('last_ploughed')) : null;
-  const lastReseeded = formData.get('last_reseeded') ? String(formData.get('last_reseeded')) : null;
-  const notes = formData.get('notes') ? String(formData.get('notes')) : null;
+  // parseFloat('abc') is NaN, and NaN serialises to null in JSON — so a typo
+  // used to be SILENTLY saved as “not sampled”. Reject it instead.
+  const num = (key: string): number | null => {
+    const raw = formData.get(key);
+    if (raw == null || String(raw).trim() === '') return null;
+    const n = parseFloat(String(raw));
+    if (!Number.isFinite(n)) throw new Error(`'${raw}' is not a number`);
+    return n;
+  };
+  const isoOrNull = (key: string): string | null => {
+    const raw = formData.get(key);
+    if (raw == null || String(raw).trim() === '') return null;
+    const v = String(raw);
+    if (!isValidIsoDate(v)) throw new Error('Invalid date — use the date picker');
+    return v;
+  };
+  const ph = num('ph');
+  const pIdx = num('p_idx');
+  const kIdx = num('k_idx');
+  const mgIdx = num('mg_idx');
+  const sampleDate = isoOrNull('sample_date');
+  const lastPloughed = isoOrNull('last_ploughed');
+  const lastReseeded = isoOrNull('last_reseeded');
+  const notes = clampNotes(formData.get('notes'));
   // Soil type is optional on the form — if not present, leave the existing
   // value untouched (don't overwrite a saved value with the default).
   const rawSoilType = String(formData.get('soil_type') ?? '');
@@ -503,7 +575,20 @@ export async function saveSoil(formData: FormData) {
   if (soilType) update.soil_type = soilType;
   if (grassSystemId !== undefined) update.grass_system_id = grassSystemId;
 
-  const { error } = await supabase.from('fields').update(update).eq('id', fieldId);
+  // For an agronomist: verify the field belongs to the farm they're reviewing
+  // (the service client bypasses RLS, so this ownership check is the guard),
+  // and write ONLY the agronomic columns — never notes/ploughed/reseeded.
+  let writeUpdate: Record<string, unknown> = update;
+  if (isAgronomistEdit) {
+    const { data: f } = await supabase.from('fields').select('user_id').eq('id', fieldId).maybeSingle();
+    if (!f || (f as { user_id: string }).user_id !== ctx.ownerId) {
+      throw new Error('That field is not on the farm you are reviewing.');
+    }
+    const allowed = new Set(['soil_type', 'grass_system_id', 'ph', 'p_idx', 'k_idx', 'mg_idx', 'sample_date', 'sampled', 'last_ploughed', 'last_reseeded', 'notes', 'updated_at']);
+    writeUpdate = Object.fromEntries(Object.entries(update).filter(([k]) => allowed.has(k)));
+  }
+
+  const { error } = await supabase.from('fields').update(writeUpdate).eq('id', fieldId);
   if (error) throw new Error(error.message);
 
   revalidatePath(`/fields/${fieldId}`);
@@ -662,8 +747,16 @@ export async function saveSettings(formData: FormData) {
  * built-in RB209 defaults. Preserves the rest of the settings blob.
  */
 export async function saveAgronomy(overridesJson: string) {
-  const supabase = createClient();
-  const ctx = await requireAdmin();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  // The advanced RB209 overrides can be set by the farm admin, OR by a linked
+  // agronomist on the farm's behalf (service client, scoped to that farm).
+  const isAgronomistEdit = !ctx.isAdmin && ctx.accountType === 'agronomist';
+  if (!ctx.isAdmin && !isAgronomistEdit) {
+    throw new Error('Only the farm admin or a linked agronomist can change agronomy settings.');
+  }
+  if (isAgronomistEdit) await requireAgronomistFor(ctx.ownerId);
+  const supabase = isAgronomistEdit ? createServiceClient() : createClient();
   const userId = ctx.ownerId;
 
   const { data: existingRow } = await supabase
@@ -730,11 +823,19 @@ export async function createField(formData: FormData) {
       .eq('seed_key', 'perennial_ryegrass').maybeSingle();
     if (prg?.id) grassSystemId = prg.id;
   }
+  const cappedNotes = clampNotes(notes);
 
-  // Validation: name required, acres > 0, ha > 0, cut profile 1-4
+  // Validation: name required, acres/ha inside the HARD limits (a typoed area
+  // breaks every per-ha calculation downstream — this is the one range the
+  // client treats as a hard block, so the server must too), cut profile 1-4.
   if (!name) throw new Error('Field name is required');
-  if (!acres || acres <= 0) throw new Error('Acres must be greater than 0');
-  if (!ha || ha <= 0) throw new Error('Hectares must be greater than 0');
+  if (name.length > 80) throw new Error('Field name is too long (80 characters max)');
+  if (!Number.isFinite(acres) || acres < FIELD_RANGES.acres.min || acres > FIELD_RANGES.acres.max) {
+    throw new Error(`Acres must be between ${FIELD_RANGES.acres.min} and ${FIELD_RANGES.acres.max}`);
+  }
+  if (!Number.isFinite(ha) || ha < FIELD_RANGES.ha.min || ha > FIELD_RANGES.ha.max) {
+    throw new Error(`Hectares must be between ${FIELD_RANGES.ha.min} and ${FIELD_RANGES.ha.max}`);
+  }
   if (!cutProfile || cutProfile < 1 || cutProfile > 4) throw new Error('Cut profile must be 1–4');
 
   const { data, error } = await supabase.from('fields').insert({
@@ -748,7 +849,7 @@ export async function createField(formData: FormData) {
     soil_type: soilType,
     grass_system_id: grassSystemId,
     sampled: false,
-    notes,
+    notes: cappedNotes,
   }).select('id').single();
 
   if (error) {
@@ -1418,6 +1519,47 @@ export async function completeContractorOnboarding(businessName?: string) {
 
   revalidatePath('/');
   redirect('/jobs');
+}
+
+// ---- Agronomist accounts -------------------------------------------------
+// An agronomist advises multiple farms. Onboarding mirrors the contractor:
+// create a self-admin row (so their own settings write is allowed) and stamp
+// accountType='agronomist'. They then accept farm invites (role 'agronomist')
+// and review each farm via the switcher.
+export async function completeAgronomistOnboarding(displayName?: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  await supabase.from('farm_members').insert({ owner_id: user.id, member_id: user.id, role: 'admin' });
+
+  const { data: existing } = await supabase.from('settings').select('data').eq('user_id', user.id).maybeSingle();
+  const current = (existing?.data as Record<string, unknown>) || {};
+  const next = {
+    ...current,
+    accountType: 'agronomist',
+    unitSystem: current.unitSystem ?? 'hectares',
+    onboarded: true,
+    ...(displayName && displayName.trim() ? { farmName: displayName.trim().slice(0, 120) } : {}),
+  };
+  const { error } = await supabase.from('settings').upsert({ user_id: user.id, data: next, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Could not save: ${error.message}`);
+
+  revalidatePath('/');
+  redirect('/agronomist');
+}
+
+// Switch which client farm the agronomist is reviewing (sets the cookie that
+// getFarmContext reads). Verifies the link first.
+export async function setAgronomistFarm(formData: FormData) {
+  const ownerId = String(formData.get('owner_id') ?? '');
+  if (!ownerId) throw new Error('Missing farm');
+  await requireAgronomistFor(ownerId); // throws unless linked
+  cookies().set(AGRONOMIST_FARM_COOKIE, ownerId, {
+    httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 365,
+  });
+  revalidatePath('/', 'layout');
+  redirect('/fields');
 }
 
 // =====================================================================
@@ -2487,6 +2629,8 @@ export async function createFarmInvite(formData: FormData) {
   const ctx = await requireAdmin();
 
   const label = formData.get('label') ? String(formData.get('label')).trim() : null;
+  const roleRaw = String(formData.get('role') ?? 'staff');
+  const role = roleRaw === 'agronomist' ? 'agronomist' : 'staff';
 
   // Try a few times in the vanishingly unlikely event of a code collision.
   let lastErr: string | null = null;
@@ -2495,7 +2639,7 @@ export async function createFarmInvite(formData: FormData) {
     const { error } = await supabase.from('farm_invites').insert({
       owner_id: ctx.ownerId,
       code,
-      role: 'staff',
+      role,
       label,
     });
     if (!error) {
@@ -2552,7 +2696,7 @@ export async function redeemInvite(formData: FormData) {
 
   const { data, error } = await supabase.rpc('redeem_farm_invite', { p_code: code });
   if (error) throw new Error(error.message);
-  const result = data as { ok: boolean; error?: string };
+  const result = data as { ok: boolean; error?: string; role?: string };
   if (!result?.ok) {
     throw new Error(result?.error || 'Could not join farm');
   }
@@ -2565,6 +2709,9 @@ export async function redeemInvite(formData: FormData) {
 
   revalidatePath('/');
   revalidatePath('/settings');
+  // An agronomist who just linked a farm lands on their farms list, not the
+  // farm home (which is for farm/staff accounts).
+  if (result.role === 'agronomist') redirect('/agronomist');
   redirect('/?joined=1');
 }
 
@@ -3288,7 +3435,7 @@ export async function saveJobCompletion(formData: FormData) {
     await supabase.from('job_fields').update({
       status: c.status,
       actual_rate_value: rate,
-      completion_note: c.note && String(c.note).trim() !== '' ? String(c.note).trim() : null,
+      completion_note: c.note && String(c.note).trim() !== '' ? String(c.note).trim().slice(0, 500) : null,
     }).eq('id', c.id);
     const f = byId.get(c.id)!;
     f.status = c.status;
@@ -3330,9 +3477,43 @@ export async function reopenJob(formData: FormData) {
   if (!id) throw new Error('Missing job id');
   const { job } = await loadJobForAction(supabase, id);
   if (job.user_id !== ctx.ownerId) throw new Error('Not your job');
-  await supabase.from('jobs').update({ status: 'sent', submitted_at: null }).eq('id', id);
+  await supabase.from('jobs').update({ status: 'sent', submitted_at: null, declined_reason: null, declined_at: null }).eq('id', id);
   revalidatePath(`/jobs/${id}`);
   redirect(`/jobs/${id}`);
+}
+
+// The contractor/operator a job was sent to declines it (instead of completing
+// it). Only valid from 'sent'; records an optional reason and notifies the
+// farm so they can re-assign. The column guard (20260618) permits the
+// status → 'declined' move for the assignee/delegate.
+export async function declineJob(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const id = String(formData.get('job_id') ?? '');
+  if (!id) throw new Error('Missing job id');
+
+  const { job } = await loadJobForAction(supabase, id);
+  const isAssignee = job.assignee_user_id === ctx.userId;
+  const isDelegate = job.delegated_to_user_id === ctx.userId;
+  if (!isAssignee && !isDelegate) throw new Error('Only the contractor this job was sent to can decline it');
+  if (job.status !== 'sent') throw new Error('This job can no longer be declined');
+
+  const reason = String(formData.get('reason') ?? '').trim().slice(0, 500) || null;
+  const { error } = await supabase
+    .from('jobs')
+    .update({ status: 'declined', declined_reason: reason, declined_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+
+  await sendPushToUser(job.user_id, {
+    title: 'Job declined',
+    body: `A contractor declined "${job.title}"${reason ? ` — ${reason}` : ''}. Tap to re-assign.`,
+    url: `/jobs/${id}`,
+    tag: `job-${id}`,
+  });
+  revalidatePath(`/jobs/${id}`);
+  redirect('/jobs');
 }
 
 // ---------------------------------------------------------------------------
@@ -3362,6 +3543,8 @@ export async function createShareLink(formData: FormData) {
     share_token: token,
     share_pin: pinRaw === '' ? null : pinRaw,
     share_expires_at: expiresAt,
+    share_pin_attempts: 0,
+    share_pin_locked_until: null,
   }).eq('id', id);
   if (error) throw new Error(error.message);
   revalidatePath(`/jobs/${id}`);
@@ -3382,7 +3565,7 @@ export async function revokeShareLink(formData: FormData) {
 }
 
 interface SharedJobResult {
-  status?: 'ok' | 'needpin' | 'badpin' | 'notfound' | 'expired' | 'closed';
+  status?: 'ok' | 'needpin' | 'badpin' | 'locked' | 'notfound' | 'expired' | 'closed';
   job?: {
     id: string; title: string; job_type: string; instruction: string | null;
     product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null;
@@ -3390,6 +3573,42 @@ interface SharedJobResult {
     notes: string | null; due_date: string | null; contractor_label: string | null; status: string; farm_name: string | null;
   };
   fields?: { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null }[];
+}
+
+// ---- Share-link PIN protection -------------------------------------
+// The token (randomBytes(18)) is the real secret; the optional PIN is a
+// second factor for a link pasted into the wrong WhatsApp group. Two fixes
+// over v1: (a) constant-time comparison, (b) an attempt counter — 10 wrong
+// PINs locks the link for 15 minutes, so a 4-digit PIN can no longer be
+// brute-forced in one sitting by anyone holding the URL.
+const PIN_MAX_ATTEMPTS = 10;
+const PIN_LOCK_MINUTES = 15;
+
+function pinsMatch(supplied: string, stored: string): boolean {
+  // Pad both to a fixed width so timingSafeEqual gets equal-length buffers
+  // and length itself leaks nothing. PINs are short; 64 bytes is plenty.
+  const norm = (x: string) => Buffer.concat([Buffer.from(x, 'utf8'), Buffer.alloc(64)]).subarray(0, 64);
+  return timingSafeEqual(norm(supplied), norm(stored));
+}
+
+/** Returns 'locked' if this link is currently PIN-locked, else null. */
+function pinLockStatus(j: Record<string, unknown>): 'locked' | null {
+  const until = j.share_pin_locked_until ? new Date(j.share_pin_locked_until as string).getTime() : 0;
+  return until > Date.now() ? 'locked' : null;
+}
+
+/** Count a wrong PIN; returns the status to surface ('badpin' or 'locked'). */
+async function recordBadPin(svc: ReturnType<typeof createServiceClient>, j: Record<string, unknown>): Promise<'badpin' | 'locked'> {
+  const attempts = (typeof j.share_pin_attempts === 'number' ? j.share_pin_attempts : 0) + 1;
+  const lock = attempts >= PIN_MAX_ATTEMPTS;
+  // Best-effort: if the 20260616 migration hasn't been run yet these columns
+  // don't exist and the update no-ops with an error — behaviour then degrades
+  // to the old (uncounted) one rather than breaking the link.
+  await svc.from('jobs').update({
+    share_pin_attempts: lock ? 0 : attempts,
+    share_pin_locked_until: lock ? new Date(Date.now() + PIN_LOCK_MINUTES * 60000).toISOString() : null,
+  }).eq('id', j.id as string);
+  return lock ? 'locked' : 'badpin';
 }
 
 // Anonymous read of a shared job by token (validates PIN + expiry in code).
@@ -3401,8 +3620,14 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
   const j = job as Record<string, unknown>;
   if (j.share_expires_at && new Date(j.share_expires_at as string).getTime() < Date.now()) return { status: 'expired' };
   if (j.share_pin) {
+    if (pinLockStatus(j)) return { status: 'locked' };
     if (pin == null || pin === '') return { status: 'needpin' };
-    if (String(pin) !== String(j.share_pin)) return { status: 'badpin' };
+    if (!pinsMatch(String(pin), String(j.share_pin))) {
+      return { status: await recordBadPin(svc, j) };
+    }
+    if ((typeof j.share_pin_attempts === 'number' && j.share_pin_attempts > 0) || j.share_pin_locked_until) {
+      await svc.from('jobs').update({ share_pin_attempts: 0, share_pin_locked_until: null }).eq('id', j.id as string);
+    }
   }
   const def = jobTypeDef(j.job_type as string);
   let productName: string | null = null;
@@ -3451,25 +3676,41 @@ export async function submitSharedJob(token: string, pin: string | undefined, co
   if (!job) return { ok: false, error: 'This link is no longer valid' };
   const j = job as Record<string, unknown>;
   if (j.share_expires_at && new Date(j.share_expires_at as string).getTime() < Date.now()) return { ok: false, error: 'This link has expired' };
-  if (j.share_pin && String(pin ?? '') !== String(j.share_pin)) return { ok: false, error: 'Wrong PIN' };
+  if (j.share_pin) {
+    if (pinLockStatus(j)) return { ok: false, error: 'Too many wrong PINs — this link is locked for a few minutes' };
+    if (!pinsMatch(String(pin ?? ''), String(j.share_pin))) {
+      const st = await recordBadPin(svc, j);
+      return { ok: false, error: st === 'locked' ? 'Too many wrong PINs — this link is locked for a few minutes' : 'Wrong PIN' };
+    }
+  }
   if (j.status === 'approved') return { ok: false, error: 'This job has already been logged' };
 
   let completions: { id: string; status: string; actual_rate?: number | null; note?: string | null }[];
   try { completions = JSON.parse(completionsJson); } catch { return { ok: false, error: 'Could not read the completion' }; }
+  if (!Array.isArray(completions)) return { ok: false, error: 'Could not read the completion' };
   const { data: fieldRows } = await svc.from('job_fields').select('id').eq('job_id', j.id as string);
   const ownIds = new Set(((fieldRows ?? []) as { id: string }[]).map((f) => f.id));
   const valid = new Set(['pending', 'done', 'partial', 'skipped']);
   for (const c of completions) {
     if (!ownIds.has(c.id) || !valid.has(c.status)) continue;
-    const rate = c.actual_rate == null || !Number.isFinite(Number(c.actual_rate)) ? null : Number(c.actual_rate);
+    // Rate sanity: finite, positive, and not a fat-fingered nonsense number.
+    const rateNum = Number(c.actual_rate);
+    const rate = c.actual_rate == null || !Number.isFinite(rateNum) || rateNum <= 0 || rateNum >= 100000 ? null : rateNum;
+    const note = c.note && String(c.note).trim() !== '' ? String(c.note).trim().slice(0, 500) : null;
     await svc.from('job_fields').update({
       status: c.status,
       actual_rate_value: rate,
-      completion_note: c.note && String(c.note).trim() !== '' ? String(c.note).trim() : null,
+      completion_note: note,
     }).eq('id', c.id);
   }
+  // Re-submission before approval is allowed (fixing a mistake), but only the
+  // FIRST submission pushes a notification — holding the link no longer lets
+  // someone ping the farmer's phone on a loop.
+  const firstSubmission = j.status !== 'submitted';
   await svc.from('jobs').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', j.id as string);
-  await sendPushToUser(j.user_id as string, { title: 'Job submitted for approval', body: 'A shared job sheet was completed — tap to review.', url: `/jobs/${j.id}`, tag: `job-${j.id}` });
+  if (firstSubmission) {
+    await sendPushToUser(j.user_id as string, { title: 'Job submitted for approval', body: 'A shared job sheet was completed — tap to review.', url: `/jobs/${j.id}`, tag: `job-${j.id}` });
+  }
   return { ok: true };
 }
 

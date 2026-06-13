@@ -18,6 +18,8 @@ export default async function TeamPage() {
   const isContractor = settings.accountType === 'contractor';
 
   const staff = members.filter((m) => m.role === 'staff');
+  const agronomists = members.filter((m) => m.role === 'agronomist');
+  const me = members.find((m) => m.member_id === ctx.userId);
   const pendingInvites = invites.filter((i) => !i.used_at);
 
   return (
@@ -36,12 +38,18 @@ export default async function TeamPage() {
           Members
         </div>
         <div className="card" style={{ padding: 0, marginBottom: 22, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: staff.length ? '1px solid var(--line-soft)' : 'none' }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>You</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Admin · full access</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '13px 15px', borderBottom: staff.length ? '1px solid var(--line-soft)' : 'none' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{me?.member_name ? `${me.member_name} (you)` : 'You'}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Admin · full access</div>
+              <form action={renameFarmMember} style={{ display: 'flex', gap: 6 }}>
+                <input type="hidden" name="member_id" value={ctx.userId} />
+                <input type="text" name="name" defaultValue={me?.member_name ?? ''} placeholder="Your name" maxLength={60} className="input" style={{ flex: 1, maxWidth: 220, fontSize: 13, padding: '6px 9px' }} />
+                <button type="submit" className="btn-ghost" style={{ fontSize: 12.5, padding: '6px 10px' }}>Save</button>
+              </form>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Your name shows on entries you log, so the team can see who did what.</div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '3px 9px', borderRadius: 6 }}>Admin</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', padding: '3px 9px', borderRadius: 6, flexShrink: 0 }}>Admin</span>
           </div>
 
           {staff.map((m, i) => (
@@ -71,6 +79,31 @@ export default async function TeamPage() {
           )}
         </div>
 
+        {/* Agronomists (advisers) — farm accounts only */}
+        {!isContractor && agronomists.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>
+              Agronomists
+            </div>
+            <div className="card" style={{ padding: 0, marginBottom: 22, overflow: 'hidden' }}>
+              {agronomists.map((m, i) => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: i < agronomists.length - 1 ? '1px solid var(--line-soft)' : 'none' }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{m.member_name ?? 'Agronomist'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Can review &amp; set soil, grass and agronomy · can&apos;t log work</div>
+                  </div>
+                  <form action={removeFarmMember}>
+                    <input type="hidden" name="member_id" value={m.member_id} />
+                    <button type="submit" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: '1px solid var(--line)', borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--red, #b85b3a)', fontFamily: 'inherit', cursor: 'pointer' }}>
+                      <UserMinus size={13} /> Remove
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Invite codes */}
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>
           Invite codes
@@ -79,12 +112,13 @@ export default async function TeamPage() {
         {pendingInvites.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             {pendingInvites.map((inv) => (
-              <InviteCodeCard key={inv.id} code={inv.code} id={inv.id} label={inv.label} deleteAction={deleteFarmInvite} />
+              <InviteCodeCard key={inv.id} code={inv.code} id={inv.id} label={inv.label ? `${inv.label}${inv.role === 'agronomist' ? ' (agronomist)' : ''}` : (inv.role === 'agronomist' ? 'Agronomist' : null)} deleteAction={deleteFarmInvite} />
             ))}
           </div>
         )}
 
         <form action={createFarmInvite}>
+          <input type="hidden" name="role" value="staff" />
           <input
             type="text"
             name="label"
@@ -94,13 +128,25 @@ export default async function TeamPage() {
             style={{ width: '100%', marginBottom: 10 }}
           />
           <button type="submit" className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <Plus size={18} /> Generate invite code
+            <Plus size={18} /> Generate staff invite code
           </button>
         </form>
 
+        {!isContractor && (
+          <form action={createFarmInvite} style={{ marginTop: 10 }}>
+            <input type="hidden" name="role" value="agronomist" />
+            <input type="hidden" name="label" value="Agronomist" />
+            <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Plus size={18} /> Generate agronomist invite code
+            </button>
+          </form>
+        )}
+
         <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14 }}>
-          Give the code to your staff member. They sign up for their own Swardly account, then enter
-          the code on the &ldquo;Join a farm&rdquo; screen to get access to this farm.
+          Give a <strong>staff</strong> code to someone who logs work (cuts, fertiliser, slurry). Give an{' '}
+          <strong>agronomist</strong> code to an adviser who should review your farm and set soil, grass and
+          advanced agronomy on your behalf — they can&apos;t log work. They sign up, then enter the code on the
+          &ldquo;Join a farm&rdquo; screen.
         </p>
       </div>
     </div>

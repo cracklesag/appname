@@ -1,6 +1,6 @@
 import { Application, Cut, Field, Product, Settings } from '@/lib/types';
 import {
-  calcNutrients, displayRate, fmt, fmtDate, getOfftakeForCut, nutrientPerArea,
+  calcNutrients, displayRate, fmt, fmtDate, getOfftakeForCut, displayNutrient, nutrientLabel,
   MONTH_NAMES, slurryNAvailability, METHOD_LABELS, CUT_TYPE_LABELS, YIELD_CLASS_LABELS,
 } from '@/lib/rules';
 import { ProductPill } from './ProductPill';
@@ -25,8 +25,8 @@ export function ApplicationCard({
   const isPlanItem = app.applied_by === 'plan';
   // Show what THIS application supplied, in the user's area unit (so it matches
   // the rest of the app — the calc engine works in kg/ha internally).
-  const nutUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
-  const av = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+  const nutUnit = nutrientLabel(settings.bagFertUnit);
+  const av = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
   return (
     <div className="card" style={{ padding: 12, marginBottom: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -88,7 +88,7 @@ export function ApplicationCard({
   );
 }
 
-export function CutEntry({ cut, field, settings, canEdit = true, from }: { cut: Cut; field: Field; settings: Settings; canEdit?: boolean; from?: string }) {
+export function CutEntry({ cut, field, settings, canEdit = true, from, byName }: { cut: Cut; field: Field; settings: Settings; canEdit?: boolean; from?: string; byName?: string }) {
   const off = getOfftakeForCut(field.cut_profile, cut.cut_number, cut.yield_class, settings, cut.cut_type);
   // Where to return after editing — caller passes its own URL (filtered activity
   // view or a field tab); default to the field's season tab.
@@ -103,6 +103,7 @@ export function CutEntry({ cut, field, settings, canEdit = true, from }: { cut: 
               Cut {cut.cut_number} · {CUT_TYPE_LABELS[cut.cut_type]} · {YIELD_CLASS_LABELS[cut.yield_class]}
             </div>
             <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 700 }}>{fmtDate(cut.cut_date)}</div>
+            {byName && <div style={{ fontSize: 11, color: 'var(--amber)', marginTop: 1 }}>Logged by {byName}</div>}
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--ink-soft)' }}>

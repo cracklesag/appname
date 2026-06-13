@@ -128,6 +128,7 @@ export default async function JobPage({ params }: { params: { id: string } }) {
           fmtDateStr={job.approved_at ? fmtDate(job.approved_at.slice(0, 10)) : null}
           approvedAt={job.approved_at}
           detailLine={instructionLine || null}
+          declinedReason={job.declined_reason}
         />
 
         {isAdmin && (

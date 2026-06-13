@@ -6,11 +6,16 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
  * component or expose the service-role key to the browser. It is used solely
  * inside 'use server' actions.
  *
- * The only current caller is deleteMyAccount() in lib/actions.ts, which needs
- * auth.admin.deleteUser(). Deleting the auth.users row cascades to every table
- * that references it (see schema.sql — all user_id / owner_id FKs are
- * ON DELETE CASCADE), so the user's owned data is removed atomically by
- * Postgres.
+ * CURRENT CALLERS (keep this list honest — it's the audit surface for the
+ * one credential that bypasses RLS):
+ *   lib/actions.ts  → deleteMyAccount()    auth.admin.deleteUser + cascade
+ *   lib/actions.ts  → loadSharedJob()      anonymous share-link read (token-gated)
+ *   lib/actions.ts  → submitSharedJob()    anonymous share-link submit (token-gated)
+ *   lib/actions.ts  → connectContractor()  contractor-code lookup (code-gated)
+ *   lib/push.ts     → sendPushToUser()     cross-user push delivery
+ * Deleting the auth.users row cascades to every table that references it
+ * (all user_id / owner_id FKs are ON DELETE CASCADE), so the user's owned
+ * data is removed atomically by Postgres.
  */
 export function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

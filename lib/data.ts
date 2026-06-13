@@ -1,7 +1,9 @@
+import { cache } from 'react';
 import { createClient } from './supabase/server';
+import { getFarmContext } from './farm';
 import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor } from './types';
 
-export async function loadAllProducts(): Promise<Product[]> {
+export const loadAllProducts = cache(async function loadAllProductsUncached(): Promise<Product[]> {
   const supabase = createClient();
   const { data, error } = await supabase.from('products').select('*').order('id');
   if (error) throw error;
@@ -26,7 +28,7 @@ export async function loadAllProducts(): Promise<Product[]> {
     }
   }
   return products;
-}
+})
 
 export async function loadProduct(id: number): Promise<Product | null> {
   const supabase = createClient();
@@ -44,14 +46,14 @@ export async function loadProductAnalyses(productId: number): Promise<ProductAna
   return (data as ProductAnalysis[]) ?? [];
 }
 
-export async function loadFields(): Promise<Field[]> {
+export const loadFields = cache(async function loadFieldsUncached(): Promise<Field[]> {
   const supabase = createClient();
   const { data, error } = await supabase.from('fields').select('*').order('name');
   if (error) throw error;
   return (data || []) as Field[];
-}
+})
 
-export async function loadGroups(): Promise<Group[]> {
+export const loadGroups = cache(async function loadGroupsUncached(): Promise<Group[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('groups').select('*')
@@ -59,7 +61,7 @@ export async function loadGroups(): Promise<Group[]> {
     .order('name', { ascending: true });
   if (error) throw error;
   return (data || []) as Group[];
-}
+})
 
 /**
  * Load all grass systems visible to the current user — both shared seeds
@@ -68,7 +70,7 @@ export async function loadGroups(): Promise<Group[]> {
  * Sort order: shared seeds first (by their sort_order then name), then
  * user-owned custom rows alphabetically.
  */
-export async function loadGrassSystems(): Promise<GrassSystem[]> {
+export const loadGrassSystems = cache(async function loadGrassSystemsUncached(): Promise<GrassSystem[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('grass_systems').select('*')
@@ -77,7 +79,7 @@ export async function loadGrassSystems(): Promise<GrassSystem[]> {
     .order('name', { ascending: true });
   if (error) throw error;
   return (data || []) as GrassSystem[];
-}
+})
 
 export async function loadField(id: string): Promise<Field | null> {
   const supabase = createClient();
@@ -96,14 +98,14 @@ export async function loadApplicationsForField(fieldId: string): Promise<Applica
   return (data || []) as Application[];
 }
 
-export async function loadAllApplications(): Promise<Application[]> {
+export const loadAllApplications = cache(async function loadAllApplicationsUncached(): Promise<Application[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('applications').select('*')
     .order('date_applied', { ascending: false });
   if (error) throw error;
   return (data || []) as Application[];
-}
+})
 
 export async function loadCutsForField(fieldId: string): Promise<Cut[]> {
   const supabase = createClient();
@@ -126,57 +128,27 @@ export async function loadFieldEvents(fieldId: string): Promise<FieldEvent[]> {
   return (data || []) as FieldEvent[];
 }
 
-export async function loadAllCuts(): Promise<Cut[]> {
+export const loadAllCuts = cache(async function loadAllCutsUncached(): Promise<Cut[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('cuts').select('*').order('cut_date', { ascending: false });
   if (error) throw error;
   return (data || []) as Cut[];
-}
+})
 
-export async function loadSettings(): Promise<Settings> {
+export const loadSettings = cache(async function loadSettingsUncached(): Promise<Settings> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return DEFAULT_SETTINGS;
 
-  // Resolve which farm's settings to load. A user can be admin of their own
-  // (auto-created) farm AND staff on someone else's. If their own farm has
-  // never been set up, prefer the farm they're staff on — otherwise they'd see
-  // an empty shell and get bounced to /welcome. Mirrors getFarmContext().
-  let ownerId = user.id;
-  let isStaff = false;
-  const { data: memberships } = await supabase
-    .from('farm_members')
-    .select('owner_id, role')
-    .eq('member_id', user.id);
+  // Which farm's settings? getFarmContext() is the single source of truth for
+  // farm resolution (own farm vs. the farm you're staff on, preferring the
+  // staffed farm when your own was never onboarded). This used to be
+  // re-implemented inline here — one of two copies that had to be kept "in
+  // lock-step" by comment alone. Now there's one.
+  const ctx = await getFarmContext();
+  if (!ctx) return DEFAULT_SETTINGS;
+  const isStaff = ctx.role === 'staff';
 
-  if (memberships && memberships.length > 0) {
-    const adminM = memberships.find((m) => m.role === 'admin');
-    const staffM = memberships.find((m) => m.role === 'staff');
-
-    if (adminM && staffM) {
-      // Keep the own (admin) farm only if it's actually been onboarded.
-      const { data: ownSettings } = await supabase
-        .from('settings')
-        .select('data')
-        .eq('user_id', adminM.owner_id as string)
-        .maybeSingle();
-      const ownOnboarded = !!(ownSettings?.data as { onboarded?: boolean } | null)?.onboarded;
-      if (ownOnboarded) {
-        ownerId = adminM.owner_id as string;
-      } else {
-        ownerId = staffM.owner_id as string;
-        isStaff = true;
-      }
-    } else if (adminM) {
-      ownerId = adminM.owner_id as string;
-    } else {
-      ownerId = memberships[0].owner_id as string;
-      isStaff = true;
-    }
-  }
-
-  const { data, error } = await supabase.from('settings').select('data').eq('user_id', ownerId).maybeSingle();
+  const { data, error } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
   if (error || !data) {
     // A staff member has joined a farm and is past onboarding by definition —
     // never bounce them to /welcome even if the admin's settings row is
@@ -208,7 +180,7 @@ export async function loadSettings(): Promise<Settings> {
   // an admin whose own settings somehow lack the flag.
   if (isStaff) merged.onboarded = true;
   return merged;
-}
+});
 
 // ---------------------------------------------------------------------
 // Multi-user farm: members + invites (Team screen)
@@ -218,7 +190,7 @@ export interface FarmMemberRow {
   id: string;
   owner_id: string;
   member_id: string;
-  role: 'admin' | 'staff';
+  role: 'admin' | 'staff' | 'agronomist';
   member_name: string | null;
   created_at: string;
 }
@@ -227,7 +199,7 @@ export interface FarmInviteRow {
   id: string;
   owner_id: string;
   code: string;
-  role: 'staff';
+  role: 'staff' | 'agronomist';
   label: string | null;
   created_at: string;
   expires_at: string | null;
@@ -235,8 +207,7 @@ export interface FarmInviteRow {
   used_by: string | null;
 }
 
-/** Load all members of the current admin's farm (RLS scopes to their farm). */
-export async function loadFarmMembers(): Promise<FarmMemberRow[]> {
+/** Load all members of the current admin's farm (RLS scopes to their farm). */export async function loadFarmMembers(): Promise<FarmMemberRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('farm_members')
@@ -491,4 +462,171 @@ export async function countJobsAwaitingApproval(): Promise<number> {
     .select('id', { count: 'exact', head: true })
     .eq('status', 'submitted');
   return count ?? 0;
+}
+
+// ---- Assistant chat history -----------------------------------------
+// The "look back at past chats" feature reads the same assistant_logs rows
+// the API already writes on every turn. Nothing new is captured — this is a
+// read-only view grouped by conversation_id. RLS scopes selects to the
+// signed-in user, so a user only ever sees their own threads.
+//
+// RETENTION: we show only the last RETENTION_DAYS by DISPLAY filter, not by
+// deletion — the rows are tiny and we keep them (e.g. to size up model
+// routing later). If a hard purge is ever wanted, that's a separate
+// scheduled job, not this read path.
+export const ASSISTANT_HISTORY_RETENTION_DAYS = 7;
+
+export interface AssistantThreadTurn {
+  turn: number | null;
+  question: string;
+  answer: string | null;
+  model: string | null;
+  toolsUsed: string[];
+  error: string | null;
+  createdAt: string;
+}
+
+export interface AssistantThread {
+  conversationId: string;
+  startedAt: string;   // earliest turn in the thread
+  lastAt: string;      // latest turn (what we sort the list by)
+  turnCount: number;
+  firstQuestion: string; // used as the thread title in the list
+  turns: AssistantThreadTurn[];
+}
+
+type RawLog = {
+  conversation_id: string | null;
+  turn: number | null;
+  question: string;
+  answer: string | null;
+  model: string | null;
+  tools_used: string[] | null;
+  error: string | null;
+  created_at: string;
+};
+
+function groupThreads(rows: RawLog[]): AssistantThread[] {
+  const byConvo = new Map<string, RawLog[]>();
+  for (const r of rows) {
+    // Pre-conversation_id rows (older logs) get bucketed by row so they still
+    // show as one-off entries rather than vanishing.
+    const key = r.conversation_id ?? `legacy:${r.created_at}`;
+    const list = byConvo.get(key);
+    if (list) list.push(r); else byConvo.set(key, [r]);
+  }
+
+  const threads: AssistantThread[] = [];
+  for (const [conversationId, list] of byConvo) {
+    // Order turns within a thread oldest-first (by turn, then time).
+    list.sort((a, b) => (a.turn ?? 0) - (b.turn ?? 0) || a.created_at.localeCompare(b.created_at));
+    const turns: AssistantThreadTurn[] = list.map((r) => ({
+      turn: r.turn,
+      question: r.question,
+      answer: r.answer,
+      model: r.model,
+      toolsUsed: r.tools_used ?? [],
+      error: r.error,
+      createdAt: r.created_at,
+    }));
+    threads.push({
+      conversationId,
+      startedAt: list[0].created_at,
+      lastAt: list[list.length - 1].created_at,
+      turnCount: turns.length,
+      firstQuestion: list[0].question,
+      turns,
+    });
+  }
+  // Most-recently-active thread first.
+  threads.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return threads;
+}
+
+/** All of the current user's chat threads within the retention window. */
+export const loadAssistantThreads = cache(async function loadAssistantThreadsUncached(): Promise<AssistantThread[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const sinceIso = new Date(Date.now() - ASSISTANT_HISTORY_RETENTION_DAYS * 86400_000).toISOString();
+  const { data, error } = await supabase
+    .from('assistant_logs')
+    .select('conversation_id, turn, question, answer, model, tools_used, error, created_at')
+    .eq('user_id', user.id)
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error || !data) return [];
+  return groupThreads(data as RawLog[]);
+});
+
+/** One thread by conversation id (retention window still applies). */
+export async function loadAssistantThread(conversationId: string): Promise<AssistantThread | null> {
+  const threads = await loadAssistantThreads();
+  return threads.find((t) => t.conversationId === conversationId) ?? null;
+}
+
+/**
+ * Map of member_id → display name for the current farm, used to show "who
+ * logged this" on the Activity page. RLS scopes farm_members to the farm, so
+ * this only ever returns the viewer's own farm. Members without a name set
+ * are omitted (the caller falls back to a neutral label).
+ */
+export const loadFarmMemberNames = cache(async function loadFarmMemberNamesUncached(): Promise<Record<string, string>> {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) return {};
+  const { data, error } = await supabase
+    .from('farm_members')
+    .select('member_id, member_name')
+    .eq('owner_id', ctx.ownerId);
+  if (error || !data) return {};
+  const map: Record<string, string> = {};
+  for (const r of data as { member_id: string; member_name: string | null }[]) {
+    if (r.member_name && r.member_name.trim()) map[r.member_id] = r.member_name.trim();
+  }
+  return map;
+});
+
+// ---- Agronomist: the client farms linked to this advisor ----------------
+export interface AgronomistFarm {
+  ownerId: string;
+  farmName: string;
+  /** When they were linked (membership created). */
+  linkedAt: string | null;
+}
+
+/**
+ * The farms an agronomist is linked to (role='agronomist'), with each farm's
+ * display name. RLS lets an agronomist read these farms' settings because they
+ * are a member of them. Names come from each owner's own settings row.
+ */
+export async function loadAgronomistFarms(): Promise<AgronomistFarm[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data: mems } = await supabase
+    .from('farm_members')
+    .select('owner_id, created_at')
+    .eq('member_id', user.id)
+    .eq('role', 'agronomist');
+  if (!mems || mems.length === 0) return [];
+  const ownerIds = mems.map((m) => m.owner_id as string);
+  const { data: settingsRows } = await supabase
+    .from('settings')
+    .select('user_id, data')
+    .in('user_id', ownerIds);
+  const nameById = new Map(
+    (settingsRows ?? []).map((r) => [
+      r.user_id as string,
+      ((r.data as { farmName?: string } | null)?.farmName ?? 'Unnamed farm'),
+    ]),
+  );
+  return mems
+    .map((m) => ({
+      ownerId: m.owner_id as string,
+      farmName: nameById.get(m.owner_id as string) ?? 'Unnamed farm',
+      linkedAt: (m.created_at as string) ?? null,
+    }))
+    .sort((a, b) => a.farmName.localeCompare(b.farmName));
 }

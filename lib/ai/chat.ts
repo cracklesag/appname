@@ -81,10 +81,27 @@ async function callAnthropic(system: string, messages: AnthropicMessage[]): Prom
  * current user message included as the last entry). Returns the final reply
  * text and the names of any tools used (handy for debugging / logging).
  */
+// Pull the optional "[[FOLLOWUPS]] a? | b? | c?" trailer off the reply. The
+// model is told to put it on the last line; we strip it from the visible text
+// and return up to 3 cleaned suggestions. Tolerant of casing/spacing, and a
+// no-op when the trailer is absent.
+function extractFollowups(reply: string): { text: string; suggestions: string[] } {
+  const idx = reply.search(/\[\[FOLLOWUPS\]\]/i);
+  if (idx === -1) return { text: reply, suggestions: [] };
+  const text = reply.slice(0, idx).trim();
+  const raw = reply.slice(idx).replace(/\[\[FOLLOWUPS\]\]/i, '');
+  const suggestions = raw
+    .split('|')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.length <= 80)
+    .slice(0, 3);
+  return { text, suggestions };
+}
+
 export async function runAssistant(
   history: PlainMessage[],
   framing: FarmFraming,
-): Promise<{ reply: string; toolsUsed: string[]; model: string }> {
+): Promise<{ reply: string; toolsUsed: string[]; model: string; suggestions: string[] }> {
   const system = buildSystemPrompt(framing);
   const messages: AnthropicMessage[] = history
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -117,12 +134,14 @@ export async function runAssistant(
       .map((b) => b.text)
       .join('\n')
       .trim();
-    return { reply: reply || "I didn't catch that — could you rephrase?", toolsUsed, model: servedModel };
+    const { text, suggestions } = extractFollowups(reply);
+    return { reply: text || "I didn't catch that — could you rephrase?", toolsUsed, model: servedModel, suggestions };
   }
 
   return {
     reply: "Sorry — I couldn't finish working that out just now. Try asking a slightly simpler question?",
     toolsUsed,
     model: servedModel,
+    suggestions: [],
   };
 }

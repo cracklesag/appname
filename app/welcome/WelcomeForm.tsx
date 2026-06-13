@@ -1,16 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowRight, ArrowLeft, AlertCircle, Tractor, HardHat } from 'lucide-react';
-import { completeOnboarding, completeContractorOnboarding } from '@/lib/actions';
+import { ArrowRight, ArrowLeft, AlertCircle, Tractor, HardHat, Stethoscope } from 'lucide-react';
+import { completeOnboarding, completeContractorOnboarding, completeAgronomistOnboarding } from '@/lib/actions';
 
-type AccountType = 'farm' | 'contractor' | null;
+type AccountType = 'farm' | 'contractor' | 'agronomist' | null;
 
 export function WelcomeForm() {
   const [accountType, setAccountType] = useState<AccountType>(null);
   const [unit, setUnit] = useState<'acres' | 'ha' | null>(null);
   const [farmName, setFarmName] = useState('');
   const [businessName, setBusinessName] = useState('');
+  const [agronomistName, setAgronomistName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +24,11 @@ export function WelcomeForm() {
   async function handleContractor() {
     setSubmitting(true); setError(null);
     try { await completeContractorOnboarding(businessName); }
+    catch (err) { if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) setError(err.message); setSubmitting(false); }
+  }
+  async function handleAgronomist() {
+    setSubmitting(true); setError(null);
+    try { await completeAgronomistOnboarding(agronomistName); }
     catch (err) { if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) setError(err.message); setSubmitting(false); }
   }
 
@@ -55,11 +61,33 @@ export function WelcomeForm() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <ChoiceCard icon={<Tractor size={22} />} title="A farm" subtitle="Map fields, plan nutrients, log work and send jobs out" onClick={() => setAccountType('farm')} />
           <ChoiceCard icon={<HardHat size={22} />} title="A contractor" subtitle="Receive job sheets from farms and tick them off — no farm setup" onClick={() => setAccountType('contractor')} />
+          <ChoiceCard icon={<Stethoscope size={22} />} title="An agronomist" subtitle="Advise multiple farms — review them and set soil, grass and agronomy on their behalf" onClick={() => setAccountType('agronomist')} />
         </div>
         <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
           Joining someone else&apos;s farm as staff?{' '}
           <a href="/join" style={{ color: 'var(--forest-dark)', fontWeight: 700, textDecoration: 'underline' }}>Enter your invite code</a>
         </div>
+      </div>
+    );
+  }
+
+  // ---- Step 2 (agronomist): display name ----
+  if (accountType === 'agronomist') {
+    return (
+      <div style={shell}>
+        {Brand}
+        <button type="button" onClick={() => { setAccountType(null); setError(null); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, padding: 0 }}><ArrowLeft size={15} /> Back</button>
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Your agronomist account</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.5, marginBottom: 14 }}>
+            What name should farms see? Ask each farm to send you an agronomist invite code, then enter it to start reviewing their fields, soil and plans. You can&apos;t log work — only the farm and its staff do that.
+          </div>
+          <input type="text" className="input" placeholder="e.g. Jane Smith, FACTS" value={agronomistName} onChange={(e) => setAgronomistName(e.target.value)} maxLength={120} autoComplete="off" />
+        </div>
+        {ErrorBox}
+        <button type="button" onClick={handleAgronomist} disabled={submitting} className="btn-primary" style={{ padding: 14, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          {submitting ? 'Setting up…' : <>Get started <ArrowRight size={16} /></>}
+        </button>
       </div>
     );
   }

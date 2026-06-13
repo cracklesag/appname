@@ -8,6 +8,7 @@ import {
   loadFields,
   loadGroups,
   loadSettings,
+  loadFarmMemberNames,
 } from '@/lib/data';
 import {
   displayRate,
@@ -77,6 +78,17 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
   const isAdmin = farmCtx?.isAdmin ?? true;
   const myUserId = farmCtx?.userId ?? null;
   const canEditEntry = (createdBy: string | null) => isAdmin || (createdBy != null && createdBy === myUserId);
+
+  // Who logged each entry. created_by is stamped on every application/cut; we
+  // resolve it to the display name set on the Team screen. Your own entries
+  // read "you"; a member with no name yet (or a former member) falls back to
+  // a neutral label rather than a raw id.
+  const memberNames = await loadFarmMemberNames();
+  const loggedBy = (createdBy: string | null): string => {
+    if (createdBy && myUserId && createdBy === myUserId) return 'you';
+    if (createdBy && memberNames[createdBy]) return memberNames[createdBy];
+    return 'a team member';
+  };
 
   const fieldById = Object.fromEntries(fields.map((f) => [f.id, f]));
   const productById = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -403,7 +415,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
             return (
               <div key={c.id} style={{ marginBottom: 4 }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, margin: '0 2px 2px' }}>{f.name}</div>
-                <CutEntry cut={c} field={f} settings={settings} canEdit={canEditEntry(c.created_by)} from={currentUrl} />
+                <CutEntry cut={c} field={f} settings={settings} canEdit={canEditEntry(c.created_by)} from={currentUrl} byName={loggedBy(c.created_by)} />
               </div>
             );
           })}
@@ -566,6 +578,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Sea
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{product.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Logged by {loggedBy(a.created_by)}</div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{fmtDate(a.date_applied)}</div>

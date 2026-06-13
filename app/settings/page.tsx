@@ -6,7 +6,7 @@ import { ResetDataSection } from '@/components/ResetDataSection';
 import { ExportDataSection } from '@/components/ExportDataSection';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { LegalLinksSection } from '@/components/LegalLinksSection';
-import { loadSettings } from '@/lib/data';
+import { loadSettings, loadAgronomistFarms } from '@/lib/data';
 import { createClient } from '@/lib/supabase/server';
 import { getFarmContext } from '@/lib/farm';
 import { saveSettings, signOut } from '@/lib/actions';
@@ -30,6 +30,15 @@ export default async function SettingsPage() {
       .eq('owner_id', ctx.ownerId)
       .eq('role', 'staff');
     staffCount = count ?? 0;
+  }
+
+  // Agronomists get their own settings view — the name of the farm they're
+  // currently reviewing (if any) drives the "currently reviewing" panel.
+  const isAgronomist = ctx.accountType === 'agronomist';
+  let currentFarmName: string | null = null;
+  if (isAgronomist && ctx.hasSelectedFarm) {
+    const farms = await loadAgronomistFarms();
+    currentFarmName = farms.find((f) => f.ownerId === ctx.ownerId)?.farmName ?? null;
   }
 
   function Segment({
@@ -67,7 +76,50 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      {isStaff ? (
+      {isAgronomist ? (
+        // Agronomists advise multiple farms — they don't own farm parameters.
+        // Show their access, the farm they're reviewing, and their account.
+        <div style={{ padding: 16 }}>
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)', marginBottom: 6 }}>You&apos;re an agronomist</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+              You can review the farms you advise and set their soil, grass and advanced agronomy on
+              their behalf. You can&apos;t log applications, cuts or other work — the farm and its staff do that.
+            </div>
+          </div>
+
+          {ctx.hasSelectedFarm ? (
+            <div className="card" style={{ padding: 16, marginBottom: 16, background: 'var(--forest-soft)', border: '1px solid var(--forest)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--forest-dark)', marginBottom: 4 }}>Currently reviewing</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>{currentFarmName ?? 'Selected farm'}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Link href="/settings/agronomy" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <SlidersHorizontal size={15} /> Advanced agronomy
+                </Link>
+                <Link href="/agronomist" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  Switch farm <ChevronRight size={15} />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <Link href="/agronomist" className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 16, textDecoration: 'none', color: 'inherit' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Pick a farm to review</span>
+              <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+            </Link>
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>
+            Account
+          </div>
+          <DeleteAccountSection isAdmin={false} staffCount={0} farmName={null} />
+          <LegalLinksSection />
+          <form action={signOut}>
+            <button type="submit" className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <LogOut size={16} /> Sign out
+            </button>
+          </form>
+        </div>
+      ) : isStaff ? (
         // Staff see a minimal settings page — they can't change farm
         // parameters. Just their account + a note about their access.
         <div style={{ padding: 16 }}>

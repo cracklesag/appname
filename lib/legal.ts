@@ -1,16 +1,25 @@
-// In-app legal copy. Edit the wording here (fill every [PLACEHOLDER]) and the
-// /terms, /privacy and /disclaimer pages update automatically.
+// In-app legal copy. The /terms, /privacy and /disclaimer pages render from
+// these strings. Most placeholders are now filled with Swardly's details.
+//
+// STILL TO CONFIRM before any PUBLIC or PAID launch (search for «CONFIRM»):
+//   • OPERATING ENTITY + ICO — the docs currently identify the service only as
+//     "Swardly", contactable at info@swardly.co.uk (fine for beta; no personal
+//     name or home address is exposed). Before launch, name the operating
+//     legal entity (e.g. the limited company once incorporated) and add its
+//     ICO registration number, in the two spots flagged below.
+//   • Billing/liability — monthly billing and a £100 liability floor are
+//     assumed; adjust to your actual model.
 // NOTE: starter drafts — have a solicitor review the Terms (esp. liability)
 // before relying on them. Not legal advice.
 
 export const termsMarkdown = `## Terms of Service
 
-**Effective date:** [EFFECTIVE DATE]
+**Effective date:** 13 June 2026
 
-These Terms govern your use of Swardly, a nutrient-management and farm record-keeping service ("**Service**") provided by [PROVIDER] ("**we**", "**us**", "**our**"). By creating an account or using the Service you agree to these Terms. If you do not agree, do not use the Service.
+These Terms govern your use of Swardly, a nutrient-management and farm record-keeping service ("**Service**") provided by **Swardly** ("**we**", "**us**", "**our**"). By creating an account or using the Service you agree to these Terms. If you do not agree, do not use the Service.
 
 ### 1. Who we are
-Swardly is operated by [PROVIDER], [POSTAL ADDRESS]. Contact: [CONTACT EMAIL].
+Swardly is a farm software service operated from the United Kingdom. You can contact us at any time at info@swardly.co.uk. «CONFIRM: before any public or paid launch, name the operating legal entity here — e.g. the limited company once incorporated.»
 
 ### 2. Eligibility and business use
 The Service is intended for farmers and agricultural businesses using it in the course of their business. By using it you confirm that you are at least 18 years old and are acting for purposes relating to your trade, business, craft or profession, and **not as a consumer**. You confirm you have authority to agree to these Terms on behalf of the farm business you represent.
@@ -21,20 +30,20 @@ The Service lets you record field, crop, soil and application data and presents 
 Guidance is **decision-support and record-keeping information only**. It is **not** professional agronomic, environmental, veterinary, financial or legal advice, and is **not a substitute** for advice from a suitably qualified, FACTS-registered adviser who can assess your specific circumstances. See Section 9 and the Disclaimer.
 
 ### 4. Accounts and farm members
-You must provide accurate registration details and keep them up to date. A farm account may have an **administrator** and additional users ("**Members**"). The administrator is responsible for managing Members, for all activity under the account, and is the controller of the farm data held in the account. You are responsible for keeping login credentials secure and must tell us promptly at [CONTACT EMAIL] of any suspected unauthorised use.
+You must provide accurate registration details and keep them up to date. A farm account may have an **administrator** and additional users ("**Members**"). The administrator is responsible for managing Members, for all activity under the account, and is the controller of the farm data held in the account. You are responsible for keeping login credentials secure and must tell us promptly at info@swardly.co.uk of any suspected unauthorised use.
 
 ### 5. Subscriptions, fees and payment
-5.1 Access to paid features requires a subscription. The fees, billing frequency and what is included are shown at sign-up or at [PRICING PAGE/URL] ("**Fees**").
+5.1 Access to paid features requires a subscription. The fees, billing frequency and what is included are shown at sign-up ("**Fees**").
 
-5.2 Payments are handled by our payment provider, [PAYMENT PROCESSOR]. We do not store your full card details.
+5.2 Payments are handled by a third-party payment provider. We do not receive or store your full card details.
 
-5.3 Unless stated otherwise, subscriptions **renew automatically** each [BILLING PERIOD] until cancelled. You may cancel at any time, effective at the end of the current paid period.
+5.3 Unless stated otherwise, subscriptions **renew automatically** each month «CONFIRM billing period» until cancelled. You may cancel at any time, effective at the end of the current paid period.
 
 5.4 Except where the law requires otherwise, Fees are **non-refundable**, including for unused time in a billing period.
 
-5.5 We may change Fees on at least [NOTICE DAYS] days' notice; changes take effect from your next renewal. If you do not accept a change, you may cancel before it takes effect.
+5.5 We may change Fees on at least 30 days' notice; changes take effect from your next renewal. If you do not accept a change, you may cancel before it takes effect.
 
-5.6 Fees are [VAT STATUS]. You are responsible for any taxes that apply to you.
+5.6 Any VAT that applies will be shown before you pay. You are responsible for any taxes that apply to you.
 
 5.7 If payment fails or is overdue, we may suspend or withdraw access to paid features.
 
@@ -63,7 +72,7 @@ We aim to keep the Service available but do **not** guarantee that it will be un
 
 10.2 Subject to clause 10.1, we are **not liable** to you, whether in contract, tort (including negligence), breach of statutory duty or otherwise, for any: loss of profit, revenue, crops, yield, livestock, production or anticipated savings; loss of business, contracts, goodwill or reputation; loss or corruption of data; regulatory penalties, fines or remediation costs; or any indirect, special or consequential loss, in each case however arising.
 
-10.3 Subject to clause 10.1, our **total aggregate liability** arising out of or in connection with the Service and these Terms is limited to the **greater of** (i) [LIABILITY CAP] and (ii) the total Fees you paid to us in the 12 months immediately before the event giving rise to the claim.
+10.3 Subject to clause 10.1, our **total aggregate liability** arising out of or in connection with the Service and these Terms is limited to the **greater of** (i) £100 «CONFIRM liability floor» and (ii) the total Fees you paid to us in the 12 months immediately before the event giving rise to the claim.
 
 10.4 You acknowledge that the Service provides decision-support information to a professional/business user who remains responsible for verifying outputs and for their own decisions, and that the allocation of risk in these Terms is reasonable given the nature of the Service and the Fees charged.
 
@@ -75,7 +84,7 @@ You will indemnify us against losses, costs and claims we suffer arising from yo
 
 12.2 We may suspend or terminate your access if you materially breach these Terms (including non-payment) or where we reasonably need to for legal, security or operational reasons. Where practical we will give notice and an opportunity to put things right.
 
-12.3 On termination your right to use the Service ends. You will have [EXPORT WINDOW] to export Your Data, after which we may delete it (subject to backups and legal retention).
+12.3 On termination your right to use the Service ends. You will have 30 days to export Your Data, after which we may delete it (subject to backups and legal retention).
 
 ### 13. Changes to these Terms
 We may update these Terms from time to time. We will post the updated version with a new effective date and, for material changes, give reasonable notice. Continuing to use the Service after changes take effect means you accept the updated Terms.
@@ -91,7 +100,7 @@ We may update these Terms from time to time. We will post the updated version wi
 
 14.5 **Entire agreement.** These Terms, the Disclaimer and the Privacy Policy are the entire agreement between us regarding the Service.
 
-14.6 **Contact.** Questions about these Terms: [CONTACT EMAIL].
+14.6 **Contact.** Questions about these Terms: info@swardly.co.uk.
 
 ### Sharing job sheets with third parties
 The Service lets you send job sheets to other account holders (e.g. contractors) and create share links usable without an account. **You are responsible** for who you send jobs and links to. Information you include in a job (field names, boundaries, products, rates, notes) will be visible to those recipients. Records created from a third party's submission are only written after you approve them, and you are responsible for checking submissions before approval.
@@ -100,7 +109,7 @@ The Service lets you send job sheets to other account holders (e.g. contractors)
 
 export const disclaimerMarkdown = `## Disclaimer
 
-**Last updated:** [EFFECTIVE DATE]
+**Last updated:** 13 June 2026
 
 Please read this before relying on anything Swardly shows you.
 
@@ -130,11 +139,11 @@ Records created from job sheets reflect what the operator or contractor reported
 
 export const privacyMarkdown = `## Privacy Policy
 
-**Effective date:** [EFFECTIVE DATE]
+**Effective date:** 13 June 2026
 
-This policy explains how [PROVIDER] ("**we**") collects and uses personal data when you use Swardly. We are the **data controller** for that data.
+This policy explains how **Swardly** ("**we**") collects and uses personal data when you use the Service. We are the **data controller** for that data, and you can reach us any time at info@swardly.co.uk.
 
-**Contact:** [PRIVACY EMAIL] — [PROVIDER], [POSTAL ADDRESS]. ICO registration number: [ICO REG NO].
+**Contact:** info@swardly.co.uk. «CONFIRM: before any public or paid launch, add the operating legal entity's name and its ICO registration number here.»
 
 ### 1. The data we hold
 - **Account data** — your name, email address, password (stored securely), and your role on a farm account.
@@ -154,10 +163,10 @@ This policy explains how [PROVIDER] ("**we**") collects and uses personal data w
 ### 3. Who we share it with (our processors)
 We use trusted providers to run the Service. They process data on our instructions:
 
-- **Supabase** — database, authentication and file storage. Your data is hosted in the [SUPABASE REGION] region.
+- **Supabase** — database, authentication and file storage. Your data is hosted in the London (eu-west-2) region.
 - **Vercel** — application hosting and content delivery (servers may be outside the UK).
 - **Anthropic** — powers AI features, including the in-app assistant and automatic extraction of data from soil reports you upload. Relevant data (which may include the contents of uploaded reports and your queries) is sent to Anthropic's API. Data sent via the API is **not used to train AI models**.
-- **[PAYMENT PROCESSOR]** — processes subscription payments. We do not receive or store your full card details.
+- **Payment provider** — a third-party processor handles subscription payments; we do not receive or store your full card details.
 - **Map providers (Mapbox / Esri)** — serve map imagery; your IP address and the map area you view are shared to deliver tiles.
 
 We do not sell your personal data, and we do not use advertising or third-party tracking.
@@ -169,10 +178,10 @@ Some providers (for example Vercel and Anthropic) are based outside the UK. Wher
 We keep your personal data while your account is active. When you delete your account (which you can do at any time from within the Service), we delete your data from our live systems; it may persist for a short period in routine encrypted backups before being overwritten, and we may retain limited information where the law requires.
 
 ### 6. Your rights
-You have the right to: access your data; correct it; delete it; restrict or object to processing; and receive a copy in a portable format. The Service includes **export** and **account-deletion** tools that let you do the last two yourself. To exercise any right, email [PRIVACY EMAIL].
+You have the right to: access your data; correct it; delete it; restrict or object to processing; and receive a copy in a portable format. The Service includes **export** and **account-deletion** tools that let you do the last two yourself. To exercise any right, email info@swardly.co.uk.
 
 ### 7. Complaints
-If you have a data-protection concern, please email [PRIVACY EMAIL]. We will acknowledge within [NOTICE DAYS] working days and aim to resolve it promptly. If you remain unsatisfied, you can complain to the Information Commissioner's Office (ICO) at **ico.org.uk** or **0303 123 1113**.
+If you have a data-protection concern, please email info@swardly.co.uk. We will acknowledge within 5 working days and aim to resolve it promptly. If you remain unsatisfied, you can complain to the Information Commissioner's Office (ICO) at **ico.org.uk** or **0303 123 1113**.
 
 ### 8. Cookies and on-device storage
 We use a small number of **strictly necessary** cookies to keep you signed in and operate the Service. We also store **functional preferences** on your device — for example your plan settings, logging preferences and chosen units — so the app behaves the way you left it. We do **not** use advertising or third-party tracking technologies. Under current UK rules these essential and functional technologies do not require your consent, but you can clear them via your browser at any time (some features may not work as well if you do).
@@ -190,7 +199,7 @@ The Service is for business users aged 18 and over and is not directed at childr
 We may update this policy. We will post the updated version with a new effective date and, for material changes, give reasonable notice.
 
 ### AI assistant ("Ask Swardly")
-When you use the in-app assistant, your messages and relevant farm data needed to answer them are sent to **Anthropic** (our AI provider) for processing, and the assistant's tool lookups read your farm records to compose replies. We keep a **log of assistant questions and answers** (with the model used, tools called and timing) to improve the Service and monitor quality. Don't include information in assistant messages that you wouldn't want stored. Logs are retained for up to [LOG RETENTION, e.g. 12 months] and are deleted with your account.
+When you use the in-app assistant, your messages and relevant farm data needed to answer them are sent to **Anthropic** (our AI provider) for processing, and the assistant's tool lookups read your farm records to compose replies. We keep a **log of assistant questions and answers** (with the model used, tools called and timing) to improve the Service and monitor quality. Don't include information in assistant messages that you wouldn't want stored. Logs are retained for up to 12 months and are deleted with your account.
 
 ### Notifications (web push)
 If you turn on job alerts, your browser creates a push subscription (an endpoint and keys) which we store so we can send you notifications about job-sheet events. Turning alerts off, or revoking notification permission in your browser, removes the subscription.

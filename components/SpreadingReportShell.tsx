@@ -15,7 +15,8 @@ import {
 import {
   calcNutrients,
   displayBagAmount,
-  nutrientPerArea,
+  displayNutrient,
+  nutrientLabel,
   displayFieldArea,
   fmt,
   fmtDateShort,
@@ -1362,7 +1363,7 @@ function ReportFieldCard({
         </tbody>
       </table>
       <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'right', marginTop: 2 }}>
-        all figures {settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'}
+        all figures {nutrientLabel(settings.bagFertUnit)}
       </div>
 
       {/* Total kg for the field — useful for ordering bags */}
@@ -1387,8 +1388,8 @@ function ReportFieldCard({
           color: overCap ? 'var(--red, #b85b3a)' : 'var(--ink-soft)',
         }}>
           {overCap
-            ? `⚠ Over annual N cap — ${fmt(Math.round(nutrientPerArea(seasonNApplied, settings.unitSystem)))} ${settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'} applied vs ${Math.round(nutrientPerArea(nCap, settings.unitSystem))} cap.`
-            : `Approaching annual N cap — ${fmt(Math.round(nutrientPerArea(seasonNApplied, settings.unitSystem)))} ${settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha'} of ${Math.round(nutrientPerArea(nCap, settings.unitSystem))} (${fmt(Math.round(nutrientPerArea(nCapHeadroom, settings.unitSystem)))} headroom).`}
+            ? `⚠ Over annual N cap — ${fmt(Math.round(displayNutrient(seasonNApplied, settings.bagFertUnit).value))} ${nutrientLabel(settings.bagFertUnit)} applied vs ${Math.round(displayNutrient(nCap, settings.bagFertUnit).value)} cap.`
+            : `Approaching annual N cap — ${fmt(Math.round(displayNutrient(seasonNApplied, settings.bagFertUnit).value))} ${nutrientLabel(settings.bagFertUnit)} of ${Math.round(displayNutrient(nCap, settings.bagFertUnit).value)} (${fmt(Math.round(displayNutrient(nCapHeadroom, settings.bagFertUnit).value))} headroom).`}
         </div>
       )}
 
@@ -1459,7 +1460,7 @@ function NutrientRow({
       fontWeight: opts?.emphasise ? 700 : 400,
       fontVariantNumeric: 'tabular-nums',
     }}>
-      {fmt(Math.round(nutrientPerArea(n, settings.unitSystem)))}
+      {fmt(Math.round(displayNutrient(n, settings.bagFertUnit).value))}
     </td>
   );
 

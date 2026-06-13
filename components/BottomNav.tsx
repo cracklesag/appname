@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Layers, FileText, ClipboardList, Clock, Users, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
+import { Home, Layers, FileText, ClipboardList, Clock, Users, Building2, Sprout, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 
 interface NavItem { id: string; label: string; icon: LucideIcon; href: string }
 
@@ -21,9 +21,18 @@ const CONTRACTOR_ITEMS: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon, href: '/settings' },
 ];
 
-export function BottomNav({ accountType = 'farm', jobBadge = 0 }: { accountType?: 'farm' | 'contractor'; jobBadge?: number }) {
+// Agronomists review client farms — Farms (their list), then the selected
+// farm's Fields and Plan, plus Settings. No logging.
+const AGRONOMIST_ITEMS: NavItem[] = [
+  { id: 'farms', label: 'Farms', icon: Building2, href: '/agronomist' },
+  { id: 'fields', label: 'Fields', icon: Layers, href: '/fields' },
+  { id: 'plan', label: 'Plan', icon: Sprout, href: '/plan' },
+  { id: 'settings', label: 'Settings', icon: SettingsIcon, href: '/settings' },
+];
+
+export function BottomNav({ accountType = 'farm', jobBadge = 0 }: { accountType?: 'farm' | 'contractor' | 'agronomist'; jobBadge?: number }) {
   const pathname = usePathname();
-  const items = accountType === 'contractor' ? CONTRACTOR_ITEMS : FARM_ITEMS;
+  const items = accountType === 'contractor' ? CONTRACTOR_ITEMS : accountType === 'agronomist' ? AGRONOMIST_ITEMS : FARM_ITEMS;
   const topLevel = new Set(items.map((i) => i.href));
   if (!topLevel.has(pathname)) return null;
 

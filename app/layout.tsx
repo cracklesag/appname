@@ -3,6 +3,7 @@ import './globals.css';
 import { BottomNav } from '@/components/BottomNav';
 import { OfflineSync } from '@/components/OfflineSync';
 import { loadSettings, countNewJobs } from '@/lib/data';
+import { getFarmContext } from '@/lib/farm';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SplashController } from '@/components/SplashController';
 
@@ -51,8 +52,10 @@ const HOLD_MS = 2300;
 const FADE_MS = 500;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const settings = await loadSettings();
-  const accountType = settings.accountType ?? 'farm';
+  const [settings, ctx] = await Promise.all([loadSettings(), getFarmContext()]);
+  // Use the signed-in user's OWN account type (an agronomist reviewing a client
+  // farm has farm-typed settings but must get the agronomist nav).
+  const accountType = ctx?.accountType ?? settings.accountType ?? 'farm';
   const jobBadge = accountType === 'contractor' ? await countNewJobs() : 0;
   return (
     <html lang="en-GB">

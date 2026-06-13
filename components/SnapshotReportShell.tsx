@@ -26,7 +26,8 @@ import {
   getSoilType,
   isSampleStale,
   NEXT_CUT_LABELS,
-  nutrientPerArea,
+  displayNutrient,
+  nutrientLabel,
   NextCutType,
   resolveFieldNextAction,
   resolveGrassSystem,
@@ -484,8 +485,8 @@ function SnapshotRow({
 }) {
   const f = state.field;
   const area = displayFieldArea(f, settings.unitSystem);
-  const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
-  const disp = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+  const nUnit = nutrientLabel(settings.bagFertUnit);
+  const disp = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
 
   const tgt = settings.soilTargets;
 

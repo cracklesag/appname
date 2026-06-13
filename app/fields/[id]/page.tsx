@@ -15,7 +15,7 @@ import {
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import {
-  CUT_TYPE_LABELS, nutrientPerArea, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
+  CUT_TYPE_LABELS, displayNutrient, nutrientLabel, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
   isSampleStale, sampleAgeYears, sampleYear,
   getSoilType, SOIL_TYPE_SHORT_LABELS,
   getCutTargets, getOfftakeForCut, getResolvedNextCutType, getSeasonLabel, getSeasonStart, methodLabel,
@@ -53,6 +53,9 @@ export default async function FieldDetailPage({
   const fieldEvents = await loadFieldEvents(params.id);
 
   const isAdmin = farmCtx?.isAdmin ?? true;
+  // Soil & grass may also be edited by a linked agronomist (Phase B), so the
+  // soil-edit affordances use a wider gate than the admin-only logging controls.
+  const canEditSoil = isAdmin || farmCtx?.accountType === 'agronomist';
   const myUserId = farmCtx?.userId ?? null;
   // Staff may edit/delete only entries they created; admins edit everything.
   const canEditEntry = (createdBy: string | null) => isAdmin || (createdBy != null && createdBy === myUserId);
@@ -255,7 +258,7 @@ export default async function FieldDetailPage({
                     </div>
                   )}
                 </div>
-                {isAdmin && (
+                {canEditSoil && (
                 <Link
                   href={`/fields/${field.id}/soil${subFrom}`}
                   style={{ background: 'transparent', border: '1px solid var(--line)', borderRadius: 4, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -293,7 +296,7 @@ export default async function FieldDetailPage({
             <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--amber-soft)', borderColor: 'var(--amber)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 13, color: 'var(--amber)', fontWeight: 700 }}>No soil sample on record</div>
-                {isAdmin && (
+                {canEditSoil && (
                 <Link
                   href={`/fields/${field.id}/soil${subFrom}`}
                   className="btn-amber"
@@ -349,8 +352,8 @@ export default async function FieldDetailPage({
               )}
             </div>
             {targets && (() => {
-              const nUnit = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
-              const cv = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+              const nUnit = nutrientLabel(settings.bagFertUnit);
+              const cv = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
               const nView   = { value: cv(availableForNextCut.n), unit: nUnit };
               const pView   = { value: cv(availableForNextCut.p), unit: nUnit };
               const kView   = { value: cv(availableForNextCut.k), unit: nUnit };
@@ -574,8 +577,8 @@ export default async function FieldDetailPage({
             </div>
             <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
               {(() => {
-                const nUnit2 = settings.unitSystem === 'acres' ? 'kg/ac' : 'kg/ha';
-                const cv2 = (kgHa: number) => Math.round(nutrientPerArea(kgHa, settings.unitSystem));
+                const nUnit2 = nutrientLabel(settings.bagFertUnit);
+                const cv2 = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
                 // Headline = the most recent application's supply (falls back to
                 // season totals only if somehow there's no latest app).
                 const src = latestNut ?? { nPerHa: seasonTotals.n, p2o5PerHa: seasonTotals.p, k2oPerHa: seasonTotals.k, so3PerHa: seasonTotals.so3, mgoPerHa: seasonTotals.mgo };

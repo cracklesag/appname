@@ -2,7 +2,7 @@ import { Application, Cut, Field, Product, Settings, RateUnit, GrassSystem } fro
 import {
   getSeasonStart, sumNutrients, getFieldPKRecommendation, displayFieldArea,
   getFieldNRecommendation, organicReleaseFraction, monthsBetween,
-  calcNutrients, planFieldFertiliser, resolveGrassSystem,
+  calcNutrients, planFieldFertiliser, resolveGrassSystem, ukTodayIso,
 } from './rules';
 import { meteredApps, fieldAreaHa } from './partials';
 
@@ -54,7 +54,7 @@ export function buildFertPlanRows(
   grassSystems: GrassSystem[] = [],
 ): FertPlanRow[] {
   const seasonStart = getSeasonStart();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = ukTodayIso();
   const productTypeById = new Map(products.map((p) => [p.id, p.type]));
   const releaseParams = {
     releaseSlurryStartPct: settings.reportDefaults.releaseSlurryStartPct,
@@ -254,7 +254,7 @@ export function planField(
   // while a field with no logged slurry still deducts the full intended rate.
   let slurryN = 0, slurryP = 0, slurryK = 0;
   if (!slurryOff && organic && rate > 0) {
-    const n = calcNutrients(organic, rate, unit, new Date().toISOString().slice(0, 10), 'splash_plate');
+    const n = calcNutrients(organic, rate, unit, ukTodayIso(), 'splash_plate');
     slurryN = Math.max(0, Math.round(n.nPerHa)    - row.loggedOrganicN);
     slurryP = Math.max(0, Math.round(n.p2o5PerHa) - row.loggedOrganicP);
     slurryK = Math.max(0, Math.round(n.k2oPerHa)  - row.loggedOrganicK);

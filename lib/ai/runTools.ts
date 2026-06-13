@@ -6,11 +6,13 @@
 import {
   loadFields, loadAllCuts, loadAllApplications, loadAllProducts,
   loadSettings, loadGrassSystems, loadGroups,
+  loadJobs, loadSprayProducts, loadSprayPurchases, loadSprayRecords,
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { createClient } from '@/lib/supabase/server';
 import { resolveGrassSystem, methodLabel, SOIL_TYPE_LABELS, getSeasonStart } from '@/lib/rules';
 import { computeGrazingSchedule, type GrazingDueStatus } from '@/lib/grazing';
+import { computeSprayStock } from '@/lib/spray';
 import type { Field, Cut, Application, Product, GrassSystem, Group } from '@/lib/types';
 
 type Json = Record<string, unknown>;
@@ -198,6 +200,46 @@ export async function runTool(name: string, input: Json): Promise<Json> {
               season_n_kg_per_ha: Math.round(r.seasonNApplied),
               n_cap_kg_per_ha: r.nCap,
             })),
+        };
+      }
+
+      case 'get_jobs': {
+        const limit = num(input.limit, 20);
+        const statusFilter = input.status ? String(input.status) : null;
+        const jobs = await loadJobs(); // newest first, farm-scoped
+        const fields = await loadFields();
+        const nameById = new Map(fields.map((f) => [f.id, f.name]));
+        const filtered = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs;
+        return {
+          jobs: filtered.slice(0, limit).map((j) => ({
+            title: j.title,
+            type: j.job_type,
+            status: j.status,
+            assigned_to: j.contractor_label ?? null,
+            due_date: j.due_date,
+            created: j.created_at?.slice(0, 10) ?? null,
+            submitted: j.submitted_at?.slice(0, 10) ?? null,
+            approved: j.approved_at?.slice(0, 10) ?? null,
+          })),
+          note: statusFilter ? `Filtered to status "${statusFilter}".` : 'All statuses.',
+        };
+      }
+
+      case 'get_spray_stock': {
+        const [products, purchases, records] = await Promise.all([
+          loadSprayProducts(), loadSprayPurchases(), loadSprayRecords(),
+        ]);
+        const stock = computeSprayStock(products, purchases, records);
+        return {
+          products: products.map((p) => {
+            const s = stock.get(p.id);
+            return {
+              name: p.name,
+              purchased_litres: s ? Math.round(s.purchasedL * 10) / 10 : 0,
+              used_litres: s ? Math.round(s.usedL * 10) / 10 : 0,
+              remaining_litres: s ? Math.round(s.stockL * 10) / 10 : 0,
+            };
+          }),
         };
       }
 

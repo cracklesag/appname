@@ -389,6 +389,33 @@ export function nutrientUnitLabel(system: Settings['unitSystem']): string {
   return system === 'acres' ? 'kg/ac' : 'kg/ha';
 }
 
+/**
+ * Display a nutrient figure (stored in kg/ha) in the user's chosen FERTILISER
+ * unit — units/ac, kg/ac, lb/ac or kg/ha. This is the single source of truth
+ * for every N / P₂O₅ / K₂O / S / Mg figure shown anywhere in the app: bag-fert
+ * targets, the slurry and FYM contributions feeding the SAME bar, carryover,
+ * the granular plan, and "what's left to apply". Routing them all through here
+ * is what guarantees a bar never shows the target in units against a slurry
+ * supply in kg.
+ *
+ * A "unit" is the UK bag-label measure: 1 unit/ac = 1.12 lb/ac of nutrient
+ * (1% of a hundredweight per acre). So 1 cwt/ac of CAN at 27% N reads 27
+ * units/ac of N. The same convention applies to P₂O₅ and K₂O.
+ *
+ * IMPORTANT — this governs NUTRIENT figures only. Product application RATES
+ * (gal/ac, m³/ha, t/ha, kg of product) are a separate axis and must NEVER pass
+ * through here: you spread product by volume/weight, so those follow slurryUnit
+ * or the area system, regardless of the nutrient display unit.
+ */
+export function displayNutrient(kgPerHa: number, bagFertUnit: Settings['bagFertUnit']): { value: number; unit: string } {
+  return displayBagAmount(kgPerHa, bagFertUnit);
+}
+
+/** The bare unit label for a nutrient figure in the user's fertiliser unit. */
+export function nutrientLabel(bagFertUnit: Settings['bagFertUnit']): string {
+  return displayBagAmount(0, bagFertUnit).unit;
+}
+
 
 export function displayFieldArea(field: { acres: number; ha: number }, system: Settings['unitSystem']): { value: number; unit: 'ac' | 'ha' } {
   return system === 'acres'
@@ -1540,16 +1567,44 @@ export function sumNutrients(apps: Application[], products: Product[]): { n: num
 
 // ---- Season helpers ------------------------------------------------
 
-export function getSeasonStart(date: Date = new Date()): string {
-  const y = date.getFullYear();
-  const m = date.getMonth();
+/**
+ * Today's date in the UK (Europe/London), as 'YYYY-MM-DD'. Vercel servers run
+ * UTC, so between 00:00 and 01:00 BST a plain new Date().toISOString() is
+ * still on YESTERDAY's date — wrong for season boundaries, cut windows and
+ * release-month maths on a UK-only app. Every "what's today" in the engine
+ * should come through here.
+ */
+export function ukTodayIso(): string {
+  // en-CA formats as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
+export function getSeasonStart(date?: Date): string {
+  let y: number, m: number;
+  if (date) {
+    y = date.getFullYear();
+    m = date.getMonth();
+  } else {
+    const t = ukTodayIso();
+    y = parseInt(t.slice(0, 4), 10);
+    m = parseInt(t.slice(5, 7), 10) - 1;
+  }
   const startYear = m >= 9 ? y : y - 1;
   return `${startYear}-10-01`;
 }
 
-export function getSeasonLabel(date: Date = new Date()): string {
-  const y = date.getFullYear();
-  const m = date.getMonth();
+export function getSeasonLabel(date?: Date): string {
+  let y: number, m: number;
+  if (date) {
+    y = date.getFullYear();
+    m = date.getMonth();
+  } else {
+    const t = ukTodayIso();
+    y = parseInt(t.slice(0, 4), 10);
+    m = parseInt(t.slice(5, 7), 10) - 1;
+  }
   const cropYear = m >= 9 ? y + 1 : y;
   return `${cropYear} season`;
 }

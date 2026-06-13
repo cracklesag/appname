@@ -23,7 +23,9 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const publicPaths = ['/login', '/signup', '/forgot-password', '/auth', '/jobs/share'];
+  // Legal pages must be readable WITHOUT an account — a privacy policy you
+  // can only read after signing up fails its purpose (and GDPR expectations).
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/auth', '/jobs/share', '/privacy', '/terms', '/disclaimer'];
   const isPublic = publicPaths.some(p => request.nextUrl.pathname.startsWith(p));
 
   if (!user && !isPublic) {

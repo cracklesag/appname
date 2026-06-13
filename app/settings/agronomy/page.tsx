@@ -11,7 +11,7 @@ export default async function AgronomySettingsPage() {
   const ctx = await getFarmContext();
   if (!ctx) redirect('/login');
   // RB209 reference values drive every recommendation — admin only.
-  if (!ctx.isAdmin) redirect('/settings');
+  if (!ctx.isAdmin && ctx.accountType !== 'agronomist') redirect('/settings');
 
   const settings = await loadSettings();
   const initial = resolveAgronomy(settings);

@@ -59,6 +59,7 @@ export default async function PlanPage({
         groups={groups}
         initialGroup={groupFilter}
         unitSystem={settings.unitSystem}
+        bagFertUnit={settings.bagFertUnit}
         products={planProducts}
         slurryUnit={settings.slurryUnit}
         minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}

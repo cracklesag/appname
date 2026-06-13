@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Map as MapIcon } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { fmt, nutrientPerArea, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
+import { fmt, nutrientPerArea, nutrientUnitLabel, displayNutrient, nutrientLabel, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit, Group } from '@/lib/types';
@@ -77,13 +77,14 @@ function SourceBar({
 const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
 
 export function PlanShell({
-  rows, groups, initialGroup, unitSystem, products, slurryUnit,
+  rows, groups, initialGroup, unitSystem, bagFertUnit, products, slurryUnit,
   minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
 }: {
   rows: FertPlanRow[];
   groups: Group[];
   initialGroup: string;
   unitSystem: 'acres' | 'hectares';
+  bagFertUnit: 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac';
   products: Product[];
   slurryUnit: 'gal/ac' | 'm3/ha';
   minSpreadP2O5KgPerHa: number;
@@ -95,8 +96,14 @@ export function PlanShell({
   // Display unit for nutrient & rate figures (the planner works internally in
   // kg/ha; we convert only for display so acres users see per-acre numbers).
   const sys = unitSystem === 'acres' ? 'acres' : 'hectares';
-  const nUnit = sys === 'acres' ? 'kg/ac' : 'kg/ha';
-  const disp = (kgHa: number) => Math.round(nutrientPerArea(kgHa, sys));
+  // Product RATES (granular kg of product per area) stay in kg by the area
+  // system — you spread product by weight, not by nutrient unit.
+  const rateUnit = nutrientUnitLabel(unitSystem);
+  const dispRate = (kgHa: number) => Math.round(nutrientPerArea(kgHa, sys));
+  // NUTRIENT figures (N/P/K supply, need, slurry/granular/carryover bands)
+  // follow the fertiliser unit setting — units/ac, kg/ac, lb/ac or kg/ha.
+  const nUnit = nutrientLabel(bagFertUnit);
+  const disp = (kgHa: number) => Math.round(displayNutrient(kgHa, bagFertUnit).value);
 
   // Organic sources the user can plan to apply first (slurry / solid / digestate).
   const organics = useMemo(
@@ -703,8 +710,8 @@ export function PlanShell({
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmt(p.totalKg)} kg over field</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{disp(p.rateKgPerHa)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{nUnit}</div>
+                      <div className="nutrient-num" style={{ fontSize: 18, color: 'var(--ink)' }}>{dispRate(p.rateKgPerHa)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{rateUnit}</div>
                     </div>
                   </div>
                 ))}

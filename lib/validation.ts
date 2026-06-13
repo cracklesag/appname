@@ -36,6 +36,57 @@ export const DATE_BOUNDARIES = {
   futureWindowDays: 30,                                  // Allow planning up to 30d ahead
 };
 
+// ---- Server-side parse/guard helpers --------------------------------
+//
+// The validators below this section power the CLIENT forms (soft warnings,
+// inline errors). These helpers are the SERVER's structural defence: every
+// write action must reject input that is malformed regardless of what the
+// client showed. They deliberately enforce only what the client hard-blocks
+// (plus structural sanity) so legitimate soft-warning saves still go through.
+
+export const NOTES_MAX_LEN = 2000;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True only for a well-formed, real calendar date 'YYYY-MM-DD'. */
+export function isValidIsoDate(s: unknown): s is string {
+  if (typeof s !== 'string' || !ISO_DATE_RE.test(s)) return false;
+  const d = new Date(s + 'T00:00:00Z');
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** Parse a finite number > 0, else null. */
+export function parsePositiveNumber(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Parse a finite number (any sign), else null. */
+export function parseFiniteNumber(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Trim + cap free-text notes; empty → null. */
+export function clampNotes(raw: unknown, max: number = NOTES_MAX_LEN): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (s === '') return null;
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+/** Rate units a given product type may legally be stored with. */
+export const RATE_UNITS_BY_TYPE: Record<'slurry' | 'bag_fert' | 'lime' | 'solid_manure', readonly string[]> = {
+  slurry:       ['gal/ac', 'm3/ha'],
+  bag_fert:     ['kg/ha', 'kg/ac', 'lb/ac', 'l/ha', 'l/ac'],
+  lime:         ['t/ac', 't/ha'],
+  solid_manure: ['t/ha', 't/ac'],
+};
+
+export const VALID_APPLICATION_METHODS: readonly string[] = [
+  'splash_plate', 'dribble_bar', 'trail_shoe', 'surface', 'soil_incorporated',
+];
+
 // ---- Validation result type ---------------------------------------
 
 export type FieldWarning = { kind: 'warning' | 'error'; message: string } | null;

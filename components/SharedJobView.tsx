@@ -7,7 +7,7 @@ import { enqueue, isOfflineError } from '@/lib/offline/queue';
 import { JobFieldsMap } from './JobFieldsMap';
 
 type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
-type Phase = 'loading' | 'needpin' | 'badpin' | 'notfound' | 'expired' | 'ready' | 'submitted' | 'queued';
+type Phase = 'loading' | 'needpin' | 'badpin' | 'locked' | 'notfound' | 'expired' | 'ready' | 'submitted' | 'queued';
 
 interface SField { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null; }
 interface SJob { id: string; title: string; job_type: string; farm_name: string | null; instruction: string | null; product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null; water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null; notes: string | null; due_date: string | null; contractor_label: string | null; status: string; }
@@ -33,6 +33,7 @@ export function SharedJobView({ token }: { token: string }) {
       if (withPin) setPin(withPin);
     } else if (res.status === 'needpin') setPhase('needpin');
     else if (res.status === 'badpin') setPhase('badpin');
+    else if (res.status === 'locked') setPhase('locked');
     else if (res.status === 'expired') setPhase('expired');
     else setPhase('notfound');
   }
@@ -95,6 +96,18 @@ export function SharedJobView({ token }: { token: string }) {
 
   if (phase === 'notfound') return <div style={wrap}><div style={card}><div style={{ fontWeight: 700, marginBottom: 6 }}>Link not found</div><div style={{ fontSize: 13, color: 'var(--muted)' }}>This job link is invalid or has been revoked. Ask the farm for a new one.</div></div></div>;
   if (phase === 'expired') return <div style={wrap}><div style={card}><div style={{ fontWeight: 700, marginBottom: 6 }}>Link expired</div><div style={{ fontSize: 13, color: 'var(--muted)' }}>This job link has expired. Ask the farm to send a fresh link.</div></div></div>;
+
+  if (phase === 'locked') {
+    return (
+      <div style={wrap}>
+        <div style={{ ...card, textAlign: 'center' }}>
+          <Lock size={22} style={{ color: 'var(--forest, #2f7d6a)' }} />
+          <div style={{ fontWeight: 700, margin: '8px 0 4px' }}>Locked for a few minutes</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>Too many wrong PINs. Wait 15 minutes and try again, or ask the farm to send a fresh link.</div>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'needpin' || phase === 'badpin') {
     return (

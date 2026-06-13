@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { JobFieldsMap } from './JobFieldsMap';
 import { CheckCircle2, Clock } from 'lucide-react';
-import { saveJobCompletion, approveJob, reopenJob } from '@/lib/actions';
+import { saveJobCompletion, approveJob, reopenJob, declineJob } from '@/lib/actions';
 import { enqueue, isOfflineError } from '@/lib/offline/queue';
 
 type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
@@ -22,11 +22,12 @@ const STATUS_OPTS: { v: FStatus; label: string }[] = [
 ];
 
 export function JobWorkflow({
-  jobId, status, role, autoLog, rateNoun, hasRate, fields, unitSystem, fmtDateStr, approvedAt, detailLine,
+  jobId, status, role, autoLog, rateNoun, hasRate, fields, unitSystem, fmtDateStr, approvedAt, detailLine, declinedReason,
 }: {
   jobId: string;
-  status: 'draft' | 'sent' | 'submitted' | 'approved' | 'archived';
+  status: 'draft' | 'sent' | 'submitted' | 'approved' | 'archived' | 'declined';
   role: 'admin' | 'assignee' | 'viewer';
+  declinedReason?: string | null;
   autoLog: boolean;
   rateNoun: string | null;
   hasRate: boolean;
@@ -190,12 +191,30 @@ export function JobWorkflow({
     );
   }
 
+  if (status === 'declined') {
+    return (
+      <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px' }}>
+        <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 600, marginBottom: declinedReason ? 4 : 0 }}>
+          {role === 'assignee' ? 'You declined this job.' : 'This job was declined by the contractor.'}
+        </div>
+        {declinedReason && <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>&ldquo;{declinedReason}&rdquo;</div>}
+        {role === 'admin' && (
+          <form action={reopenJob} style={{ marginTop: 12 }}>
+            <input type="hidden" name="id" value={jobId} />
+            <button type="submit" className="btn-primary" style={{ width: '100%' }}>Send again</button>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   // ----- Sent: completion form (assignee or admin) -----
   if (role === 'viewer') {
     return <div style={{ fontSize: 13, color: 'var(--muted)' }}>This job hasn&apos;t been sent to you.</div>;
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit}>
       <input type="hidden" name="job_id" value={jobId} />
       <input type="hidden" name="completions" value={JSON.stringify(completions)} />
@@ -235,5 +254,17 @@ export function JobWorkflow({
       </button>
       {!autoLog && <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center', marginTop: 8 }}>This will be sent to the farm to approve before it&apos;s logged.</div>}
     </form>
+    {role === 'assignee' && (
+      <details style={{ marginTop: 16 }}>
+        <summary style={{ fontSize: 12.5, color: 'var(--muted)', cursor: 'pointer' }}>Can&apos;t do this job?</summary>
+        <form action={declineJob} style={{ marginTop: 10 }}>
+          <input type="hidden" name="job_id" value={jobId} />
+          <textarea name="reason" placeholder="Optional — let the farm know why (e.g. weather, machinery, timing)" maxLength={500} className="input" style={{ width: '100%', minHeight: 64, fontSize: 13 }} />
+          <button type="submit" className="btn-ghost" style={{ width: '100%', marginTop: 8, color: 'var(--red, #b06a37)' }}>Decline this job</button>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 6 }}>The farm will be told and can re-assign it.</div>
+        </form>
+      </details>
+    )}
+    </>
   );
 }

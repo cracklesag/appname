@@ -32,6 +32,6 @@ export const STARTER_PRODUCTS: StarterProduct[] = [
   { name: '20-10-10', type: 'bag_fert', category: 'bag_fert', form: 'granular', n_pct: 20, p2o5_pct: 10, k2o_pct: 10, s_pct: 0 },
   { name: '25-5-5', type: 'bag_fert', category: 'bag_fert', form: 'granular', n_pct: 25, p2o5_pct: 5, k2o_pct: 5, s_pct: 0 },
   // Organics (RB209 2023 typical — edit to your analysis)
-  { name: 'Cattle slurry (6% DM)', type: 'slurry', category: 'dairy_slurry', dm_pct: 6, n_kg_per_m3: 2.6, p2o5_kg_per_m3: 1.2, k2o_kg_per_m3: 3.2, so3_kg_per_m3: 0.7, mgo_kg_per_m3: 0.6 },
+  { name: 'Cattle slurry (6% DM)', type: 'slurry', category: 'dairy_slurry', dm_pct: 6, n_kg_per_m3: 2.6, p2o5_kg_per_m3: 1.2, k2o_kg_per_m3: 2.5, so3_kg_per_m3: 0.7, mgo_kg_per_m3: 0.6 },
   { name: 'Cattle FYM', type: 'solid_manure', category: 'fym', dm_pct: 25, n_kg_per_t: 6.0, p2o5_kg_per_t: 3.2, k2o_kg_per_t: 9.4, so3_kg_per_t: 3.0, mgo_kg_per_t: 1.8 },
 ];
