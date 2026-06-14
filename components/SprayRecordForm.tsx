@@ -109,7 +109,14 @@ export function SprayRecordForm({
     setSubmitting(true);
     const fd = new FormData(e.currentTarget);
     try {
-      await createSprayRecord(fd);
+      const result = await createSprayRecord(fd);
+      // A successful save redirects (throws NEXT_REDIRECT, handled below). A
+      // returned object means a validation or save problem to show inline.
+      if (result && result.error) {
+        setSubmitError(result.error);
+        setSubmitting(false);
+        return;
+      }
     } catch (err) {
       if (err instanceof Error && err.message.includes('NEXT_REDIRECT')) return;
       if (isOfflineError(err)) {

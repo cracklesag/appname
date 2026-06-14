@@ -118,4 +118,20 @@ export const ASSISTANT_TOOLS: AnthropicTool[] = [
       required: ['summary'],
     },
   },
+  {
+    name: 'report_bug',
+    description:
+      "File a bug report to the developer when something in the app is failing — an error, a crash, or data that genuinely will not save or appear — AND you could not resolve it from the documented rules and the read-only data tools. Do NOT use this for things the app cannot do (use submit_feature_request), for a setting/permission the user simply needs to change, or for a 'not showing' that one of the visibility rules (season window, maintenance drop-out, what's next, group filter, awaiting job approval, soil import not yet committed, or an offline record still syncing) explains. Before filing, gather what you reasonably can: the symptom, what they were doing, and any exact error text. Never invent a cause or a code-level explanation.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string', description: 'A clean one-line summary of the problem, in plain terms.' },
+        what_happened: { type: 'string', description: "The symptom in the user's own words (what went wrong / what they expected)." },
+        steps: { type: 'string', description: 'What the user was doing when it happened — the screen and action, enough to reproduce it.' },
+        area: { type: 'string', description: "Rough feature area, e.g. 'spray records', 'cuts', 'plan', 'soil import', 'jobs', 'login', 'other'." },
+        error_text: { type: 'string', description: 'Any exact on-screen error message the user quoted. Omit if none.' },
+      },
+      required: ['summary'],
+    },
+  },
 ];

@@ -31,8 +31,11 @@ export function OfflineSync() {
         let ok = false;
         try {
           if (item.kind === 'spray_record' && item.fd) {
-            await createSprayRecord(rebuildFormData(item.fd));
-            ok = true;
+            const res = await createSprayRecord(rebuildFormData(item.fd));
+            // Returned object = server rejected it (validation/DB); keep it
+            // queued. A successful save redirects (throws NEXT_REDIRECT below).
+            ok = !(res && res.error);
+            if (!ok) item.lastError = (res && res.error) || 'Rejected';
           } else if (item.kind === 'job_completion' && item.fd) {
             await saveJobCompletion(rebuildFormData(item.fd));
             ok = true;

@@ -2951,7 +2951,7 @@ function parseTargets(raw: FormDataEntryValue | null): string[] | null {
   return out.length ? out.slice(0, 12) : null;
 }
 
-export async function createSprayRecord(formData: FormData) {
+export async function createSprayRecord(formData: FormData): Promise<{ error: string } | void> {
   const supabase = createClient();
   const ctx = await getFarmContext();
   if (!ctx) redirect('/login');
@@ -2997,9 +2997,9 @@ export async function createSprayRecord(formData: FormData) {
     const single = String(formData.get('product_name') ?? '').trim();
     if (single) lines = [{ name: single, spray_product_id: strOrNull('spray_product_id'), product_litres: numOrNull('product_litres') }];
   }
-  if (!fieldId || !dateApplied || lines.length === 0) {
-    throw new Error('Field, date and at least one spray are required');
-  }
+  if (!fieldId) return { error: 'Choose a field for this spray.' };
+  if (!dateApplied) return { error: 'Add the date the spray was applied.' };
+  if (lines.length === 0) return { error: 'Add at least one spray before saving.' };
 
   // Optional drawn sprayed area (only part of the field treated).
   const isPartial = String(formData.get('coverage')) === 'partial';
@@ -3007,14 +3007,14 @@ export async function createSprayRecord(formData: FormData) {
   let areaHa: number | null = numOrNull('area_ha');
   if (isPartial) {
     const areaJson = formData.get('spray_area') ? String(formData.get('spray_area')) : null;
-    if (!areaJson) throw new Error('A part-field spray needs a drawn area');
+    if (!areaJson) return { error: 'Draw the sprayed area for a part-field spray.' };
     try {
       polygon = JSON.parse(areaJson) as FieldGeometry;
     } catch {
-      throw new Error('Could not read the drawn area');
+      return { error: 'Could not read the drawn area — draw it again and retry.' };
     }
     areaHa = polygonAreaHectares(polygon);
-    if (!(areaHa > 0)) throw new Error('The drawn area is empty — draw the sprayed area and try again');
+    if (!(areaHa > 0)) return { error: 'The drawn area is empty — draw the sprayed area and try again.' };
   }
 
   const shared = {
@@ -3045,7 +3045,7 @@ export async function createSprayRecord(formData: FormData) {
     spray_product_id: lines.length === 1 ? primary.spray_product_id : null,
     products: lines.map((l) => ({ name: l.name, spray_product_id: l.spray_product_id, litres: l.product_litres })),
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: `Couldn't save the spray record: ${error.message}` };
 
   revalidatePath('/spray');
   revalidatePath('/');

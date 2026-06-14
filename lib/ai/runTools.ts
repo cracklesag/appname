@@ -260,6 +260,25 @@ export async function runTool(name: string, input: Json): Promise<Json> {
         return { ok: true };
       }
 
+      case 'report_bug': {
+        const summary = String(input.summary ?? '').trim();
+        if (!summary) return { ok: false, message: 'A summary is required.' };
+        const ctx = await getFarmContext();
+        if (!ctx) return { ok: false, message: 'Not signed in.' };
+        const supabase = createClient();
+        const { error } = await supabase.from('bug_reports').insert({
+          owner_id: ctx.ownerId,
+          created_by: ctx.userId,
+          summary,
+          what_happened: input.what_happened ? String(input.what_happened) : null,
+          steps: input.steps ? String(input.steps) : null,
+          area: input.area ? String(input.area) : null,
+          error_text: input.error_text ? String(input.error_text) : null,
+        });
+        if (error) return { ok: false, message: 'Could not file the bug report.' };
+        return { ok: true };
+      }
+
       default:
         return { error: `Unknown tool: ${name}` };
     }
