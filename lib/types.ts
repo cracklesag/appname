@@ -708,3 +708,60 @@ export interface FarmContractor {
   label: string | null;
   created_at: string;
 }
+
+// =====================================================================
+// Crops — catalogue rows + per-field, per-season crop allocations
+// =====================================================================
+//
+// A field's "use this season" is DERIVED, not stored on the field: a field
+// with an active crop allocation for the current season (1 Oct–30 Sep) is a
+// crop field; otherwise it's grass (default, unchanged). See lib/cropplan.ts.
+//
+// Season is identified by its END year to match getSeasonLabel():
+//   season 2026 == 1 Oct 2025 – 30 Sep 2026.
+
+/** Lifecycle of a crop on a field. Only one 'active' allocation per field at a
+ *  time (enforced by a partial unique index) — a catch crop goes 'harvested'
+ *  before a main crop becomes 'active'. */
+export type CropAllocationStatus = 'planned' | 'active' | 'harvested' | 'terminated';
+
+/** A row in the user-editable crop catalogue (public.crops). Shared seed rows
+ *  have user_id = null + a stable seed_key; user forks/customs have a user_id
+ *  and (usually) null seed_key. The row is a superset of CropProfile, so it
+ *  maps straight onto the in-memory profile the engine consumes — CropProfile
+ *  lives in lib/crops.ts to avoid a circular import with the agronomy engine. */
+export interface CropCatalogueRow {
+  id: string;
+  user_id: string | null;
+  seed_key: string | null;
+  sort_order: number;
+  created_at: string;
+  // ...plus every CropProfile field, persisted as columns / jsonb.
+}
+
+/** A field allocated to a crop for a season. Drives the crop nutrient plan and
+ *  removes the field from the grass machinery for that season. */
+export interface FieldCropAllocation {
+  id: string;
+  /** Farm owner (admin) — all shared data is owned by this id. */
+  user_id: string;
+  field_id: string;
+  /** FK → public.crops.id (the chosen profile: a shared seed or a user fork). */
+  crop_id: string;
+  /** Denormalised stable key of the crop, copied at allocation time so the
+   *  engine and rotation logic don't need a join. Null only if the crop row
+   *  had no key. */
+  crop_key: string | null;
+  /** Season end-year, e.g. 2026 = 1 Oct 2025 – 30 Sep 2026. */
+  season: number;
+  expected_yield: number | null;
+  expected_yield_unit: string | null;
+  sown_date: string | null;
+  harvest_date: string | null;
+  status: CropAllocationStatus;
+  notes: string | null;
+  /** Who created the allocation (admin or staff). */
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

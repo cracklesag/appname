@@ -206,6 +206,19 @@ export default async function FieldDetailPage({
           </div>
           )}
 
+          {/* Crops — allocate this field to a non-grass crop (season-scoped).
+              Viewing is open to any member; allocating is admin/staff. */}
+          <Link href={`/fields/${field.id}/crop${subFrom}`} className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, textDecoration: 'none', color: 'inherit' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <Sprout size={16} style={{ color: 'var(--forest)', flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div className="label" style={{ margin: 0 }}>Crops</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.4 }}>Allocate this field to a non-grass crop and get its nutrient plan.</div>
+              </div>
+            </div>
+            <span style={{ fontSize: 18, color: 'var(--muted)', flexShrink: 0 }}>›</span>
+          </Link>
+
           {/* What's next — editable per-cut state. Updates the most recent
               cut's next_action so users can change their mind without
               logging a new cut. When no cuts exist this season, picker is

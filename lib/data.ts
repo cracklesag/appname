@@ -1,7 +1,8 @@
 import { cache } from 'react';
 import { createClient } from './supabase/server';
 import { getFarmContext } from './farm';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor, FieldCropAllocation } from './types';
+import { CropRow, LoadedCrop, loadedCropFromRow } from './crops';
 
 export const loadAllProducts = cache(async function loadAllProductsUncached(): Promise<Product[]> {
   const supabase = createClient();
@@ -629,4 +630,47 @@ export async function loadAgronomistFarms(): Promise<AgronomistFarm[]> {
       linkedAt: (m.created_at as string) ?? null,
     }))
     .sort((a, b) => a.farmName.localeCompare(b.farmName));
+}
+
+// ---------------------------------------------------------------------
+// Crops — catalogue + per-field allocations
+// ---------------------------------------------------------------------
+
+/**
+ * Load all crops visible to the user — shared seeds (user_id IS NULL) and the
+ * farm's own forks (RLS scopes both). Mapped to the engine profile + identity.
+ * Shared seeds first (by sort_order), then user customs alphabetically.
+ */
+export const loadCrops = cache(async function loadCropsUncached(): Promise<LoadedCrop[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('crops').select('*')
+    .order('user_id', { ascending: true, nullsFirst: true })
+    .order('sort_order', { ascending: true })
+    .order('label', { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as CropRow[]).map(loadedCropFromRow);
+})
+
+/** All crop allocations on the farm (RLS-scoped), newest season first. */
+export const loadCropAllocations = cache(async function loadCropAllocationsUncached(): Promise<FieldCropAllocation[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('field_crop_allocations').select('*')
+    .order('season', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as FieldCropAllocation[];
+})
+
+/** Crop allocations for one field, newest season first. */
+export async function loadCropAllocationsForField(fieldId: string): Promise<FieldCropAllocation[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('field_crop_allocations').select('*')
+    .eq('field_id', fieldId)
+    .order('season', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as FieldCropAllocation[];
 }

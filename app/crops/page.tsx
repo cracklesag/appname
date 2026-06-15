@@ -1,15 +1,17 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { cropProfilesByCategory, EVIDENCE_LABEL, CropProfile } from '@/lib/crops';
+import { loadedCropsByCategory, EVIDENCE_LABEL, CropProfile } from '@/lib/crops';
+import { loadCrops } from '@/lib/data';
 
 export const dynamic = 'force-dynamic';
 
-export default function CropsPage({
+export default async function CropsPage({
   searchParams,
 }: {
   searchParams: { from?: string };
 }) {
-  const groups = cropProfilesByCategory();
+  const crops = await loadCrops();
+  const groups = loadedCropsByCategory(crops);
   const fromHref = searchParams.from || '/';
 
   return (
@@ -30,9 +32,9 @@ export default function CropsPage({
           background: '#F4EFE2', border: '1px solid #E4D9BD', borderRadius: 10,
           padding: '10px 12px', fontSize: 11.5, color: '#6B5D34', lineHeight: 1.5, marginBottom: 16,
         }}>
-          A reference for planning non-grass crops. Assigning these to fields, with rates worked from your
-          own soil indices and slurry, is coming next — for now this is the agronomy to plan from. Your
-          grassland fields and reports are unaffected.
+          A reference for planning non-grass crops. To put a crop on a field — with rates worked from that
+          field&apos;s own soil indices and slurry — open the field and tap <strong>Crops</strong>. Your grassland
+          fields and reports are unaffected.
         </div>
 
         {groups.map((g) => (
@@ -40,7 +42,7 @@ export default function CropsPage({
             <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 10, paddingLeft: 2 }}>
               {g.label}
             </div>
-            {g.crops.map((c) => <CropCard key={c.key} crop={c} />)}
+            {g.crops.map((c) => <CropCard key={c.id} crop={c.profile} />)}
           </div>
         ))}
 

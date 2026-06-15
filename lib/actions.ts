@@ -3970,3 +3970,199 @@ export async function duplicateJob(formData: FormData) {
   revalidatePath('/jobs');
   redirect(`/jobs/${newId}`);
 }
+
+// =====================================================================
+// Crops — allocate a field to a crop, and manage the allocation lifecycle.
+// Allocating/terminating a crop is a LOGGING action: admin/staff only (the
+// agronomist is a read-only advisor). RLS enforces this too (can_log_of).
+// =====================================================================
+
+const CROP_SEASON_MIN = 2020;
+const CROP_SEASON_MAX = 2100;
+
+function parseOptionalYield(raw: string): number | null {
+  const s = raw.trim();
+  if (s === '') return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) throw new Error('Expected yield must be a number greater than 0');
+  return n;
+}
+
+function parseOptionalDate(raw: string): string | null {
+  const s = raw.trim();
+  if (s === '') return null;
+  if (!isValidIsoDate(s)) throw new Error('Invalid date — use the date picker');
+  return s;
+}
+
+/** Allocate a field to a crop for a season. Becomes the field's ACTIVE crop if
+ *  none is active; otherwise it's queued as 'planned' (one active occupant is
+ *  enforced by a partial unique index — activate it once the current crop is
+ *  harvested). */
+export async function allocateFieldToCrop(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot allocate crops');
+  const supabase = createClient();
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  const cropId = String(formData.get('crop_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field is required');
+  if (!cropId) throw new Error('Crop is required');
+
+  const season = parseInt(String(formData.get('season') ?? ''), 10);
+  if (!Number.isInteger(season) || season < CROP_SEASON_MIN || season > CROP_SEASON_MAX) {
+    throw new Error('Invalid season');
+  }
+  const expectedYield = parseOptionalYield(String(formData.get('expected_yield') ?? ''));
+  const sownDate = parseOptionalDate(String(formData.get('sown_date') ?? ''));
+  const harvestDate = parseOptionalDate(String(formData.get('harvest_date') ?? ''));
+  const notes = clampNotes(String(formData.get('notes') ?? ''));
+
+  // The field and crop must both exist on/visible to this farm (RLS scopes the
+  // reads; a foreign uuid comes back null).
+  const { data: field } = await supabase.from('fields').select('id').eq('id', fieldId).eq('user_id', ctx.ownerId).maybeSingle();
+  if (!field) throw new Error('Field not found');
+  const { data: crop } = await supabase.from('crops').select('id, seed_key, yield_unit').eq('id', cropId).maybeSingle();
+  if (!crop) throw new Error('Crop not found');
+
+  // One active occupant: if the field already has an active crop, queue this as
+  // 'planned' rather than colliding with the unique index.
+  const { data: active } = await supabase
+    .from('field_crop_allocations').select('id')
+    .eq('field_id', fieldId).eq('status', 'active').maybeSingle();
+  const status = active ? 'planned' : 'active';
+
+  const { error } = await supabase.from('field_crop_allocations').insert({
+    user_id: ctx.ownerId,
+    field_id: fieldId,
+    crop_id: cropId,
+    crop_key: (crop as { seed_key: string | null }).seed_key ?? null,
+    season,
+    expected_yield: expectedYield,
+    expected_yield_unit: expectedYield != null ? (crop as { yield_unit: string }).yield_unit : null,
+    sown_date: sownDate,
+    harvest_date: harvestDate,
+    status,
+    notes,
+    created_by: ctx.userId,
+  });
+  if (error) throw new Error(`Could not allocate crop: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}/crop`);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/crops');
+  revalidatePath('/');
+}
+
+/** Change an allocation's lifecycle status. Activating a crop first marks any
+ *  other active crop on the same field 'harvested' (the catch → main-crop
+ *  transition). */
+export async function setCropAllocationStatus(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot change crop allocations');
+  const supabase = createClient();
+
+  const id = String(formData.get('allocation_id') ?? '').trim();
+  const status = String(formData.get('status') ?? '').trim();
+  if (!id) throw new Error('Allocation is required');
+  if (!['planned', 'active', 'harvested', 'terminated'].includes(status)) throw new Error('Invalid status');
+
+  const { data: alloc } = await supabase
+    .from('field_crop_allocations').select('id, field_id')
+    .eq('id', id).eq('user_id', ctx.ownerId).maybeSingle();
+  if (!alloc) throw new Error('Allocation not found');
+  const fieldId = (alloc as { field_id: string }).field_id;
+
+  if (status === 'active') {
+    // Demote any other active crop on this field so the unique index is happy.
+    const { error: demoteErr } = await supabase
+      .from('field_crop_allocations')
+      .update({ status: 'harvested', updated_at: new Date().toISOString() })
+      .eq('field_id', fieldId).eq('status', 'active').neq('id', id);
+    if (demoteErr) throw new Error(`Could not update the current crop: ${demoteErr.message}`);
+  }
+
+  const { error } = await supabase
+    .from('field_crop_allocations')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not update crop status: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}/crop`);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/crops');
+  revalidatePath('/');
+}
+
+/** Edit an allocation's expected yield, sown/harvest dates and notes. */
+export async function updateCropAllocation(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot edit crop allocations');
+  const supabase = createClient();
+
+  const id = String(formData.get('allocation_id') ?? '').trim();
+  if (!id) throw new Error('Allocation is required');
+
+  const { data: alloc } = await supabase
+    .from('field_crop_allocations').select('id, field_id, crop_id')
+    .eq('id', id).eq('user_id', ctx.ownerId).maybeSingle();
+  if (!alloc) throw new Error('Allocation not found');
+  const fieldId = (alloc as { field_id: string }).field_id;
+
+  const expectedYield = parseOptionalYield(String(formData.get('expected_yield') ?? ''));
+  const sownDate = parseOptionalDate(String(formData.get('sown_date') ?? ''));
+  const harvestDate = parseOptionalDate(String(formData.get('harvest_date') ?? ''));
+  const notes = clampNotes(String(formData.get('notes') ?? ''));
+
+  // Keep expected_yield_unit consistent with the crop when a yield is set.
+  let yieldUnit: string | null = null;
+  if (expectedYield != null) {
+    const { data: crop } = await supabase.from('crops').select('yield_unit').eq('id', (alloc as { crop_id: string }).crop_id).maybeSingle();
+    yieldUnit = crop ? (crop as { yield_unit: string }).yield_unit : null;
+  }
+
+  const { error } = await supabase
+    .from('field_crop_allocations')
+    .update({
+      expected_yield: expectedYield,
+      expected_yield_unit: yieldUnit,
+      sown_date: sownDate,
+      harvest_date: harvestDate,
+      notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not update allocation: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}/crop`);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/');
+}
+
+/** Remove a crop allocation entirely. */
+export async function deleteCropAllocation(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot delete crop allocations');
+  const supabase = createClient();
+
+  const id = String(formData.get('allocation_id') ?? '').trim();
+  if (!id) throw new Error('Allocation is required');
+
+  const { data: alloc } = await supabase
+    .from('field_crop_allocations').select('id, field_id')
+    .eq('id', id).eq('user_id', ctx.ownerId).maybeSingle();
+  if (!alloc) throw new Error('Allocation not found');
+  const fieldId = (alloc as { field_id: string }).field_id;
+
+  const { error } = await supabase.from('field_crop_allocations').delete().eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(`Could not delete allocation: ${error.message}`);
+
+  revalidatePath(`/fields/${fieldId}/crop`);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/crops');
+  revalidatePath('/');
+}
