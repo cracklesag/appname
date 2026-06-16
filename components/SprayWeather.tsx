@@ -79,7 +79,7 @@ export function SprayWeather({ lat, lng, label }: { lat: number; lng: number; la
     const d = new Date(iso);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
-    const hh = d.toLocaleTimeString('en-GB', { hour: 'numeric' });
+    const hh = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
     return sameDay ? hh : `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${hh}`;
   };
 

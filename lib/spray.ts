@@ -99,6 +99,15 @@ export function computeSprayMix(args: {
 }
 
 
+// ---- Reverse calc -------------------------------------------------------
+// "I'm putting V litres of one product in the tank, at its set rate." The area
+// that covers is V / rate; feed that area back into computeSprayMix to get the
+// other products and the water. Returns 0 if either input is missing.
+export function areaFromProductVolume(volumeL: number, lPerHa: number): number {
+  if (!(lPerHa > 0) || !(volumeL > 0)) return 0;
+  return volumeL / lPerHa;
+}
+
 /** Resolve sprayer settings to the shape the calculator needs, deriving total
  *  boom flow from legacy per-nozzle × count data if that's all that's saved. */
 export function readSprayerSettings(settings: Settings): {

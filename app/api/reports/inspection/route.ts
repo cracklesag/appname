@@ -282,46 +282,64 @@ export async function GET(req: NextRequest) {
     if (seasonSprays.length === 0) { w.text('No spray records this season yet.', 9.5, MUTED); return; }
     w.table(
       [
-        { header: 'Date', width: 64 },
-        { header: 'Field', width: 104 },
-        { header: 'Products', width: 158 },
-        { header: 'Water', width: 64, align: 'right' },
-        { header: 'Area', width: 56, align: 'right' },
-        { header: 'Coverage', width: 64 },
+        { header: 'Date', width: 54 },
+        { header: 'Field', width: 82 },
+        { header: 'Products (litres)', width: 148 },
+        { header: 'Weather', width: 100 },
+        { header: 'Water', width: 56, align: 'right' },
+        { header: 'Area', width: 70, align: 'right' },
       ],
-      seasonSprays.map((r) => [
-        fmt(r.date_applied),
-        fieldById.get(r.field_id)?.name ?? '\u2014',
-        r.product_name,
-        r.water_l_per_ha != null ? `${r.water_l_per_ha} L/ha` : '\u2014',
-        area(r.area_ha ?? fieldById.get(r.field_id)?.ha ?? null),
-        r.coverage === 'partial' ? 'Part field' : 'Whole field',
-      ]),
+      seasonSprays.map((r) => {
+        const prods = Array.isArray(r.products) && r.products.length > 0
+          ? r.products.map((p) => `${p.name}${p.litres != null ? ` ${r1(p.litres)}L` : ''}`).join(' + ')
+          : `${r.product_name}${r.product_litres != null ? ` ${r1(r.product_litres)}L` : ''}`;
+        const wx = [
+          r.wind_dir ? `${r.wind_dir}${r.wind_speed_mph != null ? ` ${r.wind_speed_mph}mph` : ''}` : null,
+          r.temp_c != null ? `${r.temp_c}\u00b0C` : null,
+          r.weather_note,
+        ].filter(Boolean).join(', ');
+        const ha = r.area_ha ?? fieldById.get(r.field_id)?.ha ?? null;
+        return [
+          fmt(r.date_applied),
+          fieldById.get(r.field_id)?.name ?? '\u2014',
+          prods,
+          wx || '\u2014',
+          r.water_l_per_ha != null ? `${r.water_l_per_ha} L/ha` : '\u2014',
+          `${area(ha)}${r.coverage === 'partial' ? ' (part)' : ''}`,
+        ];
+      }),
     );
-    // Totals: product litres by mix name + treated area + water volume.
-    const byMix = new Map<string, { litres: number; areaHa: number }>();
+    // Totals: how much of each product was used (reads the tank-mix array so
+    // multi-product sprays are included, not just single-product records),
+    // plus treated area and water volume for the season.
+    const byProduct = new Map<string, number>();
     let waterL = 0, treatedHa = 0;
     for (const r of seasonSprays) {
       const ha = r.area_ha ?? fieldById.get(r.field_id)?.ha ?? 0;
-      const t = byMix.get(r.product_name) ?? { litres: 0, areaHa: 0 };
-      t.litres += r.product_litres ?? 0;
-      t.areaHa += ha;
-      byMix.set(r.product_name, t);
       treatedHa += ha;
       if (r.water_l_per_ha != null) waterL += r.water_l_per_ha * ha;
+      if (Array.isArray(r.products) && r.products.length > 0) {
+        for (const p of r.products) {
+          if (p.litres == null) continue;
+          byProduct.set(p.name, (byProduct.get(p.name) ?? 0) + p.litres);
+        }
+      } else if (r.product_litres != null) {
+        byProduct.set(r.product_name, (byProduct.get(r.product_name) ?? 0) + r.product_litres);
+      }
     }
     w.heading('Totals');
-    const rowsT = [...byMix.entries()].sort((a, b) => b[1].litres - a[1].litres).map(([name, t]) => [name, t.litres > 0 ? `${r1(t.litres)} L` : '\u2014', area(t.areaHa)]);
-    rowsT.push(['All sprays', waterL > 0 ? `${r0(waterL)} L water` : '', area(treatedHa)]);
-    w.table(
-      [
-        { header: 'Product / mix', width: 220 },
-        { header: 'Product used', width: 120, align: 'right' },
-        { header: 'Area treated', width: 110, align: 'right' },
-      ],
-      rowsT,
-      { boldRows: new Set([rowsT.length - 1]) },
-    );
+    const productRows = [...byProduct.entries()].sort((a, b) => b[1] - a[1]).map(([name, l]) => [name, `${r1(l)} L`]);
+    if (productRows.length > 0) {
+      w.table(
+        [
+          { header: 'Product', width: 360 },
+          { header: 'Total used', width: 150, align: 'right' },
+        ],
+        productRows,
+      );
+    }
+    w.y -= 2;
+    w.text(`Treated area this season: ${area(treatedHa)}${waterL > 0 ? ` \u00b7 ${r0(waterL)} L water total` : ''}`, 9.5, INK);
   }
 
   function appSection(w: PdfWriter, title: string, rows: Application[], opts?: { organicNote?: boolean }) {

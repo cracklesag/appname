@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X, RotateCcw, ClipboardList, Calculator as CalcIcon, Settings as SettingsIcon } from 'lucide-react';
-import { computeSprayMix, computeLoadSplit, type SprayLine } from '@/lib/spray';
+import { computeSprayMix, computeLoadSplit, areaFromProductVolume, type SprayLine } from '@/lib/spray';
 import { SprayWeather } from './SprayWeather';
 
 interface CalcField { id: string; name: string; ha: number; lat?: number | null; lng?: number | null; }
@@ -35,9 +35,11 @@ export function SprayCalculator({
   const areaUnit = unitSystem === 'acres' ? 'ac' : 'ha';
   const toHa = (x: number) => (unitSystem === 'acres' ? x / 2.47105 : x);
 
-  const [areaMode, setAreaMode] = useState<'field' | 'manual'>(fields.length ? 'field' : 'manual');
+  const [areaMode, setAreaMode] = useState<'field' | 'manual' | 'byProduct'>(fields.length ? 'field' : 'manual');
   const [fieldId, setFieldId] = useState<string>(fields[0]?.id ?? '');
   const [manualArea, setManualArea] = useState<string>('');
+  const [pivotKey, setPivotKey] = useState<number | null>(null);
+  const [pivotVol, setPivotVol] = useState<string>('');
   const [speed, setSpeed] = useState<string>(sprayer.defaultSpeedKmh != null ? String(sprayer.defaultSpeedKmh) : '');
   const [lines, setLines] = useState<Line[]>([{ key: 1, productId: '', name: '', lPerHa: '' }]);
   const [restored, setRestored] = useState(false);
@@ -48,8 +50,8 @@ export function SprayCalculator({
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const v = JSON.parse(raw) as Partial<{ areaMode: 'field' | 'manual'; fieldId: string; manualArea: string; speed: string; lines: Line[] }>;
-        if (v.areaMode === 'field' || v.areaMode === 'manual') setAreaMode(v.areaMode);
+        const v = JSON.parse(raw) as Partial<{ areaMode: 'field' | 'manual' | 'byProduct'; fieldId: string; manualArea: string; speed: string; lines: Line[] }>;
+        if (v.areaMode === 'field' || v.areaMode === 'manual' || v.areaMode === 'byProduct') setAreaMode(v.areaMode);
         if (typeof v.fieldId === 'string') setFieldId(v.fieldId);
         if (typeof v.manualArea === 'string') setManualArea(v.manualArea);
         if (typeof v.speed === 'string' && v.speed !== '') setSpeed(v.speed);
@@ -71,6 +73,8 @@ export function SprayCalculator({
     setAreaMode(fields.length ? 'field' : 'manual');
     setFieldId(fields[0]?.id ?? '');
     setManualArea('');
+    setPivotKey(null);
+    setPivotVol('');
     setSpeed(sprayer.defaultSpeedKmh != null ? String(sprayer.defaultSpeedKmh) : '');
     setLines([{ key: 1, productId: '', name: '', lPerHa: '' }]);
     try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
@@ -85,10 +89,16 @@ export function SprayCalculator({
       const f = fields.find((x) => x.id === fieldId);
       return f ? f.ha : 0;
     }
+    if (areaMode === 'byProduct') {
+      const line = lines.find((l) => l.key === pivotKey);
+      const rate = line ? parseFloat(line.lPerHa) : NaN;
+      const vol = parseFloat(pivotVol);
+      return areaFromProductVolume(Number.isFinite(vol) ? vol : 0, Number.isFinite(rate) ? rate : 0);
+    }
     const v = parseFloat(manualArea);
     return Number.isFinite(v) && v > 0 ? toHa(v) : 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [areaMode, fieldId, manualArea, fields]);
+  }, [areaMode, fieldId, manualArea, fields, pivotKey, pivotVol, lines]);
 
   const calcLines: SprayLine[] = lines
     .filter((l) => (l.name.trim() || l.productId) && parseFloat(l.lPerHa) > 0)
@@ -96,6 +106,10 @@ export function SprayCalculator({
       name: l.productId ? (productById.get(l.productId)?.name ?? 'Spray') : (l.name.trim() || 'Spray'),
       lPerHa: parseFloat(l.lPerHa) || 0,
     }));
+
+  // For the "by volume" pivot: lines that have a name and a rate can be measured.
+  const lineLabel = (l: Line) => (l.productId ? (productById.get(l.productId)?.name ?? 'Spray') : (l.name.trim() || 'Unnamed spray'));
+  const pivotable = lines.filter((l) => (l.productId || l.name.trim()) && parseFloat(l.lPerHa) > 0);
 
   const result = useMemo(
     () => computeSprayMix({
@@ -172,6 +186,7 @@ export function SprayCalculator({
       <div className="toggle-group" style={{ marginBottom: 10 }}>
         <button type="button" className={`toggle-btn ${areaMode === 'field' ? 'active' : ''}`} onClick={() => setAreaMode('field')} disabled={fields.length === 0}>A field</button>
         <button type="button" className={`toggle-btn ${areaMode === 'manual' ? 'active' : ''}`} onClick={() => setAreaMode('manual')}>An area</button>
+        <button type="button" className={`toggle-btn ${areaMode === 'byProduct' ? 'active' : ''}`} onClick={() => { setAreaMode('byProduct'); if (pivotKey == null && pivotable.length) setPivotKey(pivotable[0].key); }}>By volume</button>
       </div>
       {areaMode === 'field' ? (
         <select className="input" value={fieldId} onChange={(e) => setFieldId(e.target.value)} style={{ marginBottom: 12 }}>
@@ -180,6 +195,26 @@ export function SprayCalculator({
             <option key={f.id} value={f.id}>{f.name} · {(unitSystem === 'acres' ? f.ha * 2.47105 : f.ha).toFixed(2)} {areaUnit}</option>
           ))}
         </select>
+      ) : areaMode === 'byProduct' ? (
+        <div style={{ marginBottom: 12 }}>
+          {pivotable.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Add a spray with its rate below first, then come back and pick it here to work the mix out from how much of it you&apos;re putting in.
+            </div>
+          ) : (
+            <>
+              <select className="input" value={pivotKey ?? ''} onChange={(e) => setPivotKey(e.target.value ? Number(e.target.value) : null)} style={{ marginBottom: 8 }}>
+                <option value="">Which spray are you measuring?</option>
+                {pivotable.map((l) => <option key={l.key} value={l.key}>{lineLabel(l)} · {l.lPerHa} L/ha</option>)}
+              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="number" className="input" inputMode="decimal" step="any" min="0" placeholder="e.g. 10" value={pivotVol} onChange={(e) => setPivotVol(e.target.value)} style={{ flex: 1 }} />
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>litres in tank</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 5 }}>Works out the area that covers — then the other sprays and water below.</div>
+            </>
+          )}
+        </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <input type="number" className="input" inputMode="decimal" step="any" min="0" placeholder="e.g. 4.5" value={manualArea} onChange={(e) => setManualArea(e.target.value)} style={{ flex: 1 }} />
