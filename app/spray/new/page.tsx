@@ -21,6 +21,7 @@ export default async function NewSprayRecordPage({
         sprayProducts={sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }))}
         unitSystem={settings.unitSystem}
         defaultFieldId={searchParams.field}
+        tankLitres={settings.sprayer?.tankLitres ?? null}
         returnTo="/spray"
       />
     </div>

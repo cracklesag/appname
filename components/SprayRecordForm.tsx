@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Save, MapPin, Pencil, X, Plus } from 'lucide-react';
 import { Field } from '@/lib/types';
@@ -11,6 +11,7 @@ import PartApplicationDraw from './PartApplicationDraw';
 
 const WIND_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 const COMMON_TARGETS = ['Docks', 'Thistles', 'Buttercup', 'Chickweed', 'Nettles', 'Ragwort', 'Dandelion'];
+const LEFTOVER_MIN_HA = 0.1; // only prompt about a leftover load above this
 
 // Handed over from the spray calculator's "Log this event" button (consumed once).
 const PREFILL_KEY = 'swardly:spray-log';
@@ -22,15 +23,20 @@ export function SprayRecordForm({
   sprayProducts,
   unitSystem,
   defaultFieldId,
+  tankLitres = null,
   returnTo = '/spray',
 }: {
   fields: Field[];
   sprayProducts: { id: string; name: string; default_l_per_ha?: number | null }[];
   unitSystem: 'acres' | 'hectares';
   defaultFieldId?: string;
+  tankLitres?: number | null;
   returnTo?: string;
 }) {
   const usable = fields.filter((f) => !f.needs_setup);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [remainingMix, setRemainingMix] = useState(false);
   const [fieldId, setFieldId] = useState<string>(defaultFieldId ?? usable[0]?.id ?? '');
   const [lines, setLines] = useState<ProdLine[]>([{ key: 1, productId: '', name: '', litres: '', rate: '', litresEdited: false }]);
   const [water, setWater] = useState('');
@@ -53,20 +59,25 @@ export function SprayRecordForm({
         const v = JSON.parse(raw) as Partial<{
           fieldId: string;
           waterLPerHa: number;
-          lines: { name?: string; spray_product_id?: string | null; litres?: number | null }[];
+          remaining: boolean;
+          lines: { name?: string; spray_product_id?: string | null; litres?: number | null; rate?: number | null }[];
         }>;
         if (typeof v.fieldId === 'string' && v.fieldId) setFieldId(v.fieldId);
         if (v.waterLPerHa != null && Number.isFinite(v.waterLPerHa)) setWater(String(Math.round(v.waterLPerHa)));
         if (Array.isArray(v.lines) && v.lines.length > 0) {
-          setLines(v.lines.map((l, i) => ({
-            key: Date.now() + i,
-            productId: l.spray_product_id ? String(l.spray_product_id) : '',
-            name: l.name ? String(l.name) : '',
-            litres: l.litres != null && Number.isFinite(Number(l.litres)) ? String(l.litres) : '',
-            rate: '',
-            litresEdited: true,
-          })));
-          setPrefilled(true);
+          setLines(v.lines.map((l, i) => {
+            const hasRate = l.rate != null && Number.isFinite(Number(l.rate)) && Number(l.rate) > 0;
+            return {
+              key: Date.now() + i,
+              productId: l.spray_product_id ? String(l.spray_product_id) : '',
+              name: l.name ? String(l.name) : '',
+              // With a rate we let litres auto-fill for the next field's area; without, keep the given litres.
+              litres: !hasRate && l.litres != null && Number.isFinite(Number(l.litres)) ? String(l.litres) : '',
+              rate: hasRate ? String(l.rate) : '',
+              litresEdited: !hasRate,
+            };
+          }));
+          if (v.remaining) setRemainingMix(true); else setPrefilled(true);
         }
         sessionStorage.removeItem(PREFILL_KEY);
       }
@@ -121,13 +132,43 @@ export function SprayRecordForm({
   );
   const usesStock = lines.some((l) => l.productId);
 
+  // ---- Leftover-load estimate --------------------------------------------
+  // A full tank holds tankLitres of mix; total application rate = water rate +
+  // every product's rate, so tank capacity (ha) = tank / rate. After spraying
+  // the effective area, the mix left in the part-used last tank covers
+  // (capacity − area-used-in-that-tank). Needs a tank size, a water rate and at
+  // least one product rate to mean anything.
+  const waterNum = parseFloat(water) || 0;
+  const sumRates = lines.reduce((a, l) => { const r = parseFloat(l.rate); return a + (r > 0 ? r : 0); }, 0);
+  const totalRate = waterNum + sumRates;
+  const tankCapHa = tankLitres && tankLitres > 0 && totalRate > 0 ? tankLitres / totalRate : 0;
+  let leftoverHa = 0;
+  if (tankCapHa > 0 && effectiveArea > 0 && waterNum > 0) {
+    const rem = effectiveArea % tankCapHa;
+    leftoverHa = rem < 1e-6 ? 0 : tankCapHa - rem;
+  }
+  const showLeftover = leftoverHa > LEFTOVER_MIN_HA;
+
   const [queuedOffline, setQueuedOffline] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function doSave(fd: FormData, andAnother: boolean) {
+    setConfirmOpen(false);
+    if (andAnother) {
+      // Carry the same mix (products + rates + water) to a fresh record so the
+      // remaining tank can go on another field; litres re-fill for its area.
+      fd.set('return_to', '/spray/new');
+      try {
+        sessionStorage.setItem(PREFILL_KEY, JSON.stringify({
+          remaining: true,
+          waterLPerHa: waterNum > 0 ? waterNum : undefined,
+          lines: lines
+            .map((l) => ({ name: lineName(l), spray_product_id: l.productId || null, rate: parseFloat(l.rate) > 0 ? parseFloat(l.rate) : null }))
+            .filter((l) => l.name !== ''),
+        }));
+      } catch { /* ignore */ }
+    }
     setSubmitError(null);
     setSubmitting(true);
-    const fd = new FormData(e.currentTarget);
     try {
       const result = await createSprayRecord(fd);
       // A successful save redirects (throws NEXT_REDIRECT, handled below). A
@@ -148,6 +189,17 @@ export function SprayRecordForm({
       if (err instanceof Error) setSubmitError(err.message);
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // With a meaningful leftover, confirm the area + offer the rest on another
+    // field first; otherwise save straight away.
+    if (showLeftover && !confirmOpen) {
+      setConfirmOpen(true);
+      return;
+    }
+    void doSave(new FormData(e.currentTarget), false);
   }
 
   if (queuedOffline) {
@@ -174,7 +226,7 @@ export function SprayRecordForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
+    <form ref={formRef} onSubmit={handleSubmit} style={{ paddingBottom: 100 }}>
       <input type="hidden" name="field_id" value={fieldId} />
       <input type="hidden" name="return_to" value={returnTo} />
       <input type="hidden" name="product_lines" value={productLinesJson} />
@@ -188,6 +240,11 @@ export function SprayRecordForm({
       )}
 
       <div style={{ padding: 16 }}>
+        {remainingMix && (
+          <div style={{ background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.45 }}>
+            Remaining mix from your last spray. Pick the next field — litres fill in for its area automatically.
+          </div>
+        )}
         {prefilled && (
           <div style={{ background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.45 }}>
             Filled in from the calculator. Add your target and weather, then save.
@@ -375,6 +432,45 @@ export function SprayRecordForm({
           </button>
         </div>
       </div>
+
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--paper)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}
+          >
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ink)', marginBottom: 12 }}>Log this spray?</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+              <span style={{ fontSize: 13.5, color: 'var(--muted)' }}>{isPartial ? 'Area drawn' : 'Whole field'}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{toUnit(effectiveArea).toFixed(2)} {areaUnit}{isPartial ? ' (part)' : ''}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <span style={{ fontSize: 13.5, color: 'var(--muted)' }}>Mix left estimate</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--forest)' }}>≈ {toUnit(leftoverHa).toFixed(2)} {areaUnit}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 16 }}>
+              Roughly how much of the tank is left, as the area it would cover at this rate. An estimate — the drawn area is approximate.
+            </div>
+            <button
+              type="button"
+              onClick={() => { if (formRef.current) void doSave(new FormData(formRef.current), true); }}
+              className="btn-primary"
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}
+            >
+              <MapPin size={17} /> Log &amp; spray the rest on another field
+            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setConfirmOpen(false)} className="btn-ghost" style={{ flex: 1 }}>Back</button>
+              <button type="button" onClick={() => { if (formRef.current) void doSave(new FormData(formRef.current), false); }} className="btn-ghost" style={{ flex: 1 }}>Just log this</button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
