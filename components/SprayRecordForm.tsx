@@ -15,7 +15,7 @@ const COMMON_TARGETS = ['Docks', 'Thistles', 'Buttercup', 'Chickweed', 'Nettles'
 // Handed over from the spray calculator's "Log this event" button (consumed once).
 const PREFILL_KEY = 'swardly:spray-log';
 
-interface ProdLine { key: number; productId: string; name: string; litres: string; }
+interface ProdLine { key: number; productId: string; name: string; litres: string; rate: string; litresEdited: boolean; }
 
 export function SprayRecordForm({
   fields,
@@ -25,14 +25,14 @@ export function SprayRecordForm({
   returnTo = '/spray',
 }: {
   fields: Field[];
-  sprayProducts: { id: string; name: string }[];
+  sprayProducts: { id: string; name: string; default_l_per_ha?: number | null }[];
   unitSystem: 'acres' | 'hectares';
   defaultFieldId?: string;
   returnTo?: string;
 }) {
   const usable = fields.filter((f) => !f.needs_setup);
   const [fieldId, setFieldId] = useState<string>(defaultFieldId ?? usable[0]?.id ?? '');
-  const [lines, setLines] = useState<ProdLine[]>([{ key: 1, productId: '', name: '', litres: '' }]);
+  const [lines, setLines] = useState<ProdLine[]>([{ key: 1, productId: '', name: '', litres: '', rate: '', litresEdited: false }]);
   const [water, setWater] = useState('');
   const [windDir, setWindDir] = useState<string>('');
   const [targets, setTargets] = useState<string[]>([]);
@@ -63,6 +63,8 @@ export function SprayRecordForm({
             productId: l.spray_product_id ? String(l.spray_product_id) : '',
             name: l.name ? String(l.name) : '',
             litres: l.litres != null && Number.isFinite(Number(l.litres)) ? String(l.litres) : '',
+            rate: '',
+            litresEdited: true,
           })));
           setPrefilled(true);
         }
@@ -78,6 +80,16 @@ export function SprayRecordForm({
   const toUnit = (ha: number) => (unitSystem === 'acres' ? ha * 2.47105 : ha);
   const wholeHa = field?.ha ?? 0;
   const isPartial = partOnly && !!drawnGeo;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  // The area the chemical actually went on: the drawn part, or the whole field.
+  const effectiveArea = isPartial ? (drawnHa ?? 0) : wholeHa;
+  // Litres auto-fill from rate x area unless the user has typed their own figure.
+  const effLitres = (l: ProdLine): string => {
+    if (l.litresEdited) return l.litres;
+    const rate = parseFloat(l.rate);
+    if (rate > 0 && effectiveArea > 0) return String(round1(rate * effectiveArea));
+    return l.litres;
+  };
 
   const addTarget = (t: string) => {
     const v = t.trim();
@@ -88,15 +100,23 @@ export function SprayRecordForm({
 
   const setLine = (key: number, patch: Partial<ProdLine>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const addLine = () => setLines((prev) => [...prev, { key: Date.now(), productId: '', name: '', litres: '' }]);
+  const addLine = () => setLines((prev) => [...prev, { key: Date.now(), productId: '', name: '', litres: '', rate: '', litresEdited: false }]);
   const removeLine = (key: number) => setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
-  const onPickProduct = (key: number, productId: string) => setLine(key, { productId });
+  const onPickProduct = (key: number, productId: string) => {
+    const prod = sprayProducts.find((p) => p.id === productId);
+    const rate = prod?.default_l_per_ha != null ? String(prod.default_l_per_ha) : '';
+    // Picking a product loads its typical rate and lets litres auto-fill from area again.
+    setLine(key, rate ? { productId, rate, litresEdited: false } : { productId });
+  };
 
   const lineName = (l: ProdLine) => (l.productId ? (sprayProducts.find((p) => p.id === l.productId)?.name ?? '') : l.name.trim());
   const firstName = lines.length ? lineName(lines[0]) : '';
   const productLinesJson = JSON.stringify(
     lines
-      .map((l) => ({ name: lineName(l), spray_product_id: l.productId || null, litres: l.litres.trim() === '' ? null : Number(l.litres) }))
+      .map((l) => {
+        const v = effLitres(l);
+        return { name: lineName(l), spray_product_id: l.productId || null, litres: v.trim() === '' ? null : Number(v) };
+      })
       .filter((l) => l.name !== ''),
   );
   const usesStock = lines.some((l) => l.productId);
@@ -213,10 +233,19 @@ export function SprayRecordForm({
               {l.productId === '' && (
                 <input type="text" className="input" value={l.name} onChange={(e) => setLine(l.key, { name: e.target.value })} placeholder="Spray name (e.g. Doxstar Pro)" maxLength={120} style={{ marginBottom: 8 }} />
               )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <input type="number" className="input" inputMode="decimal" step="any" min="0" value={l.rate} onChange={(e) => setLine(l.key, { rate: e.target.value, litresEdited: false })} placeholder="rate" style={{ flex: 1 }} />
+                <span style={{ fontSize: 12, color: 'var(--muted)', width: 56 }}>L / ha</span>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="number" className="input" inputMode="decimal" step="any" min="0" value={l.litres} onChange={(e) => setLine(l.key, { litres: e.target.value })} placeholder="e.g. 4" style={{ flex: 1 }} />
+                <input type="number" className="input" inputMode="decimal" step="any" min="0" value={effLitres(l)} onChange={(e) => setLine(l.key, { litres: e.target.value, litresEdited: true })} placeholder="e.g. 4" style={{ flex: 1 }} />
                 <span style={{ fontSize: 12, color: 'var(--muted)', width: 56 }}>litres total</span>
               </div>
+              {!l.litresEdited && parseFloat(l.rate) > 0 && effectiveArea > 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>Auto: {l.rate} L/ha × {toUnit(effectiveArea).toFixed(2)} {areaUnit}{isPartial ? ' drawn' : ''}. Edit litres to override.</div>
+              ) : l.litresEdited && parseFloat(l.rate) > 0 ? (
+                <button type="button" onClick={() => setLine(l.key, { litresEdited: false })} style={{ fontSize: 11, color: 'var(--forest)', background: 'none', border: 'none', padding: '5px 0 0', cursor: 'pointer' }}>↻ Back to auto ({l.rate} L/ha × area)</button>
+              ) : null}
             </div>
           ))}
           <button type="button" onClick={addLine} className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px' }}>

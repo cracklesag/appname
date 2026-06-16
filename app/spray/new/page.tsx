@@ -18,7 +18,7 @@ export default async function NewSprayRecordPage({
       <Header title="New spray record" backHref={backHref} />
       <SprayRecordForm
         fields={fields}
-        sprayProducts={sprayProducts.map((p) => ({ id: p.id, name: p.name }))}
+        sprayProducts={sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }))}
         unitSystem={settings.unitSystem}
         defaultFieldId={searchParams.field}
         returnTo="/spray"
