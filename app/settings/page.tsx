@@ -629,7 +629,7 @@ export default async function SettingsPage() {
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
         <Link
-          href="/settings/groups"
+          href="/settings/land"
           className="card"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -637,9 +637,9 @@ export default async function SettingsPage() {
           }}
         >
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Groups</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Land &amp; groupings</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              Organise fields into blocks of land for filtering and reports
+              Blocks, allocation types and agreements — organise and filter your fields
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />

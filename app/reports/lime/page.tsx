@@ -1,24 +1,40 @@
-import { loadFields, loadGroups, loadSettings, loadAllApplications, loadAllProducts } from '@/lib/data';
+import { loadFields, loadGroups, loadSettings, loadAllApplications, loadAllProducts, loadAllocationTypes, loadAgreements, loadFieldAgreementMap } from '@/lib/data';
 import { getFieldLimeRecommendation, resolveTargetPh, displayFieldArea } from '@/lib/rules';
 import { LimeReportShell, LimeRow } from '@/components/LimeReportShell';
+import { ReportAxisFilters } from '@/components/ReportAxisFilters';
+import { TopicMap } from '@/components/TopicMap';
+import { axisChipOptions, fieldPassesAxisParams } from '@/lib/grouping';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LimeReportPage({
   searchParams,
 }: {
-  searchParams: { group?: string; from?: string };
+  searchParams: { group?: string; from?: string; type?: string; agreement?: string };
 }) {
-  const [fields, groups, settings, applications, products] = await Promise.all([
+  const [fields, groups, settings, applications, products, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
     loadFields(),
     loadGroups(),
     loadSettings(),
     loadAllApplications(),
     loadAllProducts(),
+    loadAllocationTypes(),
+    loadAgreements(),
+    loadFieldAgreementMap(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
+  const typeFilter = searchParams.type || 'all';
+  const agreementFilter = searchParams.agreement || 'all';
   const fromHref = searchParams.from || '/';
+
+  const axisOptions = axisChipOptions({
+    fields,
+    blocks: groups.map((g) => ({ id: g.id, name: g.name })),
+    types: allocationTypes.map((t) => ({ id: t.id, label: t.label })),
+    agreements: agreements.map((a) => ({ id: a.id, code: a.code })),
+    fieldAgreementMap,
+  });
 
   // Lime products, so we can tell whether lime has been spread since sampling.
   const limeProductIds = new Set(products.filter((p) => p.type === 'lime').map((p) => p.id));
@@ -29,7 +45,7 @@ export default async function LimeReportPage({
   const rateUnit = inAcres ? 't/ac' : 't/ha';
   const toRate = (tha: number) => inAcres ? tha / THA_PER_TAC : tha;
 
-  const rows: LimeRow[] = fields
+  const allRows: LimeRow[] = fields
     .filter((f) => !f.needs_setup)
     .map((f) => {
       const rec = getFieldLimeRecommendation(f, settings);
@@ -94,10 +110,49 @@ export default async function LimeReportPage({
       };
     });
 
+  // Type & agreement applied by pre-filtering to an allowed-field set; block
+  // stays in LimeReportShell's group filter. Rows are keyed by field id.
+  const allowedFieldIds = new Set(
+    fields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap)).map((f) => f.id),
+  );
+  const rows = (typeFilter === 'all' && agreementFilter === 'all')
+    ? allRows
+    : allRows.filter((r) => allowedFieldIds.has(r.id));
+
+  // Topic map: lime status across all mapped fields (overview, not table-filtered).
+  const limeTopicFields = fields
+    .filter((f) => f.boundary)
+    .map((f) => {
+      const rec = getFieldLimeRecommendation(f, settings);
+      const limeStatus: 'ok' | 'low' | 'due' | 'unknown' =
+        f.ph == null ? 'unknown'
+          : !rec.needsLime ? 'ok'
+            : (rec.targetPh - (f.ph ?? 0)) >= 0.5 ? 'due' : 'low';
+      return {
+        id: f.id, name: f.name, ha: f.ha ?? 0, ph: f.ph ?? null,
+        p_idx: f.p_idx ?? null, k_idx: f.k_idx ?? null, limeStatus,
+        boundary: (f.boundary as object | null) ?? null,
+        centroid_lat: f.centroid_lat ?? null, centroid_lng: f.centroid_lng ?? null,
+      };
+    });
+
   return (
     <div style={{ paddingBottom: 80 }}>
       <LimeReportShell
         rows={rows}
+        afterHero={
+          <>
+            <ReportAxisFilters
+              typeOptions={axisOptions.type}
+              agreementOptions={axisOptions.agreement}
+              typeValue={typeFilter}
+              agreementValue={agreementFilter}
+            />
+            <div style={{ padding: '12px 16px 0' }}>
+              <TopicMap title="Lime status map" modes={['ph']} fields={limeTopicFields} />
+            </div>
+          </>
+        }
         groups={groups.map((g) => ({ id: g.id, name: g.name }))}
         initialGroup={groupFilter}
         rateUnit={rateUnit}

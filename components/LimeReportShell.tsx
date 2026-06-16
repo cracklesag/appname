@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Printer, Layers, AlertTriangle } from 'lucide-react';
 import { SoilType } from '@/lib/types';
@@ -90,7 +90,7 @@ function TypePill({ type }: { type: 'magnesian' | 'calcium' }) {
 }
 
 export function LimeReportShell({
-  rows, groups, initialGroup, rateUnit, targetPhDefault, fromHref,
+  rows, groups, initialGroup, rateUnit, targetPhDefault, fromHref, afterHero,
 }: {
   rows: LimeRow[];
   groups: { id: string; name: string }[];
@@ -98,6 +98,7 @@ export function LimeReportShell({
   rateUnit: string;
   targetPhDefault: number;
   fromHref: string;
+  afterHero?: ReactNode;
 }) {
   const [groupFilter, setGroupFilter] = useState(initialGroup);
   const [sortKey, setSortKey] = useState<SortKey>('urgency');
@@ -160,6 +161,8 @@ export function LimeReportShell({
           Grassland liming — fields below target pH, with magnesian or calcium lime by soil magnesium.
         </p>
       </div>
+
+      {afterHero}
 
       <div style={{ padding: '14px 16px' }}>
         {/* Overview summary */}

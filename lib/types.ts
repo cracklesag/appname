@@ -97,6 +97,8 @@ export interface Field {
   id: string;
   user_id: string;
   group_id: string | null;
+  /** FK to allocation_types (the middle grouping axis). Null = untyped. */
+  allocation_type_id: string | null;
   name: string;
   acres: number;
   ha: number;
@@ -764,4 +766,22 @@ export interface FieldCropAllocation {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// --- Agri-environment agreements (third grouping axis) -----------------
+// The agreement row shape lives with its logic in lib/agreements.ts; re-export
+// it here under the app-facing name so loaders/actions import from one place.
+export type { AgreementRow as Agreement, AgreementScheme } from './agreements';
+export type { AllocationTypeRow as AllocationType, AllocationKind } from './allocation_types';
+
+/** A field's membership in an agreement (many-to-many join row). */
+export interface FieldAgreement {
+  id: string;
+  /** Farm owner (admin) — all shared data is owned by this id. */
+  user_id: string;
+  field_id: string;
+  agreement_id: string;
+  /** Who created the membership (admin or staff). */
+  created_by: string | null;
+  created_at: string;
 }

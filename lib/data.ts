@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { createClient } from './supabase/server';
 import { getFarmContext } from './farm';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor, FieldCropAllocation } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor, FieldCropAllocation, Agreement, FieldAgreement, AllocationType } from './types';
 import { CropRow, LoadedCrop, loadedCropFromRow } from './crops';
 
 export const loadAllProducts = cache(async function loadAllProductsUncached(): Promise<Product[]> {
@@ -674,3 +674,49 @@ export async function loadCropAllocationsForField(fieldId: string): Promise<Fiel
   if (error) throw error;
   return (data ?? []) as FieldCropAllocation[];
 }
+
+
+/**
+ * Load all agreements visible to the current user — shared seeds
+ * (user_id IS NULL, returned by RLS) and the user's own customs. Shared seeds
+ * first (by sort_order then code), then the user's rows.
+ */
+export const loadAgreements = cache(async function loadAgreementsUncached(): Promise<Agreement[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('agreements').select('*')
+    .order('user_id', { ascending: true, nullsFirst: true })
+    .order('sort_order', { ascending: true })
+    .order('code', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Agreement[];
+})
+
+/** All field<->agreement memberships on the farm (RLS-scoped). */
+export const loadFieldAgreements = cache(async function loadFieldAgreementsUncached(): Promise<FieldAgreement[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('field_agreements').select('*');
+  if (error) throw error;
+  return (data ?? []) as FieldAgreement[];
+})
+
+/** field_id -> agreement_id[] for quick per-field lookup. */
+export async function loadFieldAgreementMap(): Promise<Record<string, string[]>> {
+  const rows = await loadFieldAgreements();
+  const map: Record<string, string[]> = {};
+  for (const r of rows) (map[r.field_id] ??= []).push(r.agreement_id);
+  return map;
+}
+
+
+/** All allocation types visible to the user — shared seeds first, then own. */
+export const loadAllocationTypes = cache(async function loadAllocationTypesUncached(): Promise<AllocationType[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('allocation_types').select('*')
+    .order('user_id', { ascending: true, nullsFirst: true })
+    .order('sort_order', { ascending: true })
+    .order('label', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as AllocationType[];
+})

@@ -6,7 +6,7 @@
 //   - `loadFields` and `Header` should resolve to the app's existing modules.
 //   - Header props used here (title/subtitle/backHref) match the documented Header API; adjust if needed.
 
-import { loadFields, loadSettings } from "@/lib/data";
+import { loadFields, loadSettings, loadGroups, loadAllocationTypes, loadAgreements, loadFieldAgreementMap } from "@/lib/data";
 import { loadMapSettings } from "@/lib/map-data";
 import { getFieldLimeRecommendation } from "@/lib/rules";
 import { Header } from "@/components/Header";
@@ -15,9 +15,14 @@ import FarmMapShell from "@/components/FarmMapShell";
 export const dynamic = "force-dynamic";
 
 export default async function MapPage() {
-  const [fields, mapSettings, settings] = await Promise.all([
-    loadFields(), loadMapSettings(), loadSettings(),
+  const [fields, mapSettings, settings, groups, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
+    loadFields(), loadMapSettings(), loadSettings(), loadGroups(), loadAllocationTypes(), loadAgreements(), loadFieldAgreementMap(),
   ]);
+
+  // id → label maps for the categorical colour legends.
+  const blockNames: Record<string, string> = Object.fromEntries(groups.map((g) => [g.id, g.name]));
+  const typeNames: Record<string, string> = Object.fromEntries(allocationTypes.map((t) => [t.id, t.label]));
+  const agreementCodes: Record<string, string> = Object.fromEntries(agreements.map((a) => [a.id, a.code]));
 
   // Keep the payload small — send only what the map needs.
   const mapFields = fields.map((f) => {
@@ -45,6 +50,9 @@ export default async function MapPage() {
       boundary_source: f.boundary_source ?? null,
       rpa_sheet_id: f.rpa_sheet_id ?? null,
       rpa_parcel_id: f.rpa_parcel_id ?? null,
+      group_id: f.group_id ?? null,
+      allocation_type_id: f.allocation_type_id ?? null,
+      agreementIds: fieldAgreementMap[f.id] ?? [],
     };
   });
 
@@ -55,6 +63,9 @@ export default async function MapPage() {
         fields={mapFields}
         mapSettings={mapSettings}
         mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? null}
+        blockNames={blockNames}
+        typeNames={typeNames}
+        agreementCodes={agreementCodes}
       />
     </div>
   );

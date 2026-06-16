@@ -47,6 +47,7 @@ function makeField(over: Partial<Field>): Field {
     id: over.id ?? 'field-1',
     user_id: 'user-1',
     group_id: null,
+    allocation_type_id: null,
     name: 'Test Field',
     acres: 10,
     ha: 4.05,

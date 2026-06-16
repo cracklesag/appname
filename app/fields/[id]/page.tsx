@@ -7,12 +7,14 @@ import {
   ApplicationCard, CutEntry, NAvailabilityStrip,
 } from '@/components/FieldDetailCards';
 import { FieldGroupPicker } from '@/components/FieldGroupPicker';
+import { FieldTypePicker, FieldAgreementsPicker } from '@/components/FieldGroupingPickers';
 import { NextActionPicker } from '@/components/NextActionPicker';
 import { DeleteFieldSection } from '@/components/DeleteFieldSection';
 import { DeleteFieldEventButton } from '@/components/DeleteFieldEventButton';
 import {
-  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups, loadFieldEvents, loadSprayRecordsForField,
+  loadField, loadApplicationsForField, loadCutsForField, loadAllProducts, loadSettings, loadGrassSystems, loadGroups, loadFieldEvents, loadSprayRecordsForField, loadAllocationTypes, loadAgreements, loadFieldAgreements,
 } from '@/lib/data';
+import { composedFieldNCap } from '@/lib/grouping';
 import { getFarmContext } from '@/lib/farm';
 import {
   CUT_TYPE_LABELS, displayNutrient, nutrientLabel, displayFieldArea, displayRate, fmt, fmtDate, fmtDateShort,
@@ -36,7 +38,7 @@ export default async function FieldDetailPage({
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
 
-  const [field, applications, sprayRecords, cuts, products, settings, groups, grassSystems, farmCtx] = await Promise.all([
+  const [field, applications, sprayRecords, cuts, products, settings, groups, grassSystems, farmCtx, allocationTypes, allAgreements, allFieldAgreements] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),
     loadSprayRecordsForField(params.id),
@@ -46,9 +48,24 @@ export default async function FieldDetailPage({
     loadGroups(),
     loadGrassSystems(),
     getFarmContext(),
+    loadAllocationTypes(),
+    loadAgreements(),
+    loadFieldAgreements(),
   ]);
 
   if (!field) notFound();
+
+  // Three-axis grouping: the field's allocation type, its agreements, and the
+  // composed most-restrictive advisory N cap across block + type + agreements.
+  const fieldType = field.allocation_type_id ? (allocationTypes.find((t) => t.id === field.allocation_type_id) ?? null) : null;
+  const fieldAgreementIds = allFieldAgreements.filter((l) => l.field_id === field.id).map((l) => l.agreement_id);
+  const fieldAgreementRows = allAgreements.filter((a) => fieldAgreementIds.includes(a.id));
+  const fieldBlock = field.group_id ? (groups.find((g) => g.id === field.group_id) ?? null) : null;
+  const composedCap = composedFieldNCap({
+    block: fieldBlock ? { label: fieldBlock.name, low_input: fieldBlock.low_input, max_n_kg_per_ha: fieldBlock.max_n_kg_per_ha } : null,
+    type: fieldType ? { n_cap_kg_per_ha: fieldType.n_cap_kg_per_ha, label: fieldType.label } : null,
+    agreements: fieldAgreementRows,
+  });
 
   const fieldEvents = await loadFieldEvents(params.id);
 
@@ -192,17 +209,37 @@ export default async function FieldDetailPage({
 
       {tab === 'overview' && (
         <div style={{ padding: 16 }}>
-          {/* Group — admin only (staff can't reorganise fields) */}
+          {/* Land & groupings — admin only (staff can't reorganise fields).
+              Three independent axes plus the composed advisory N cap. */}
           {isAdmin && (
-          <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="label" style={{ margin: 0, flexShrink: 0 }}>Group</div>
-            <div style={{ flex: 1 }}>
-              <FieldGroupPicker
-                fieldId={field.id}
-                currentGroupId={field.group_id}
-                groups={groups}
-              />
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+              <div className="label" style={{ margin: 0, width: 64, flexShrink: 0 }}>Block</div>
+              <div style={{ flex: 1 }}>
+                <FieldGroupPicker fieldId={field.id} currentGroupId={field.group_id} groups={groups} />
+              </div>
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+              <div className="label" style={{ margin: 0, width: 64, flexShrink: 0 }}>Type</div>
+              <div style={{ flex: 1 }}>
+                <FieldTypePicker fieldId={field.id} current={field.allocation_type_id} types={allocationTypes} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div className="label" style={{ margin: 0, width: 64, flexShrink: 0, paddingTop: 2 }}>Agreements</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <FieldAgreementsPicker fieldId={field.id} current={fieldAgreementIds} agreements={allAgreements} />
+              </div>
+            </div>
+            {composedCap && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>Advisory N cap</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: composedCap.capKgHa === 0 ? 'var(--red, #b85b3a)' : 'var(--ink)' }}>
+                  {composedCap.capKgHa === 0 ? 'No manufactured N' : `${composedCap.capKgHa} kg N/ha`}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>· capped by {composedCap.source}</span>
+              </div>
+            )}
           </div>
           )}
 

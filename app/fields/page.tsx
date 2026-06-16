@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp } from 'lucide-react';
+import { Plus, FileUp, SlidersHorizontal } from 'lucide-react';
 import { FilterChips } from '@/components/FilterChips';
 import { FieldsListClient, FieldRow, FieldGroup } from '@/components/FieldsListClient';
 import { getFarmContext } from '@/lib/farm';
@@ -12,7 +12,11 @@ import {
   loadGrassSystems,
   loadGroups,
   loadSettings,
+  loadAllocationTypes,
+  loadAgreements,
+  loadFieldAgreementMap,
 } from '@/lib/data';
+import { axisChipOptions, fieldPassesAxisParams, axisParamsActive } from '@/lib/grouping';
 import {
   fmtDateShort,
   getCutTargets,
@@ -39,19 +43,22 @@ type NutrientKey = 'n' | 'p' | 'k';
 export default async function FieldsPage({
   searchParams,
 }: {
-  searchParams: { next?: string; short?: string; group?: string };
+  searchParams: { next?: string; short?: string; group?: string; type?: string; agreement?: string };
 }) {
   // Onboarding gate: first-run users land on /welcome to pick their preferred unit
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, products, applications, cuts, groups, grassSystems] = await Promise.all([
+  const [fields, products, applications, cuts, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
     loadGroups(),
     loadGrassSystems(),
+    loadAllocationTypes(),
+    loadAgreements(),
+    loadFieldAgreementMap(),
   ]);
 
   const seasonStart = getSeasonStart();
@@ -139,17 +146,23 @@ export default async function FieldsPage({
     shortFilterRaw === 'n' || shortFilterRaw === 'p' || shortFilterRaw === 'k'
       ? shortFilterRaw : null;
   const groupFilter = searchParams.group ?? 'all';
+  const typeFilter = searchParams.type ?? 'all';
+  const agreementFilter = searchParams.agreement ?? 'all';
+  const axisParams = { block: groupFilter, type: typeFilter, agreement: agreementFilter };
+
+  // Chip options for the three land axes, limited to values that have fields.
+  const axisOptions = axisChipOptions({
+    fields,
+    blocks: groups.map((g) => ({ id: g.id, name: g.name })),
+    types: allocationTypes.map((t) => ({ id: t.id, label: t.label })),
+    agreements: agreements.map((a) => ({ id: a.id, code: a.code })),
+    fieldAgreementMap,
+  });
 
   let visibleFields = fieldStates.filter((s) => {
-    // Group filter — 'all' lets everything through, 'unassigned' shows only
-    // ungrouped fields, anything else is a group_id match.
-    if (groupFilter !== 'all') {
-      if (groupFilter === 'unassigned') {
-        if (s.field.group_id) return false;
-      } else if (s.field.group_id !== groupFilter) {
-        return false;
-      }
-    }
+    // Land axes: block (?group=) / allocation type (?type=) / agreement
+    // (?agreement=). Single-select each, AND'd together. 'all'/absent passes.
+    if (!fieldPassesAxisParams(s.field, axisParams, fieldAgreementMap)) return false;
     // Next-cut filter
     if (nextFilter === 'active') {
       if (s.nextCutType === 'complete') return false;
@@ -177,7 +190,10 @@ export default async function FieldsPage({
 
   const hiddenByFilter = fieldStates.length - visibleFields.length;
   const anyFilterActive =
-    nextFilter !== 'active' || shortFilter !== null || groupFilter !== 'all';
+    nextFilter !== 'active' || shortFilter !== null || axisParamsActive(axisParams);
+  // Only surface a land axis if it has at least one real value to pick.
+  const showLandFilters =
+    axisOptions.block.length >= 2 || axisOptions.type.length >= 2 || axisOptions.agreement.length >= 2;
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -235,6 +251,27 @@ export default async function FieldsPage({
                 { value: 'k',   label: 'Short of K' },
               ]}
             />
+
+            {/* Land filters — block / allocation type / agreement. Tucked in a
+                panel that stays open while any of them is active. */}
+            {showLandFilters && (
+              <details open={axisParamsActive(axisParams)} style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--forest-dark)', listStyle: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+                  <SlidersHorizontal size={14} /> Filter by land{axisParamsActive(axisParams) ? ' · active' : ''}
+                </summary>
+                <div style={{ marginTop: 8 }}>
+                  {axisOptions.block.length >= 2 && (
+                    <FilterChips paramName="group" ariaLabel="Filter by block" options={axisOptions.block} />
+                  )}
+                  {axisOptions.type.length >= 2 && (
+                    <FilterChips paramName="type" ariaLabel="Filter by allocation type" options={axisOptions.type} />
+                  )}
+                  {axisOptions.agreement.length >= 2 && (
+                    <FilterChips paramName="agreement" ariaLabel="Filter by agreement" options={axisOptions.agreement} />
+                  )}
+                </div>
+              </details>
+            )}
 
             {anyFilterActive && (
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>

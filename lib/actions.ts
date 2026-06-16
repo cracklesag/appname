@@ -4166,3 +4166,342 @@ export async function deleteCropAllocation(formData: FormData) {
   revalidatePath('/crops');
   revalidatePath('/');
 }
+
+// ===== Agreements: field membership (third grouping axis) =====
+//
+// Set the full set of agreements a field belongs to in one shot. Mirrors
+// setGroupMembership, but agreements are MANY-to-many, so we diff the current
+// memberships against the requested set and apply adds/removes rather than
+// overwrite a single FK. Assigning a field to a scheme is a logging-style
+// action, so the read-only agronomist is excluded (consistent with crops).
+export async function setFieldAgreements(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot change agreements');
+  const supabase = createClient();
+
+  const fieldId = String(formData.get('field_id') ?? '').trim();
+  if (!fieldId) throw new Error('Field is required');
+
+  // Empty string is valid — means "no agreements on this field".
+  const raw = String(formData.get('agreement_ids') ?? '').trim();
+  const targetIds = raw === '' ? [] : raw.split(',').map((s) => s.trim()).filter(Boolean);
+
+  // Field must belong to this farm (RLS scopes the read; a foreign uuid is null).
+  const { data: field } = await supabase
+    .from('fields').select('id').eq('id', fieldId).eq('user_id', ctx.ownerId).maybeSingle();
+  if (!field) throw new Error('Field not found');
+
+  // Current memberships for this field.
+  const { data: current, error: curErr } = await supabase
+    .from('field_agreements').select('id, agreement_id')
+    .eq('field_id', fieldId).eq('user_id', ctx.ownerId);
+  if (curErr) throw new Error(curErr.message);
+
+  const currentRows = (current ?? []) as { id: string; agreement_id: string }[];
+  const haveAgreement = new Set(currentRows.map((r) => r.agreement_id));
+  const targetSet = new Set(targetIds);
+
+  // Remove memberships no longer wanted.
+  const removeRowIds = currentRows.filter((r) => !targetSet.has(r.agreement_id)).map((r) => r.id);
+  if (removeRowIds.length) {
+    const { error } = await supabase.from('field_agreements').delete().in('id', removeRowIds);
+    if (error) throw new Error(`Could not remove agreements: ${error.message}`);
+  }
+
+  // Add newly-ticked agreements — validate they're visible to this farm first
+  // (a shared seed or one of this farm's customs).
+  const addIds = targetIds.filter((id) => !haveAgreement.has(id));
+  if (addIds.length) {
+    const { data: valid } = await supabase.from('agreements').select('id').in('id', addIds);
+    const validSet = new Set(((valid ?? []) as { id: string }[]).map((a) => a.id));
+    const rows = addIds.filter((id) => validSet.has(id)).map((id) => ({
+      user_id: ctx.ownerId,
+      field_id: fieldId,
+      agreement_id: id,
+      created_by: ctx.userId,
+    }));
+    if (rows.length) {
+      const { error } = await supabase.from('field_agreements').insert(rows);
+      if (error) throw new Error(`Could not add agreements: ${error.message}`);
+    }
+  }
+
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/fields');
+  revalidatePath('/settings/agreements');
+  revalidatePath('/');
+}
+
+// =====================================================================
+// Grouping axes — allocation types & agreements (catalogue + assignment)
+// =====================================================================
+
+// Small typed form readers, local to this block.
+function gStr(fd: FormData, k: string): string { return String(fd.get(k) ?? '').trim(); }
+function gNum(fd: FormData, k: string): number | null { const r = gStr(fd, k); if (r === '') return null; const n = parseFloat(r); return Number.isFinite(n) ? n : null; }
+function gInt(fd: FormData, k: string): number | null { const r = gStr(fd, k); if (r === '') return null; const n = parseInt(r, 10); return Number.isFinite(n) ? n : null; }
+function gBool(fd: FormData, k: string): boolean { const r = gStr(fd, k); return r === 'on' || r === 'true' || r === '1'; }
+function gMd(fd: FormData, k: string): string | null {
+  const m = gStr(fd, k).match(/^(\d{1,2})-(\d{1,2})$/);
+  if (!m) return null;
+  const mm = String(Math.min(12, Math.max(1, parseInt(m[1], 10)))).padStart(2, '0');
+  const dd = String(Math.min(31, Math.max(1, parseInt(m[2], 10)))).padStart(2, '0');
+  return `${mm}-${dd}`;
+}
+
+async function requireAdminCtx(action: string) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (!(ctx.isAdmin || ctx.role === 'admin')) throw new Error(`Only an admin can ${action}`);
+  return ctx;
+}
+
+// ---- Allocation types --------------------------------------------------
+export async function createAllocationType(formData: FormData) {
+  const ctx = await requireAdminCtx('add an allocation type');
+  const supabase = createClient();
+  const label = gStr(formData, 'label');
+  if (!label) throw new Error('A name is required');
+  const kindRaw = gStr(formData, 'kind') || 'custom';
+  const kind = ['silage', 'grazing', 'maintenance', 'low_input', 'custom'].includes(kindRaw) ? kindRaw : 'custom';
+  const regime = gStr(formData, 'regime_default') === 'grazing' ? 'grazing' : 'silage';
+  const { error } = await supabase.from('allocation_types').insert({
+    user_id: ctx.ownerId, seed_key: null, label, kind, regime_default: regime,
+    earliest_fert_md: gMd(formData, 'earliest_fert_md'),
+    n_cap_kg_per_ha: gNum(formData, 'n_cap_kg_per_ha'),
+    low_input: gBool(formData, 'low_input'),
+    note: gStr(formData, 'note') || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/allocation-types');
+}
+
+export async function updateAllocationType(formData: FormData) {
+  const ctx = await requireAdminCtx('edit an allocation type');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Allocation type id is required');
+  const regime = gStr(formData, 'regime_default') === 'grazing' ? 'grazing' : 'silage';
+  // Only the user's own rows are editable (a shared seed is forked first).
+  const { error } = await supabase.from('allocation_types').update({
+    label: gStr(formData, 'label'),
+    regime_default: regime,
+    earliest_fert_md: gMd(formData, 'earliest_fert_md'),
+    n_cap_kg_per_ha: gNum(formData, 'n_cap_kg_per_ha'),
+    low_input: gBool(formData, 'low_input'),
+    note: gStr(formData, 'note') || null,
+  }).eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/allocation-types');
+}
+
+/** Copy a seed (or any visible type) into an editable user-owned row. */
+export async function forkAllocationType(formData: FormData) {
+  const ctx = await requireAdminCtx('customise an allocation type');
+  const supabase = createClient();
+  const sourceId = gStr(formData, 'source_id');
+  if (!sourceId) throw new Error('Source id is required');
+  const { data: src } = await supabase.from('allocation_types').select('*').eq('id', sourceId).maybeSingle();
+  if (!src) throw new Error('Allocation type not found');
+  const s = src as Record<string, unknown>;
+  // Unique (user_id,label): if the user already has this label, suffix it.
+  let label = String(s.label);
+  const { data: clash } = await supabase.from('allocation_types').select('id').eq('user_id', ctx.ownerId).eq('label', label).maybeSingle();
+  if (clash) label = `${label} (copy)`;
+  const { error } = await supabase.from('allocation_types').insert({
+    user_id: ctx.ownerId, seed_key: null, label, kind: s.kind, regime_default: s.regime_default,
+    earliest_fert_md: s.earliest_fert_md, n_cap_kg_per_ha: s.n_cap_kg_per_ha, low_input: s.low_input, note: s.note,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/allocation-types');
+}
+
+export async function deleteAllocationType(formData: FormData) {
+  const ctx = await requireAdminCtx('delete an allocation type');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Allocation type id is required');
+  // FK on fields is ON DELETE SET NULL, so this un-assigns fields automatically.
+  const { error } = await supabase.from('allocation_types').delete().eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/allocation-types');
+  revalidatePath('/fields');
+}
+
+/** Set (or clear, with empty value) a field's one allocation type. */
+export async function setFieldAllocationType(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot change allocation types');
+  const supabase = createClient();
+  const fieldId = gStr(formData, 'field_id');
+  if (!fieldId) throw new Error('Field is required');
+  const typeId = gStr(formData, 'allocation_type_id'); // '' clears
+  // Validate the type is visible to this farm (seed or own custom).
+  if (typeId) {
+    const { data: ty } = await supabase.from('allocation_types').select('id').eq('id', typeId).maybeSingle();
+    if (!ty) throw new Error('Allocation type not found');
+  }
+  const { error } = await supabase.from('fields')
+    .update({ allocation_type_id: typeId || null, updated_at: new Date().toISOString() })
+    .eq('id', fieldId).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath('/fields');
+  revalidatePath('/');
+}
+
+/** Bulk-assign one allocation type to a set of fields (one-per-field). */
+export async function setAllocationTypeMembership(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot change allocation types');
+  const supabase = createClient();
+  const typeId = gStr(formData, 'allocation_type_id');
+  if (!typeId) throw new Error('Allocation type id is required');
+  const raw = gStr(formData, 'field_ids');
+  const fieldIds = raw === '' ? [] : raw.split(',').filter(Boolean);
+
+  // Clear this type from fields that have it but aren't in the new list.
+  if (fieldIds.length === 0) {
+    const { error } = await supabase.from('fields')
+      .update({ allocation_type_id: null, updated_at: new Date().toISOString() })
+      .eq('user_id', ctx.ownerId).eq('allocation_type_id', typeId);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error: clearErr } = await supabase.from('fields')
+      .update({ allocation_type_id: null, updated_at: new Date().toISOString() })
+      .eq('user_id', ctx.ownerId).eq('allocation_type_id', typeId)
+      .not('id', 'in', `(${fieldIds.map((id) => `"${id}"`).join(',')})`);
+    if (clearErr) throw new Error(clearErr.message);
+    const { error: setErr } = await supabase.from('fields')
+      .update({ allocation_type_id: typeId, updated_at: new Date().toISOString() })
+      .eq('user_id', ctx.ownerId).in('id', fieldIds);
+    if (setErr) throw new Error(setErr.message);
+  }
+  revalidatePath('/settings/allocation-types');
+  revalidatePath('/fields');
+  revalidatePath('/');
+}
+
+// ---- Agreements (catalogue) -------------------------------------------
+function readAgreementFields(formData: FormData) {
+  return {
+    code: gStr(formData, 'code') || '—',
+    name: gStr(formData, 'name'),
+    scheme: (['sfi', 'cs', 'es', 'custom'].includes(gStr(formData, 'scheme')) ? gStr(formData, 'scheme') : 'custom'),
+    summary: gStr(formData, 'summary') || '',
+    no_manufactured_fert: gBool(formData, 'no_manufactured_fert'),
+    manufactured_n_cap_kg_ha: gNum(formData, 'manufactured_n_cap_kg_ha'),
+    total_n_cap_kg_ha: gNum(formData, 'total_n_cap_kg_ha'),
+    organic_manure_cap_t_ha: gNum(formData, 'organic_manure_cap_t_ha'),
+    manure_cut_years_only: gBool(formData, 'manure_cut_years_only'),
+    organic_n_field_cap_kg_ha: gNum(formData, 'organic_n_field_cap_kg_ha'),
+    no_phosphate: gBool(formData, 'no_phosphate'),
+    no_potash: gBool(formData, 'no_potash'),
+    closed_cut_start_md: gMd(formData, 'closed_cut_start_md'),
+    closed_cut_end_md: gMd(formData, 'closed_cut_end_md'),
+    earliest_cut_md: gMd(formData, 'earliest_cut_md'),
+    manufactured_n_closed_start_md: gMd(formData, 'manufactured_n_closed_start_md'),
+    manufactured_n_closed_end_md: gMd(formData, 'manufactured_n_closed_end_md'),
+    livestock_exclusion_weeks_pre_cut: gInt(formData, 'livestock_exclusion_weeks_pre_cut'),
+    grazing_closed_start_md: gMd(formData, 'grazing_closed_start_md'),
+    grazing_closed_end_md: gMd(formData, 'grazing_closed_end_md'),
+    max_stocking_lu_ha: gNum(formData, 'max_stocking_lu_ha'),
+    no_supplementary_feeding: gBool(formData, 'no_supplementary_feeding'),
+    mineral_blocks_allowed: gBool(formData, 'mineral_blocks_allowed'),
+    min_ph: gNum(formData, 'min_ph'),
+    note: gStr(formData, 'note') || null,
+  };
+}
+
+export async function createAgreement(formData: FormData) {
+  const ctx = await requireAdminCtx('add an agreement');
+  const supabase = createClient();
+  const fields = readAgreementFields(formData);
+  if (!fields.name) throw new Error('A name is required');
+  const { error } = await supabase.from('agreements').insert({ user_id: ctx.ownerId, seed_key: null, ...fields });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/agreements');
+}
+
+export async function updateAgreement(formData: FormData) {
+  const ctx = await requireAdminCtx('edit an agreement');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Agreement id is required');
+  const fields = readAgreementFields(formData);
+  const { error } = await supabase.from('agreements').update(fields).eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/agreements');
+}
+
+/** Copy a seed (or any visible agreement) into an editable user-owned row. */
+export async function forkAgreement(formData: FormData) {
+  const ctx = await requireAdminCtx('customise an agreement');
+  const supabase = createClient();
+  const sourceId = gStr(formData, 'source_id');
+  if (!sourceId) throw new Error('Source id is required');
+  const { data: src } = await supabase.from('agreements').select('*').eq('id', sourceId).maybeSingle();
+  if (!src) throw new Error('Agreement not found');
+  const s = src as Record<string, unknown>;
+  delete s.id; delete s.created_at;
+  let code = String(s.code);
+  const { data: clash } = await supabase.from('agreements').select('id').eq('user_id', ctx.ownerId).eq('code', code).maybeSingle();
+  if (clash) code = `${code} (copy)`;
+  const { error } = await supabase.from('agreements').insert({ ...s, code, user_id: ctx.ownerId, seed_key: null });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/agreements');
+}
+
+export async function deleteAgreement(formData: FormData) {
+  const ctx = await requireAdminCtx('delete an agreement');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Agreement id is required');
+  // field_agreements cascade on delete.
+  const { error } = await supabase.from('agreements').delete().eq('id', id).eq('user_id', ctx.ownerId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/agreements');
+  revalidatePath('/fields');
+}
+
+/** Bulk-set which fields are in one agreement (many-to-many membership). */
+export async function setAgreementMembership(formData: FormData) {
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (ctx.role === 'agronomist') throw new Error('Agronomists cannot change agreements');
+  const supabase = createClient();
+  const agreementId = gStr(formData, 'agreement_id');
+  if (!agreementId) throw new Error('Agreement id is required');
+  const raw = gStr(formData, 'field_ids');
+  const fieldIds = raw === '' ? [] : raw.split(',').filter(Boolean);
+
+  const { data: current } = await supabase.from('field_agreements')
+    .select('id, field_id').eq('agreement_id', agreementId).eq('user_id', ctx.ownerId);
+  const rows = (current ?? []) as { id: string; field_id: string }[];
+  const have = new Set(rows.map((r) => r.field_id));
+  const want = new Set(fieldIds);
+
+  const removeIds = rows.filter((r) => !want.has(r.field_id)).map((r) => r.id);
+  if (removeIds.length) {
+    const { error } = await supabase.from('field_agreements').delete().in('id', removeIds);
+    if (error) throw new Error(error.message);
+  }
+  const addFieldIds = fieldIds.filter((id) => !have.has(id));
+  if (addFieldIds.length) {
+    // Validate the fields belong to this farm.
+    const { data: validFields } = await supabase.from('fields').select('id').eq('user_id', ctx.ownerId).in('id', addFieldIds);
+    const valid = new Set(((validFields ?? []) as { id: string }[]).map((f) => f.id));
+    const insertRows = addFieldIds.filter((id) => valid.has(id)).map((fid) => ({
+      user_id: ctx.ownerId, field_id: fid, agreement_id: agreementId, created_by: ctx.userId,
+    }));
+    if (insertRows.length) {
+      const { error } = await supabase.from('field_agreements').insert(insertRows);
+      if (error) throw new Error(error.message);
+    }
+  }
+  revalidatePath('/settings/agreements');
+  revalidatePath('/fields');
+}

@@ -27,6 +27,7 @@ import {
   saveDrawnBoundary,
   acceptMappedArea,
 } from "@/lib/map-actions";
+import { COLOURS, fieldsToFC, buildColouring, type ColourMode } from "@/lib/map-colours";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,6 +48,10 @@ export type MapField = {
   boundary_source: string | null;
   rpa_sheet_id: string | null;
   rpa_parcel_id: string | null;
+  // Land axes for categorical "colour by" modes (optional — absent = uncategorised).
+  group_id?: string | null;
+  allocation_type_id?: string | null;
+  agreementIds?: string[];
 };
 
 type MapSettings = {
@@ -59,25 +64,13 @@ type Props = {
   fields: MapField[];
   mapSettings: MapSettings;
   mapboxToken: string | null;
+  /** id → label for the categorical colour legends. */
+  blockNames?: Record<string, string>;
+  typeNames?: Record<string, string>;
+  agreementCodes?: Record<string, string>;
 };
 
 type Mode = "view" | "adopt" | "draw";
-type ColourMode = "none" | "ph" | "p" | "k";
-
-// ---------------------------------------------------------------------------
-// Constants — colours echo the app's forest / amber / red conventions.
-// INTEGRATION: swap these for the app's exact design tokens if they differ.
-// ---------------------------------------------------------------------------
-const COLOURS = {
-  good: "#3f8f4f",
-  warn: "#e0a210",
-  bad: "#d6492f",
-  unknown: "#9aa0a6",
-  neutral: "#2f7d6a",
-  parcel: "#22d3ee",
-  draw: "#f59e0b",
-  allocated: "#f97316", // already-adopted parcels — strong orange, reads clearly on satellite
-};
 
 const UK_DEFAULT: { center: [number, number]; zoom: number } = {
   center: [-1.6, 53.0],
@@ -89,46 +82,6 @@ const VIEW_KEY = "swardly_map_view";
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
-function indexColour(v: number | null): string {
-  if (v == null) return COLOURS.unknown;
-  if (v <= 1) return COLOURS.bad; // deficient → build up
-  if (v === 2) return COLOURS.good; // target
-  return COLOURS.warn; // index 3+ → high, hold
-}
-
-function statusColourFor(f: MapField, mode: ColourMode): string {
-  if (mode === "none") return COLOURS.neutral;
-  if (mode === "ph") {
-    // Lime status from the recommendation engine (server-computed).
-    if (!f.limeStatus || f.limeStatus === "unknown") return COLOURS.unknown;
-    if (f.limeStatus === "ok") return COLOURS.good;
-    if (f.limeStatus === "low") return COLOURS.warn;
-    return COLOURS.bad; // 'due'
-  }
-  if (mode === "p") return indexColour(f.p_idx);
-  return indexColour(f.k_idx);
-}
-
-function fieldsToFC(fields: MapField[], mode: ColourMode) {
-  return {
-    type: "FeatureCollection" as const,
-    features: fields
-      .filter((f) => f.boundary)
-      .map((f) => ({
-        type: "Feature" as const,
-        geometry: f.boundary,
-        properties: {
-          id: f.id,
-          name: f.name,
-          colour: statusColourFor(f, mode),
-          ha: f.ha,
-          mapped: f.area_ha_mapped,
-          source: f.boundary_source ?? "",
-        },
-      })),
-  };
-}
-
 /** Key identifying an RPA parcel: sheet + parcel id. */
 function parcelKey(sheetId: string | null, parcelId: string | null): string {
   return `${sheetId ?? ""}|${parcelId ?? ""}`;
@@ -217,7 +170,7 @@ function readSavedView(): { center: [number, number]; zoom: number } | null {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props) {
+export default function FarmMapShell({ fields, mapSettings, mapboxToken, blockNames, typeNames, agreementCodes }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const mlRef = useRef<any>(null); // the maplibre-gl module (for Popup)
@@ -229,6 +182,20 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
   const [colourMode, setColourMode] = useState<ColourMode>("none");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Colour-by mode → per-field colour fn + legend. Categorical modes
+  // (block/type/agreement) only appear in the picker when fields carry them.
+  const colouring = useMemo(
+    () => buildColouring(fields, colourMode, {
+      block: blockNames ?? {},
+      type: typeNames ?? {},
+      agreement: agreementCodes ?? {},
+    }),
+    [fields, colourMode, blockNames, typeNames, agreementCodes],
+  );
+  const hasBlocks = useMemo(() => fields.some((f) => f.group_id), [fields]);
+  const hasTypes = useMemo(() => fields.some((f) => f.allocation_type_id), [fields]);
+  const hasAgreements = useMemo(() => fields.some((f) => f.agreementIds && f.agreementIds.length > 0), [fields]);
 
   // current GPS location → which field am I in
   const [currentLoc, setCurrentLoc] = useState<{
@@ -371,7 +338,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
 
       map.on("load", () => {
         // Sources
-        map.addSource("fields", { type: "geojson", data: fieldsToFC(fields, "none") as any });
+        map.addSource("fields", { type: "geojson", data: fieldsToFC(fields, () => COLOURS.neutral) as any });
         map.addSource("parcels", { type: "geojson", data: parcelsToFC([], new Map()) as any });
         map.addSource("draw", { type: "geojson", data: drawToFC([]) as any });
 
@@ -534,9 +501,9 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
     const map = mapRef.current;
     if (!ready || !map) return;
     (map.getSource("fields") as GeoJSONSource | undefined)?.setData(
-      fieldsToFC(fields, colourMode) as any
+      fieldsToFC(fields, colouring.colourOf) as any
     );
-  }, [fields, colourMode, ready]);
+  }, [fields, colouring, ready]);
 
   // --- parcels source ------------------------------------------------------
   useEffect(() => {
@@ -689,13 +656,15 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken }: Props
           <option value="ph">Lime status</option>
           <option value="p">P index</option>
           <option value="k">K index</option>
+          {hasBlocks && <option value="block">Block</option>}
+          {hasTypes && <option value="type">Allocation type</option>}
+          {hasAgreements && <option value="agreement">Agreement</option>}
         </select>
-        {colourMode !== "none" && (
+        {colouring.legend.length > 0 && (
           <div className="mt-2 space-y-1 text-[11px] text-stone-600">
-            <LegendRow colour={COLOURS.good} label={colourMode === "ph" ? "At/above target" : "Index 2 (target)"} />
-            <LegendRow colour={COLOURS.warn} label={colourMode === "ph" ? "Slightly low" : "Index 3+ (high)"} />
-            <LegendRow colour={COLOURS.bad} label={colourMode === "ph" ? "Low — lime due" : "Index 0–1 (low)"} />
-            <LegendRow colour={COLOURS.unknown} label="Not sampled" />
+            {colouring.legend.map((row, i) => (
+              <LegendRow key={i} colour={row.colour} label={row.label} />
+            ))}
           </div>
         )}
       </div>

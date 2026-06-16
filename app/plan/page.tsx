@@ -3,9 +3,13 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import {
   loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
+  loadAllocationTypes, loadAgreements, loadFieldAgreementMap,
 } from '@/lib/data';
 import { buildFertPlanRows } from '@/lib/fertplan';
 import { PlanShell } from '@/components/PlanShell';
+import { ReportAxisFilters } from '@/components/ReportAxisFilters';
+import { TopicMap } from '@/components/TopicMap';
+import { axisChipOptions, fieldPassesAxisParams } from '@/lib/grouping';
 import { Product } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -13,23 +17,56 @@ export const dynamic = 'force-dynamic';
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: { group?: string; from?: string };
+  searchParams: { group?: string; from?: string; type?: string; agreement?: string };
 }) {
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups, grassSystems] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllProducts(),
     loadGroups(),
     loadGrassSystems(),
+    loadAllocationTypes(),
+    loadAgreements(),
+    loadFieldAgreementMap(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
+  const typeFilter = searchParams.type || 'all';
+  const agreementFilter = searchParams.agreement || 'all';
 
-  const rows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
+  const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
+
+  // Type & agreement are applied here by pre-filtering rows to an allowed-field
+  // set (the block axis stays in PlanShell's own group filter). Rows are keyed
+  // by field id.
+  const allowedFieldIds = new Set(
+    fields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap)).map((f) => f.id),
+  );
+  const rows = (typeFilter === 'all' && agreementFilter === 'all')
+    ? allRows
+    : allRows.filter((r) => allowedFieldIds.has(r.id));
+
+  const axisOptions = axisChipOptions({
+    fields,
+    blocks: groups.map((g) => ({ id: g.id, name: g.name })),
+    types: allocationTypes.map((t) => ({ id: t.id, label: t.label })),
+    agreements: agreements.map((a) => ({ id: a.id, code: a.code })),
+    fieldAgreementMap,
+  });
+
+  // Topic map: soil P & K index across all mapped fields.
+  const planTopicFields = fields
+    .filter((f) => f.boundary)
+    .map((f) => ({
+      id: f.id, name: f.name, ha: f.ha ?? 0, ph: f.ph ?? null,
+      p_idx: f.p_idx ?? null, k_idx: f.k_idx ?? null,
+      boundary: (f.boundary as object | null) ?? null,
+      centroid_lat: f.centroid_lat ?? null, centroid_lng: f.centroid_lng ?? null,
+    }));
 
   const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
   const planProducts = products.filter(
@@ -53,6 +90,15 @@ export default async function PlanPage({
           <div style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>Plan</div>
           <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>Slurry first, then granular</div>
         </div>
+      </div>
+      <ReportAxisFilters
+        typeOptions={axisOptions.type}
+        agreementOptions={axisOptions.agreement}
+        typeValue={typeFilter}
+        agreementValue={agreementFilter}
+      />
+      <div style={{ padding: '12px 16px 0' }}>
+        <TopicMap title="Soil P & K map" modes={['p', 'k']} fields={planTopicFields} />
       </div>
       <PlanShell
         rows={rows}
