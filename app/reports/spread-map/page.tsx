@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import {
-  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
+  loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems, loadCropAllocations,
 } from '@/lib/data';
 import { loadMapSettings } from '@/lib/map-data';
 import { buildFertPlanRows } from '@/lib/fertplan';
+import { activeCropFieldIds } from '@/lib/grouping';
 import { SpreadMapShell, SpreadMapField } from '@/components/SpreadMapShell';
 import { Product } from '@/lib/types';
 
@@ -17,7 +18,7 @@ export default async function SpreadMapPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups, mapSettings, grassSystems] = await Promise.all([
+  const [fields, applications, cuts, products, groups, mapSettings, grassSystems, cropAllocations] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
@@ -25,18 +26,25 @@ export default async function SpreadMapPage({
     loadGroups(),
     loadMapSettings(),
     loadGrassSystems(),
+    loadCropAllocations(),
   ]);
 
   const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
+
+  // A field with an active crop allocation is a crop field this season, not
+  // grass — drop it so the spread map isn't double-counted. The geometry below
+  // is keyed off these rows, so crop fields fall out of the map too.
+  const activeCropIds = activeCropFieldIds(cropAllocations);
+  const grassRows = allRows.filter((r) => !activeCropIds.has(r.id));
 
   // Respect the same block filter the spread list used, so the map sheets show
   // only the block's fields.
   const group = searchParams.group;
   const rows = !group
-    ? allRows
+    ? grassRows
     : group === 'ungrouped'
-      ? allRows.filter((r) => !r.groupId)
-      : allRows.filter((r) => r.groupId === group);
+      ? grassRows.filter((r) => !r.groupId)
+      : grassRows.filter((r) => r.groupId === group);
 
   const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
   const planProducts = products.filter((p) => p.type === 'bag_fert' || isOrganic(p));
