@@ -1,9 +1,9 @@
-import { loadFields, loadGroups, loadSettings, loadAllApplications, loadAllProducts, loadAllocationTypes, loadAgreements, loadFieldAgreementMap } from '@/lib/data';
+import { loadFields, loadGroups, loadSettings, loadAllApplications, loadAllProducts, loadAllocationTypes, loadAgreements, loadFieldAgreementMap, loadCropAllocations } from '@/lib/data';
 import { getFieldLimeRecommendation, resolveTargetPh, displayFieldArea } from '@/lib/rules';
 import { LimeReportShell, LimeRow } from '@/components/LimeReportShell';
 import { ReportAxisFilters } from '@/components/ReportAxisFilters';
 import { TopicMap } from '@/components/TopicMap';
-import { axisChipOptions, fieldPassesAxisParams } from '@/lib/grouping';
+import { axisChipOptions, fieldPassesAxisParams, activeCropFieldIds } from '@/lib/grouping';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export default async function LimeReportPage({
 }: {
   searchParams: { group?: string; from?: string; type?: string; agreement?: string };
 }) {
-  const [fields, groups, settings, applications, products, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
+  const [fields, groups, settings, applications, products, allocationTypes, agreements, fieldAgreementMap, cropAllocations] = await Promise.all([
     loadFields(),
     loadGroups(),
     loadSettings(),
@@ -21,6 +21,7 @@ export default async function LimeReportPage({
     loadAllocationTypes(),
     loadAgreements(),
     loadFieldAgreementMap(),
+    loadCropAllocations(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
@@ -110,14 +111,18 @@ export default async function LimeReportPage({
       };
     });
 
+  // Active-crop fields drop out of the grass lime report this season.
+  const activeCropIds = activeCropFieldIds(cropAllocations);
+  const grassRows = allRows.filter((r) => !activeCropIds.has(r.id));
+
   // Type & agreement applied by pre-filtering to an allowed-field set; block
   // stays in LimeReportShell's group filter. Rows are keyed by field id.
   const allowedFieldIds = new Set(
     fields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap)).map((f) => f.id),
   );
   const rows = (typeFilter === 'all' && agreementFilter === 'all')
-    ? allRows
-    : allRows.filter((r) => allowedFieldIds.has(r.id));
+    ? grassRows
+    : grassRows.filter((r) => allowedFieldIds.has(r.id));
 
   // Topic map: lime status across all mapped fields (overview, not table-filtered).
   const limeTopicFields = fields

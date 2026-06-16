@@ -12,10 +12,11 @@ import {
   loadAllocationTypes,
   loadAgreements,
   loadFieldAgreementMap,
+  loadCropAllocations,
 } from '@/lib/data';
 import { getSeasonStart } from '@/lib/rules';
 import { ReportAxisFilters } from '@/components/ReportAxisFilters';
-import { axisChipOptions, fieldPassesAxisParams } from '@/lib/grouping';
+import { axisChipOptions, fieldPassesAxisParams, activeCropFieldIds } from '@/lib/grouping';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export default async function GrazingReportPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap, cropAllocations] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
@@ -37,6 +38,7 @@ export default async function GrazingReportPage({
     loadAllocationTypes(),
     loadAgreements(),
     loadFieldAgreementMap(),
+    loadCropAllocations(),
   ]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -45,11 +47,13 @@ export default async function GrazingReportPage({
   const typeFilter = searchParams.type || 'all';
   const agreementFilter = searchParams.agreement || 'all';
 
-  // Type & agreement applied by pre-filtering the field set; block stays in the
-  // grazing shell's own group filter.
+  // Active-crop fields drop out of the grass grazing schedule this season, then
+  // type & agreement pre-filter the rest; block stays in the grazing shell.
+  const activeCropIds = activeCropFieldIds(cropAllocations);
+  const grassFields = fields.filter((f) => !activeCropIds.has(f.id));
   const visibleFields = (typeFilter === 'all' && agreementFilter === 'all')
-    ? fields
-    : fields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap));
+    ? grassFields
+    : grassFields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap));
 
   const axisOptions = axisChipOptions({
     fields,

@@ -3,13 +3,13 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import {
   loadFields, loadAllApplications, loadAllCuts, loadAllProducts, loadGroups, loadSettings, loadGrassSystems,
-  loadAllocationTypes, loadAgreements, loadFieldAgreementMap,
+  loadAllocationTypes, loadAgreements, loadFieldAgreementMap, loadCropAllocations,
 } from '@/lib/data';
 import { buildFertPlanRows } from '@/lib/fertplan';
 import { PlanShell } from '@/components/PlanShell';
 import { ReportAxisFilters } from '@/components/ReportAxisFilters';
 import { TopicMap } from '@/components/TopicMap';
-import { axisChipOptions, fieldPassesAxisParams } from '@/lib/grouping';
+import { axisChipOptions, fieldPassesAxisParams, activeCropFieldIds } from '@/lib/grouping';
 import { Product } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export default async function PlanPage({
   const settings = await loadSettings();
   if (!settings.onboarded) redirect('/welcome');
 
-  const [fields, applications, cuts, products, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap] = await Promise.all([
+  const [fields, applications, cuts, products, groups, grassSystems, allocationTypes, agreements, fieldAgreementMap, cropAllocations] = await Promise.all([
     loadFields(),
     loadAllApplications(),
     loadAllCuts(),
@@ -32,6 +32,7 @@ export default async function PlanPage({
     loadAllocationTypes(),
     loadAgreements(),
     loadFieldAgreementMap(),
+    loadCropAllocations(),
   ]);
 
   const groupFilter = searchParams.group || 'all';
@@ -40,6 +41,11 @@ export default async function PlanPage({
 
   const allRows = buildFertPlanRows(fields, applications, cuts, products, settings, groups, grassSystems);
 
+  // A field with an ACTIVE crop allocation is a crop field this season, not
+  // grass — it drops out of the grass plan so its nutrients aren't double-counted.
+  const activeCropIds = activeCropFieldIds(cropAllocations);
+  const grassRows = allRows.filter((r) => !activeCropIds.has(r.id));
+
   // Type & agreement are applied here by pre-filtering rows to an allowed-field
   // set (the block axis stays in PlanShell's own group filter). Rows are keyed
   // by field id.
@@ -47,8 +53,8 @@ export default async function PlanPage({
     fields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap)).map((f) => f.id),
   );
   const rows = (typeFilter === 'all' && agreementFilter === 'all')
-    ? allRows
-    : allRows.filter((r) => allowedFieldIds.has(r.id));
+    ? grassRows
+    : grassRows.filter((r) => allowedFieldIds.has(r.id));
 
   const axisOptions = axisChipOptions({
     fields,

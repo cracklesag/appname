@@ -4505,3 +4505,115 @@ export async function setAgreementMembership(formData: FormData) {
   revalidatePath('/settings/agreements');
   revalidatePath('/fields');
 }
+
+// =============================================================================
+// Crop catalogue editor — fork a seed/crop into an editable user copy, edit the
+// practical fields, or delete a custom crop. Admin-only (a catalogue change).
+// The N-stage and micronutrient arrays are carried from the source on fork and
+// preserved on edit (advanced array editing is intentionally out of this form).
+// =============================================================================
+
+/** Duplicate any crop (shared seed or custom) into the farm's own editable copy. */
+export async function forkCrop(formData: FormData) {
+  const ctx = await requireAdminCtx('add a crop');
+  const supabase = createClient();
+  const cropId = gStr(formData, 'crop_id');
+  if (!cropId) throw new Error('Crop is required');
+  const { data: src, error: e1 } = await supabase.from('crops').select('*').eq('id', cropId).maybeSingle();
+  if (e1) throw new Error(e1.message);
+  if (!src) throw new Error('Crop not found');
+  const r = src as Record<string, unknown>;
+  const { error } = await supabase.from('crops').insert({
+    user_id: ctx.ownerId,
+    seed_key: null,
+    label: `${String(r.label)} (copy)`,
+    category: r.category,
+    yield_default: r.yield_default,
+    yield_unit: r.yield_unit,
+    yield_range: r.yield_range,
+    offtake: r.offtake,
+    total_n: r.total_n,
+    n_target_kg_per_ha: r.n_target_kg_per_ha,
+    pk_regime: r.pk_regime,
+    n_stages: r.n_stages,
+    target_ph: r.target_ph,
+    ph_note: r.ph_note,
+    soil_fit: r.soil_fit,
+    manure_fit: r.manure_fit,
+    needs_mg: r.needs_mg,
+    needs_na: r.needs_na,
+    needs_s: r.needs_s,
+    sulphur_note: r.sulphur_note,
+    micros: r.micros,
+    family: r.family,
+    k_lift_top_up_note: r.k_lift_top_up_note,
+    evidence: r.evidence,
+    sources: r.sources,
+    summary: r.summary,
+    sort_order: r.sort_order,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/crops');
+  revalidatePath('/crops');
+}
+
+/** Edit a custom crop's scalar + offtake fields. N stages / micros preserved. */
+export async function updateCrop(formData: FormData) {
+  await requireAdminCtx('edit a crop');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Missing crop id');
+  const label = gStr(formData, 'label');
+  if (!label) throw new Error('A name is required');
+
+  const offtake: Record<string, unknown> = {
+    p2o5: gNum(formData, 'offtake_p2o5') ?? 0,
+    k2o: gNum(formData, 'offtake_k2o') ?? 0,
+    basis: gStr(formData, 'offtake_basis') || 'per unit of yield',
+  };
+  const offN = gNum(formData, 'offtake_n'); if (offN != null) offtake.n = offN;
+  const offMg = gNum(formData, 'offtake_mgo'); if (offMg != null) offtake.mgo = offMg;
+  const offNa = gNum(formData, 'offtake_na2o'); if (offNa != null) offtake.na2o = offNa;
+
+  const patch = {
+    label,
+    category: gStr(formData, 'category'),
+    yield_default: gNum(formData, 'yield_default') ?? 0,
+    yield_unit: gStr(formData, 'yield_unit'),
+    yield_range: gStr(formData, 'yield_range'),
+    offtake,
+    total_n: gStr(formData, 'total_n'),
+    n_target_kg_per_ha: gNum(formData, 'n_target_kg_per_ha') ?? 0,
+    pk_regime: gStr(formData, 'pk_regime'),
+    target_ph: gNum(formData, 'target_ph') ?? 6.0,
+    ph_note: gStr(formData, 'ph_note') || null,
+    soil_fit: gStr(formData, 'soil_fit'),
+    manure_fit: gStr(formData, 'manure_fit'),
+    needs_mg: gBool(formData, 'needs_mg'),
+    needs_na: gBool(formData, 'needs_na'),
+    needs_s: gBool(formData, 'needs_s'),
+    sulphur_note: gStr(formData, 'sulphur_note') || null,
+    evidence: gStr(formData, 'evidence'),
+    sources: gStr(formData, 'sources'),
+    summary: gStr(formData, 'summary'),
+  };
+  // RLS scopes to the owner; the user_id guard prevents touching shared seeds.
+  const { error } = await supabase.from('crops').update(patch).eq('id', id).not('user_id', 'is', null);
+  if (error) throw new Error(error.message);
+  revalidatePath('/settings/crops');
+  revalidatePath(`/settings/crops/${id}`);
+  revalidatePath('/crops');
+}
+
+/** Delete a custom crop. Blocked by the DB if any allocation still uses it. */
+export async function deleteCrop(formData: FormData) {
+  await requireAdminCtx('delete a crop');
+  const supabase = createClient();
+  const id = gStr(formData, 'id');
+  if (!id) throw new Error('Missing crop id');
+  const { error } = await supabase.from('crops').delete().eq('id', id).not('user_id', 'is', null);
+  if (error) {
+    throw new Error('Could not delete this crop — it may be allocated to a field. Remove those allocations first.');
+  }
+  revalidatePath('/settings/crops');
+}
