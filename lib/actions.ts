@@ -392,6 +392,65 @@ export async function deleteApplication(formData: FormData) {
   redirect(dest);
 }
 
+const NEXT_ACTION_TO_KIND: Record<string, 'silage' | 'grazing' | 'maintenance'> = {
+  another_cut_silage: 'silage',
+  another_cut_bales: 'silage',
+  rotational_grazing: 'grazing',
+  maintenance_grazing: 'maintenance',
+};
+
+/**
+ * Keep a field's allocation TYPE in step with how it's being run. After any cut
+ * change we read the field's most-recent cut; its next_action implies a kind
+ * (silage / grazing / maintenance) and we switch the field's allocation_type_id
+ * to a type of that kind — UNLESS the current type is already that kind (so a
+ * deliberately-chosen custom of the right kind is left alone). Picks the seeded
+ * type of the kind for predictability; if none exists, any of that kind. No
+ * matching type → no change. Uses the service client (owner-scoped) so it works
+ * whoever logged the cut, since it's an automatic consequence of logging rather
+ * than a manual type edit.
+ */
+async function syncFieldAllocationTypeFromCuts(ownerId: string, fieldId: string): Promise<void> {
+  if (!ownerId || !fieldId) return;
+  const svc = createServiceClient();
+
+  const { data: cuts } = await svc
+    .from('cuts').select('cut_date, cut_number, next_action')
+    .eq('user_id', ownerId).eq('field_id', fieldId);
+  if (!cuts || cuts.length === 0) return;
+  const latest = [...cuts].sort((a, b) =>
+    a.cut_date !== b.cut_date
+      ? String(b.cut_date).localeCompare(String(a.cut_date))
+      : (b.cut_number as number) - (a.cut_number as number),
+  )[0];
+  const targetKind = latest.next_action ? NEXT_ACTION_TO_KIND[latest.next_action as string] : undefined;
+  if (!targetKind) return; // null next_action (pre-feature data) → leave as-is
+
+  const { data: field } = await svc
+    .from('fields').select('allocation_type_id').eq('id', fieldId).eq('user_id', ownerId).maybeSingle();
+  if (!field) return;
+  const currentTypeId = (field as { allocation_type_id: string | null }).allocation_type_id;
+
+  if (currentTypeId) {
+    const { data: cur } = await svc
+      .from('allocation_types').select('kind').eq('id', currentTypeId).maybeSingle();
+    if ((cur as { kind: string } | null)?.kind === targetKind) return; // already the right kind
+  }
+
+  const { data: candidates } = await svc
+    .from('allocation_types').select('id, user_id, sort_order')
+    .eq('kind', targetKind).or(`user_id.is.null,user_id.eq.${ownerId}`)
+    .order('sort_order', { ascending: true });
+  if (!candidates || candidates.length === 0) return; // nothing of that kind to switch to
+  const seeded = candidates.find((c) => (c as { user_id: string | null }).user_id === null);
+  const targetId = ((seeded ?? candidates[0]) as { id: string }).id;
+  if (targetId === currentTypeId) return;
+
+  await svc.from('fields')
+    .update({ allocation_type_id: targetId, updated_at: new Date().toISOString() })
+    .eq('id', fieldId).eq('user_id', ownerId);
+}
+
 export async function saveCut(formData: FormData) {
   const supabase = createClient();
   const ctx = await getFarmContext();
@@ -432,6 +491,7 @@ export async function saveCut(formData: FormData) {
   // backdated cuts being inserted between existing ones. Operates on the
   // farm owner's rows.
   await renumberCutsForField(supabase, ctx.ownerId, fieldId);
+  await syncFieldAllocationTypeFromCuts(ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -478,6 +538,7 @@ export async function updateCut(formData: FormData) {
 
   // Date may have moved — renumber so chronological order holds.
   await renumberCutsForField(supabase, ctx.ownerId, fieldId);
+  await syncFieldAllocationTypeFromCuts(ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -504,6 +565,7 @@ export async function deleteCut(formData: FormData) {
 
   // Close the gap left by the deleted cut so cut numbers stay 1..N.
   if (fieldId) await renumberCutsForField(supabase, ctx.ownerId, fieldId);
+  if (fieldId) await syncFieldAllocationTypeFromCuts(ctx.ownerId, fieldId);
 
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
@@ -2476,6 +2538,12 @@ export async function setCutNextAction(formData: FormData) {
     .from('cuts').update({ next_action: nextAction })
     .eq('id', cutId).eq('user_id', user.id);
   if (error) throw new Error(`Could not update next action: ${error.message}`);
+
+  // Keep the field's allocation type in step with the new next-action choice.
+  if (fieldId) {
+    const ctx = await getFarmContext();
+    if (ctx) await syncFieldAllocationTypeFromCuts(ctx.ownerId, fieldId);
+  }
 
   if (fieldId) revalidatePath(`/fields/${fieldId}`);
   revalidatePath('/');
