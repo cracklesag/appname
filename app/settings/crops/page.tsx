@@ -26,7 +26,7 @@ export default async function CropCataloguePage() {
       <div style={{ padding: '12px 16px' }}>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 14px', lineHeight: 1.5 }}>
           The crops you can put a field on. The seeded crops follow AHDB/PDA guidance and are read-only —
-          {isAdmin ? ' make an editable copy to tune yields, offtake, N target or pH for your ground.' : ' your farm admin can copy and tune these.'}
+          {isAdmin ? ' duplicate one to tune yields, offtake, N target or pH for your ground.' : ' your farm admin can duplicate and tune these.'}
         </p>
 
         {groups.map((g) => (
@@ -42,7 +42,7 @@ export default async function CropCataloguePage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{ fontFamily: '"Fraunces", serif', fontSize: 16, fontWeight: 600 }}>{c.profile.label}</span>
                       {isSeed
-                        ? <Lock size={11} style={{ color: 'var(--muted)' }} aria-label="Seeded — copy to edit" />
+                        ? <Lock size={11} style={{ color: 'var(--muted)' }} aria-label="Seeded — duplicate to edit" />
                         : <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: '#EAF1EA', color: 'var(--forest-dark)' }}>CUSTOM</span>}
                     </div>
                     <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2, lineHeight: 1.4 }}>
@@ -57,8 +57,8 @@ export default async function CropCataloguePage() {
                     isSeed ? (
                       <form action={forkCrop}>
                         <input type="hidden" name="crop_id" value={c.id} />
-                        <button type="submit" aria-label={`Copy ${c.profile.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, fontWeight: 700, color: 'var(--forest-dark)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-                          <Copy size={14} /> Copy
+                        <button type="submit" aria-label={`Duplicate ${c.profile.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, fontWeight: 700, color: 'var(--forest-dark)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                          <Copy size={14} /> Duplicate
                         </button>
                       </form>
                     ) : (
@@ -82,8 +82,8 @@ export default async function CropCataloguePage() {
         ))}
 
         <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 4 }}>
-          To add a custom crop, copy the closest seeded crop and adjust it — that carries sensible nitrogen stages and
-          micronutrient notes to start from. A copy you no longer use can be deleted unless it&apos;s allocated to a field.
+          To add a custom crop, duplicate the closest seeded crop and adjust it — that carries sensible nitrogen stages and
+          micronutrient notes to start from. A duplicate you no longer use can be deleted unless it&apos;s allocated to a field.
         </p>
       </div>
     </div>

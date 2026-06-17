@@ -633,6 +633,16 @@ export function loadedCropFromRow(r: CropRow): LoadedCrop {
 export function loadedCropsByCategory(crops: LoadedCrop[]): { category: CropCategory; label: string; crops: LoadedCrop[] }[] {
   const order: CropCategory[] = ['forage', 'cereal_grain', 'catch'];
   return order
-    .map((category) => ({ category, label: CATEGORY_LABEL[category], crops: crops.filter((c) => c.profile.category === category) }))
+    .map((category) => ({
+      category,
+      label: CATEGORY_LABEL[category],
+      // Custom crops (userId set) sort to the top of each category, ahead of the
+      // read-only seeded crops. sort() is stable, so the existing order within
+      // the custom block and within the seed block is preserved.
+      crops: crops
+        .filter((c) => c.profile.category === category)
+        .slice()
+        .sort((a, b) => (a.userId !== null ? 0 : 1) - (b.userId !== null ? 0 : 1)),
+    }))
     .filter((g) => g.crops.length > 0);
 }

@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { ArrowLeft, Sprout, ChevronRight, BookOpen, AlertTriangle, Settings } from 'lucide-react';
+import { ArrowLeft, Sprout, ChevronRight, BookOpen, AlertTriangle, Settings, Plus } from 'lucide-react';
 import {
   loadFields, loadCrops, loadCropAllocations, loadAllApplications, loadAllProducts,
   loadSettings, loadGroups, loadAllocationTypes, loadAgreements, loadFieldAgreementMap,
 } from '@/lib/data';
-import { buildCropPlan, currentCropSeason, cropSeasonWindow, type CropPlan } from '@/lib/cropplan';
-import { type LoadedCrop } from '@/lib/crops';
+import { buildCropPlan, currentCropSeason, seasonLabel, type CropPlan } from '@/lib/cropplan';
+import { type LoadedCrop, CATEGORY_LABEL, loadedCropsByCategory } from '@/lib/crops';
+import { forkCrop } from '@/lib/actions';
 import { FieldCropAllocation } from '@/lib/types';
 import { displayFieldArea, fmt } from '@/lib/rules';
 import { axisChipOptions, fieldPassesAxisParams, axisParamsActive } from '@/lib/grouping';
@@ -22,10 +23,6 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 function parseSeason(raw: string | undefined, fallback: number): number {
   const n = raw ? parseInt(raw, 10) : NaN;
   return Number.isFinite(n) ? n : fallback;
-}
-function seasonShort(season: number): string {
-  const w = cropSeasonWindow(season);
-  return `${season} · Oct ${w.start.slice(2, 4)}–Sep ${w.end.slice(2, 4)}`;
 }
 
 export default async function CropsPage({
@@ -48,6 +45,11 @@ export default async function CropsPage({
   ]);
 
   const isAdmin = !!farmCtx && (farmCtx.isAdmin || farmCtx.role === 'admin');
+
+  // Crop-library management lives on this hub for admins: their custom crops
+  // (editable) and a picker of the read-only seeded crops to duplicate from.
+  const customCrops = crops.filter((c) => c.userId !== null);
+  const seededByCategory = loadedCropsByCategory(crops.filter((c) => c.userId === null));
 
   const fromHref = searchParams.from || '/';
   const currentSeason = currentCropSeason();
@@ -154,7 +156,7 @@ export default async function CropsPage({
               className={`toggle-btn ${s === season ? 'active' : ''}`}
               style={{ fontSize: 13, padding: '6px 12px', textDecoration: 'none' }}
             >
-              {seasonShort(s)}
+              {seasonLabel(s)}
             </Link>
           ))}
         </div>
@@ -262,6 +264,62 @@ export default async function CropsPage({
           <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
         </Link>
 
+        {/* Your crops — quick add + edit of custom crops (admin) */}
+        {isAdmin && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 10, paddingLeft: 2 }}>
+              Your crops
+            </div>
+
+            {customCrops.length > 0 ? (
+              customCrops.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/settings/crops/${c.id}`}
+                  className="card"
+                  style={{ display: 'flex', alignItems: 'center', gap: 11, padding: 13, marginBottom: 8, textDecoration: 'none', color: 'inherit' }}
+                >
+                  <Sprout size={16} style={{ color: '#6B5D34', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{c.profile.label}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                      {c.profile.yieldDefault} {c.profile.yieldUnit} · target pH {c.profile.targetPh.toFixed(1)}
+                    </div>
+                  </div>
+                  <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
+                </Link>
+              ))
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.5 }}>
+                No custom crops yet. Duplicate a standard crop below, then tune its figures for your ground.
+              </div>
+            )}
+
+            <details style={{ marginTop: 4 }}>
+              <summary style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--forest-dark)', listStyle: 'none', padding: '8px 0' }}>
+                <Plus size={16} /> Add crop
+              </summary>
+              <form action={forkCrop} style={{ marginTop: 8, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: 13 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
+                  Base it on a standard crop
+                </label>
+                <select name="crop_id" required defaultValue="" style={{ width: '100%', padding: '9px 11px', fontSize: 14, border: '1px solid var(--line)', borderRadius: 6, background: 'var(--paper)', fontFamily: 'inherit', boxSizing: 'border-box' }}>
+                  <option value="" disabled>Choose a crop…</option>
+                  {seededByCategory.map((g) => (
+                    <optgroup key={g.category} label={g.label}>
+                      {g.crops.map((c) => <option key={c.id} value={c.id}>{c.profile.label}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, margin: '8px 0 10px' }}>
+                  Makes an editable copy{settings.farmName ? ` named “${settings.farmName} …”` : ''} and opens it so you can rename and tune it.
+                </div>
+                <button type="submit" className="btn-primary" style={{ width: '100%' }}>Create &amp; edit</button>
+              </form>
+            </details>
+          </div>
+        )}
+
         {/* Catalogue editor (admin) */}
         {isAdmin && (
           <Link
@@ -272,7 +330,7 @@ export default async function CropsPage({
             <Settings size={18} style={{ color: '#6B5D34', flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Crop catalogue</div>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Copy and tune crops you can allocate</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Duplicate and tune crops you can allocate</div>
             </div>
             <ChevronRight size={18} style={{ color: 'var(--muted)' }} />
           </Link>

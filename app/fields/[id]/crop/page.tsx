@@ -7,7 +7,7 @@ import {
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import {
-  buildCropPlan, currentCropSeason, cropSeasonWindow, type CropPlan,
+  buildCropPlan, currentCropSeason, seasonLabel, type CropPlan,
 } from '@/lib/cropplan';
 import { loadedCropsByCategory, type LoadedCrop } from '@/lib/crops';
 import { FieldCropAllocation } from '@/lib/types';
@@ -30,10 +30,6 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 
 function seasonOptions(current: number): number[] {
   return [current - 1, current, current + 1];
-}
-function seasonText(season: number): string {
-  const w = cropSeasonWindow(season);
-  return `${season} (Oct ${w.start.slice(0, 4)}–Sep ${w.end.slice(0, 4)})`;
 }
 
 export default async function FieldCropPage({
@@ -125,7 +121,7 @@ export default async function FieldCropPage({
                         {lc?.profile.label ?? a.crop_key ?? 'Unknown crop'}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                        Season {a.season}
+                        {a.season} harvest
                         {a.expected_yield != null && ` · ${a.expected_yield} ${a.expected_yield_unit ?? ''}`.trimEnd()}
                         {a.sown_date && ` · sown ${a.sown_date}`}
                         {a.harvest_date && ` · harvest ${a.harvest_date}`}
@@ -192,7 +188,7 @@ export default async function FieldCropPage({
                 <span style={fieldLabel}>Season</span>
                 <select name="season" defaultValue={String(currentSeason)} style={inputStyle}>
                   {seasonOptions(currentSeason).map((s) => (
-                    <option key={s} value={s}>{seasonText(s)}</option>
+                    <option key={s} value={s}>{seasonLabel(s)}</option>
                   ))}
                 </select>
               </label>

@@ -4523,10 +4523,21 @@ export async function forkCrop(formData: FormData) {
   if (e1) throw new Error(e1.message);
   if (!src) throw new Error('Crop not found');
   const r = src as Record<string, unknown>;
-  const { error } = await supabase.from('crops').insert({
+
+  // Default the duplicate's name to "<farm name> <crop>" (e.g. "Mill Farm Maize")
+  // so the name box is never blank — the user lands on the editor and can rename
+  // it to a variety if they prefer. Falls back to "<crop> (copy)" when no farm
+  // name has been set in settings.
+  const { data: settingsRow } = await supabase
+    .from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
+  const farmName = ((settingsRow?.data as { farmName?: string } | null)?.farmName ?? '').trim();
+  const baseLabel = String(r.label);
+  const newLabel = farmName ? `${farmName} ${baseLabel}` : `${baseLabel} (copy)`;
+
+  const { data: inserted, error } = await supabase.from('crops').insert({
     user_id: ctx.ownerId,
     seed_key: null,
-    label: `${String(r.label)} (copy)`,
+    label: newLabel,
     category: r.category,
     yield_default: r.yield_default,
     yield_unit: r.yield_unit,
@@ -4551,10 +4562,14 @@ export async function forkCrop(formData: FormData) {
     sources: r.sources,
     summary: r.summary,
     sort_order: r.sort_order,
-  });
+  }).select('id').single();
   if (error) throw new Error(error.message);
   revalidatePath('/settings/crops');
   revalidatePath('/crops');
+  // Drop the user straight into the editor for the new duplicate so they can
+  // tune its figures and rename it in one move (the "duplicate → customise"
+  // flow). redirect() throws NEXT_REDIRECT, so it must stay outside try/catch.
+  redirect(`/settings/crops/${(inserted as { id: string }).id}`);
 }
 
 /** Edit a custom crop's scalar + offtake fields. N stages / micros preserved. */
@@ -4592,6 +4607,7 @@ export async function updateCrop(formData: FormData) {
     needs_mg: gBool(formData, 'needs_mg'),
     needs_na: gBool(formData, 'needs_na'),
     needs_s: gBool(formData, 'needs_s'),
+    family: gBool(formData, 'is_brassica') ? 'brassica' : null,
     sulphur_note: gStr(formData, 'sulphur_note') || null,
     evidence: gStr(formData, 'evidence'),
     sources: gStr(formData, 'sources'),

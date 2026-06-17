@@ -48,6 +48,14 @@ export function cropSeasonWindow(season: number): { start: string; end: string }
 }
 
 /** Current crop season (end-year) for a given date. */
+/** Display label for a crop season. The season number IS the harvest year (the
+ *  Oct–Sep window ends in it), so we surface it as "<year> harvest" — clearer
+ *  than the Oct–Sep window, and correct for autumn-drilled crops (winter wheat
+ *  drilled in autumn 2026 is a "2027 harvest"). */
+export function seasonLabel(season: number): string {
+  return `${season} harvest`;
+}
+
 export function currentCropSeason(today: string = ukTodayIso()): number {
   const y = parseInt(today.slice(0, 4), 10);
   const m = parseInt(today.slice(5, 7), 10); // 1–12
