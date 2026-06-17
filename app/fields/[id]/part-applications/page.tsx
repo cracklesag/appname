@@ -89,6 +89,7 @@ export default async function PartApplicationsPage({ params }: { params: { id: s
           patches={patches}
           items={items}
           unitSystem={settings.unitSystem}
+          thresholdPct={settings.spreadCoverageThresholdPct ?? 80}
         />
       </div>
     </div>

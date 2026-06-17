@@ -9,6 +9,7 @@ import { getFarmContext, requireAdmin, requireMember, requireAgronomistFor, AGRO
 import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit, Product, ProductAnalysis } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
+import { loadSettings } from '@/lib/data';
 import { suggestSoilTypeFromExtras } from '@/lib/soil-suggest';
 import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
@@ -212,9 +213,12 @@ async function reconcileFieldPartials(fieldId: string) {
     .filter((g): g is FieldGeometry => !!g);
 
   // No boundary (or no drawn areas) → cannot reconcile; leave everything pending.
+  // Coverage threshold is configurable in Settings -> Part-field spreading.
+  const settings = await loadSettings();
+  const threshold = (settings.spreadCoverageThresholdPct ?? Math.round(RECONCILE_COVERAGE_THRESHOLD * 100)) / 100;
   const reconciled =
     !!boundary && geoms.length > 0 &&
-    coverageFraction(boundary, geoms) >= RECONCILE_COVERAGE_THRESHOLD;
+    coverageFraction(boundary, geoms) >= threshold;
 
   const stampNeeded = partials.filter((p) => !!p.reconciled_at !== reconciled);
   if (stampNeeded.length === 0) return;
@@ -433,8 +437,12 @@ async function syncFieldAllocationTypeFromCuts(ownerId: string, fieldId: string)
 
   if (currentTypeId) {
     const { data: cur } = await svc
-      .from('allocation_types').select('kind').eq('id', currentTypeId).maybeSingle();
-    if ((cur as { kind: string } | null)?.kind === targetKind) return; // already the right kind
+      .from('allocation_types').select('kind, dressing_rhythm').eq('id', currentTypeId).maybeSingle();
+    const curRow = cur as { kind: string; dressing_rhythm: string } | null;
+    // Review-only types (e.g. Low input) are a deliberate manual choice that a
+    // cut can't express — never auto-reclassify a field away from them.
+    if (curRow?.dressing_rhythm === 'none') return;
+    if (curRow?.kind === targetKind) return; // already the right kind
   }
 
   const { data: candidates } = await svc
@@ -786,6 +794,9 @@ export async function saveSettings(formData: FormData) {
         parseInt(String(formData.get('timing_lead') || '7'), 10) || 7
       )),
     },
+    spreadCoverageThresholdPct: Math.max(50, Math.min(100,
+      parseInt(String(formData.get('spread_coverage_pct') || '80'), 10) || 80
+    )),
     bagFertUnit: String(formData.get('bag_fert_unit')) as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
     slurryUnit: String(formData.get('slurry_unit')) as 'gal/ac' | 'm3/ha',
     limeUnit: String(formData.get('lime_unit')) as 't/ac' | 't/ha',

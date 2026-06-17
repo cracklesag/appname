@@ -596,6 +596,26 @@ export default async function SettingsPage() {
           </div>
         </div>
 
+        {/* Part-field spreading — when part applications count as a full spread */}
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 8, paddingLeft: 2 }}>
+            Part-field spreading
+          </div>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              When you spread only part of a field across several passes, this is how much of it they must cover (combined) before the app counts it as a full spread and folds it into the field&apos;s nutrient totals. Below this it stays pending.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Counts as spread at</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Coverage needed to treat a part-spread field as done. Wet corners often mean 100% never happens.</div>
+              </div>
+              <input type="number" min="50" max="100" step="1" name="spread_coverage_pct" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.spreadCoverageThresholdPct ?? 80} />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>%</span>
+            </div>
+          </div>
+        </div>
+
         <div className="sticky-footer">
           <button type="submit" className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <Save size={18} /> Save settings

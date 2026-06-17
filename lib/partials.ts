@@ -33,7 +33,7 @@ import type { Application, Product } from "@/lib/types";
  *  field before the partials fold into the field's nutrient metrics. Kept as a
  *  constant for now (hand-drawing slop tolerance); promote to a per-farm
  *  setting later if needed. */
-export const RECONCILE_COVERAGE_THRESHOLD = 0.95;
+export const RECONCILE_COVERAGE_THRESHOLD = 0.80;
 
 /** 1 acre = 0.404686 ha. kg/ha → kg/ac is a multiply by this (areal factor). */
 export const KG_PER_HA_TO_KG_PER_AC = 0.404686;

@@ -28,6 +28,8 @@ interface Props {
   patches: HeatPatch[];
   items: HeatListItem[];
   unitSystem: 'acres' | 'hectares';
+  /** Reconcile threshold as a percentage (from Settings). Defaults to the lib constant. */
+  thresholdPct?: number;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -36,7 +38,7 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 const BAND_RGB = K_BAND_COLOURS.map(hexToRgb);
 
-export default function PartApplicationsHeatMap({ boundary, patches, items, unitSystem }: Props) {
+export default function PartApplicationsHeatMap({ boundary, patches, items, unitSystem, thresholdPct = Math.round(RECONCILE_COVERAGE_THRESHOLD * 100) }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [width, setWidth] = useState(340);
@@ -111,8 +113,7 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
   }, [grid, width, height, boundary]);
 
   const coveragePct = Math.round(grid.coverageFraction * 100);
-  const thresholdPct = Math.round(RECONCILE_COVERAGE_THRESHOLD * 100);
-  const reconciled = grid.coverageFraction >= RECONCILE_COVERAGE_THRESHOLD;
+  const reconciled = grid.coverageFraction >= thresholdPct / 100;
   // Only show legend bands up to the highest present (keeps it tidy).
   const lastBand = Math.max(0, grid.maxBand);
 

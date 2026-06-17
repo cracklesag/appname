@@ -451,6 +451,12 @@ export interface Settings {
     planLeadTimeDays: number;
   };
   /**
+   * Part-field spreading: the % of a field its part-applications must cover
+   * (combined) before they count as a full spread and fold into the field's
+   * nutrient totals. Below this they stay "pending". Default 80.
+   */
+  spreadCoverageThresholdPct?: number;
+  /**
    * Grass system IDs the user has hidden from their dropdown. Shared seeds
    * appear by default; users tick visibility checkboxes in Settings →
    * Grass systems. Stored as IDs because seed_key isn't unique across
@@ -513,6 +519,7 @@ export const DEFAULT_SETTINGS: Settings = {
     grazingDressingIntervalDays: 28,
     planLeadTimeDays: 7,
   },
+  spreadCoverageThresholdPct: 80,
   hiddenGrassSystemIds: [],
   sprayer: { widthM: null, totalFlowLMin: null, defaultSpeedKmh: null, tankLitres: null },
   accountType: 'farm',
