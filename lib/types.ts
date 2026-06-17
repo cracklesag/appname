@@ -772,7 +772,7 @@ export interface FieldCropAllocation {
 // The agreement row shape lives with its logic in lib/agreements.ts; re-export
 // it here under the app-facing name so loaders/actions import from one place.
 export type { AgreementRow as Agreement, AgreementScheme } from './agreements';
-export type { AllocationTypeRow as AllocationType, AllocationKind } from './allocation_types';
+export type { AllocationTypeRow as AllocationType, AllocationKind, DressingRhythm } from './allocation_types';
 
 /** A field's membership in an agreement (many-to-many join row). */
 export interface FieldAgreement {

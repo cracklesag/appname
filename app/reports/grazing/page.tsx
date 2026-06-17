@@ -51,14 +51,14 @@ export default async function GrazingReportPage({
   // redundant (any other type just empties it). We keep the active-crop
   // exclusion and an optional agreement filter; block stays in the shell.
   const activeCropIds = activeCropFieldIds(cropAllocations);
-  // Low-input fields aren't on a recurring dressing cadence — they belong in the
-  // low-input review, not the rotational-grazing schedule.
-  const lowInputTypeIds = new Set(
-    allocationTypes.filter((t) => t.kind === 'low_input').map((t) => t.id),
+  // Review-only types (low input by default) aren't on a recurring dressing
+  // cadence — they belong in the low-input review, not this schedule.
+  const reviewOnlyTypeIds = new Set(
+    allocationTypes.filter((t) => t.dressing_rhythm === 'none').map((t) => t.id),
   );
   const grassFields = fields.filter(
     (f) => !activeCropIds.has(f.id)
-      && !(f.allocation_type_id != null && lowInputTypeIds.has(f.allocation_type_id)),
+      && !(f.allocation_type_id != null && reviewOnlyTypeIds.has(f.allocation_type_id)),
   );
   const visibleFields = agreementFilter === 'all'
     ? grassFields

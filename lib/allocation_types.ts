@@ -18,6 +18,20 @@
 
 export type AllocationKind = 'silage' | 'grazing' | 'maintenance' | 'low_input' | 'custom';
 
+export type DressingRhythm = 'after_cut' | 'recurring' | 'none';
+
+export const DRESSING_RHYTHM_LABEL: Record<DressingRhythm, string> = {
+  after_cut: 'After each cut',
+  recurring: 'Recurring dressing',
+  none: 'Review only (no auto-prompt)',
+};
+
+export const DRESSING_RHYTHM_HELP: Record<DressingRhythm, string> = {
+  after_cut: 'Prompts for nitrogen after each cut (silage, maintenance top-up). No recurring dressing.',
+  recurring: 'Prompts for a dressing every N days from the last spreading date (rotational grazing).',
+  none: 'Never raises an automatic prompt — appears in the Low input review for you to decide.',
+};
+
 export const ALLOCATION_KIND_LABEL: Record<AllocationKind, string> = {
   silage: 'Silage',
   grazing: 'Grazing',
@@ -38,6 +52,8 @@ export interface AllocationTypeProfile {
   nCapKgPerHa: number | null;
   /** Low-input management flag (informational; pairs with the cap). */
   lowInput: boolean;
+  /** How this type drives the home prompts: after-cut N, recurring dressing, or review-only. */
+  dressingRhythm: DressingRhythm;
   /** Short note shown alongside the type. */
   note: string | null;
   sortOrder: number;
@@ -52,22 +68,22 @@ function t(p: AllocationTypeProfile): AllocationTypeProfile {
 export const ALLOCATION_TYPE_SEEDS: AllocationTypeProfile[] = [
   t({
     seedKey: 'silage', label: 'Silage', kind: 'silage', regimeDefault: 'silage',
-    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, sortOrder: 0,
+    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, dressingRhythm: 'after_cut', sortOrder: 0,
     note: 'Cut for silage or hay. The implicit default elsewhere in the app.',
   }),
   t({
     seedKey: 'rotational', label: 'Rotational grazing', kind: 'grazing', regimeDefault: 'grazing',
-    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, sortOrder: 1,
+    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, dressingRhythm: 'recurring', sortOrder: 1,
     note: 'Grazed in rotation. New rounds default to grazing rather than a cut.',
   }),
   t({
     seedKey: 'maintenance', label: 'Maintenance', kind: 'maintenance', regimeDefault: 'grazing',
-    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, sortOrder: 2,
+    earliestFertMd: null, nCapKgPerHa: null, lowInput: false, dressingRhythm: 'after_cut', sortOrder: 2,
     note: 'Lightly managed / maintenance grazing — modest inputs.',
   }),
   t({
     seedKey: 'low_input', label: 'Low input', kind: 'low_input', regimeDefault: 'grazing',
-    earliestFertMd: null, nCapKgPerHa: null, lowInput: true, sortOrder: 3,
+    earliestFertMd: null, nCapKgPerHa: null, lowInput: true, dressingRhythm: 'none', sortOrder: 3,
     note: 'Minimise inputs. Set an N cap to flag dressings above it.',
   }),
 ];
@@ -83,6 +99,7 @@ export interface AllocationTypeRow {
   earliest_fert_md: string | null;
   n_cap_kg_per_ha: number | null;
   low_input: boolean;
+  dressing_rhythm: DressingRhythm;
   note: string | null;
   sort_order: number;
   created_at?: string;

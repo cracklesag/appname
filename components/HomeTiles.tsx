@@ -23,15 +23,17 @@ export type ComingUpEntry = {
 export function HomeTiles({
   nNow,
   grazingDue,
+  lowInputCount,
 }: {
   nNow: ComingUpEntry[];
   grazingDue: ComingUpEntry[];
+  lowInputCount: number;
 }) {
   const [open, setOpen] = useState<'n' | 'grazing' | null>(null);
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         <button
           type="button"
           onClick={() => setOpen(open === 'n' ? null : 'n')}
@@ -79,6 +81,25 @@ export function HomeTiles({
           </div>
           <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Dressing due</div>
         </button>
+
+        <Link
+          href="/reports/low-input"
+          aria-label="Low input review"
+          style={{
+            textAlign: 'left',
+            border: '1px solid transparent',
+            background: 'rgba(239,231,214,0.1)',
+            borderRadius: 10,
+            padding: '10px 12px',
+            textDecoration: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 23, fontWeight: 700, color: 'var(--brand-cream)' }}>{lowInputCount}</span>
+            <ChevronRight size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Low input</div>
+        </Link>
       </div>
 
       {/* Expanded lists render below the tile row, inside the hero's dark area */}

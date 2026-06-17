@@ -173,9 +173,9 @@ export async function runTool(name: string, input: Json): Promise<Json> {
           loadFields(), loadAllApplications(), loadAllCuts(), loadAllProducts(), loadGrassSystems(), loadSettings(), loadAllocationTypes(),
         ]);
         const todayIso = new Date().toISOString().slice(0, 10);
-        const lowInputTypeIds = new Set(allocationTypes.filter((t) => t.kind === 'low_input').map((t) => t.id));
+        const reviewOnlyTypeIds = new Set(allocationTypes.filter((t) => t.dressing_rhythm === 'none').map((t) => t.id));
         const rows = computeGrazingSchedule({
-          fields: fields.filter((f) => !(f.allocation_type_id != null && lowInputTypeIds.has(f.allocation_type_id))),
+          fields: fields.filter((f) => !(f.allocation_type_id != null && reviewOnlyTypeIds.has(f.allocation_type_id))),
           applications, cuts, products, grassSystems, settings,
           seasonStart: getSeasonStart(), todayIso,
         });

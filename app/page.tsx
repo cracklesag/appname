@@ -47,17 +47,16 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   const seasonLabel = getSeasonLabel();
 
   // Coming-up timing prompts (pure timing — no RB209 dependency).
-  // Low-input fields aren't on a recurring dressing cadence (early-season input
-  // then a manual review), so suppress their dressing prompt on the home tile.
-  const lowInputTypeIds = new Set(
-    allocationTypes.filter((t) => t.kind === 'low_input').map((t) => t.id),
-  );
+  // Each field prompts per its allocation type's dressing rhythm: low input is
+  // 'none' (review only), rotational grazing 'recurring', silage 'after_cut'.
+  const rhythmByTypeId = new Map(allocationTypes.map((t) => [t.id, t.dressing_rhythm]));
+  const lowInputCount = fields.filter((f) => f.allocation_type_id != null && rhythmByTypeId.get(f.allocation_type_id) === 'none').length;
   const comingUp = fields
     .map((f) => {
       const fCuts = cuts.filter((c) => c.field_id === f.id);
       const fApps = applications.filter((a) => a.field_id === f.id);
-      const lowInput = f.allocation_type_id != null && lowInputTypeIds.has(f.allocation_type_id);
-      return getComingUpForField(f, fCuts, fApps, products, settings, new Date(), { suppressRecurringDressing: lowInput });
+      const dressingRhythm = f.allocation_type_id != null ? rhythmByTypeId.get(f.allocation_type_id) : undefined;
+      return getComingUpForField(f, fCuts, fApps, products, settings, new Date(), { dressingRhythm });
     })
     .filter((x): x is NonNullable<typeof x> => x != null);
 
@@ -121,7 +120,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
 
         {hasFields ? (
           <div style={{ marginTop: 16 }}>
-            <HomeTiles nNow={nNow} grazingDue={grazingDue} />
+            <HomeTiles nNow={nNow} grazingDue={grazingDue} lowInputCount={lowInputCount} />
           </div>
         ) : (
           <div style={{ fontSize: 13, color: 'rgba(239,231,214,0.8)', marginTop: 12 }}>{seasonLabel}</div>

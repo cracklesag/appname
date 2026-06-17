@@ -53,6 +53,14 @@ export default async function AllocationTypeDetailPage({ params }: { params: { i
                 <input name="earliest_fert_md" defaultValue={type.earliest_fert_md ?? ''} placeholder="02-15" style={inp} />
               </div>
             </div>
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>Dressing rhythm</label>
+              <select name="dressing_rhythm" defaultValue={type.dressing_rhythm} style={inp}>
+                <option value="after_cut">After each cut — N prompt after cutting</option>
+                <option value="recurring">Recurring dressing — every N days (grazing)</option>
+                <option value="none">Review only — no automatic prompt</option>
+              </select>
+            </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>N cap (kg N/ha)</label>

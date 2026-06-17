@@ -1,6 +1,6 @@
 import {
   Application, Cut, CutType, Field, GrassSystem, Group, GrazingEvent, NextAction, PlateReading, Product, ProductCategory, ProductType, Settings,
-  SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS, AgronomyOverrides,
+  SlurryMethod, SolidMethod, ApplicationMethod, SoilType, YieldClass, RateUnit, DEFAULT_SETTINGS, AgronomyOverrides, DressingRhythm,
 } from './types';
 import * as rb209 from './rb209';
 
@@ -1689,7 +1689,7 @@ export function getComingUpForField(
   products: Product[],
   settings: Settings,
   now: Date = new Date(),
-  opts: { suppressRecurringDressing?: boolean } = {},
+  opts: { dressingRhythm?: DressingRhythm } = {},
 ): ComingUpItem | null {
   const timing = settings.timingDefaults ?? DEFAULT_SETTINGS.timingDefaults;
   const seasonStart = getSeasonStart(now);
@@ -1697,77 +1697,57 @@ export function getComingUpForField(
     .filter((c) => c.cut_date >= seasonStart)
     .sort((a, b) => b.cut_date.localeCompare(a.cut_date));
   const lastCut = cuts[0];
-  if (!lastCut) {
-    // Pre-first-cut grazing: a grazing block that hasn't been cut this season
-    // still needs recurring dressing prompts. Anchor the interval to the most
-    // recent N-bearing application (or season start if none), mirroring the
-    // grazing top-up report so the home tile and the report agree.
-    const planned = getPlannedCuts(field);
-    if (planned[0] === 'grazing') {
-      // Low-input ground isn't on a recurring dressing cadence.
-      if (opts.suppressRecurringDressing) return null;
-      const due = timing.grazingDressingIntervalDays;
-      const byId = new Map(products.map((p) => [p.id, p]));
-      let lastNDate: string | null = null;
-      for (const a of applications) {
-        if (a.field_id !== field.id || a.date_applied < seasonStart) continue;
-        const p = byId.get(a.product_id);
-        if (!p) continue;
-        const n = (p.n_pct ?? 0) || (p.n_kg_per_m3 ?? 0) || (p.n_kg_per_t ?? 0);
-        if (n > 0 && (lastNDate === null || a.date_applied > lastNDate)) lastNDate = a.date_applied;
-      }
-      const anchor = lastNDate ?? seasonStart;
-      const daysSinceAnchor = daysBetween(anchor, now);
-      const daysUntil = due - daysSinceAnchor;
-      if (daysUntil <= timing.planLeadTimeDays) {
-        return {
-          fieldId: field.id,
-          fieldName: field.name,
-          kind: 'grazing_due',
-          days: daysSinceAnchor,
-          daysUntil,
-        };
-      }
-    }
-    return null;
+
+  // Most recent N-bearing application this season — the dressing-cadence anchor.
+  // Using the actual last spread date (not the last cut) keeps the home tile in
+  // step with the grazing report so the two never disagree.
+  const byId = new Map(products.map((p) => [p.id, p]));
+  let lastNDate: string | null = null;
+  for (const a of applications) {
+    if (a.field_id !== field.id || a.date_applied < seasonStart) continue;
+    const p = byId.get(a.product_id);
+    if (!p) continue;
+    const n = (p.n_pct ?? 0) || (p.n_kg_per_m3 ?? 0) || (p.n_kg_per_t ?? 0);
+    if (n > 0 && (lastNDate === null || a.date_applied > lastNDate)) lastNDate = a.date_applied;
   }
 
-  const sinceCut = lastCut.cut_date;
-  const daysSinceCut = daysBetween(sinceCut, now);
+  // How this field prompts. A typed field's dressing_rhythm is authoritative; an
+  // untyped field falls back to its state — a grazing cut or planned-grazing
+  // block is 'recurring', everything else 'after_cut' — preserving old behaviour.
+  const isGrazingState =
+    (lastCut != null && (lastCut.next_action === 'rotational_grazing' || lastCut.cut_type === 'grazing')) ||
+    (lastCut == null && getPlannedCuts(field)[0] === 'grazing');
+  const rhythm: DressingRhythm = opts.dressingRhythm ?? (isGrazingState ? 'recurring' : 'after_cut');
 
-  // Grazing path: if the most recent action points to grazing, treat this as
-  // a grazing field on a dressing interval.
-  const isGrazing =
-    lastCut.next_action === 'rotational_grazing' ||
-    lastCut.cut_type === 'grazing';
+  // Review-only ground (e.g. low input) never raises an automatic prompt.
+  if (rhythm === 'none') return null;
 
-  if (isGrazing) {
-    // Low-input ground isn't on a recurring dressing cadence.
-    if (opts.suppressRecurringDressing) return null;
+  if (rhythm === 'recurring') {
+    // Recurring dressing, anchored to the last actual spread date (falling back
+    // to the last cut, then season start). Mirrors the grazing report.
     const due = timing.grazingDressingIntervalDays;
-    const daysUntil = due - daysSinceCut;
-    // Show when within the lead-time window (or already past due).
+    const anchor = lastNDate ?? (lastCut ? lastCut.cut_date : seasonStart);
+    const daysSinceAnchor = daysBetween(anchor, now);
+    const daysUntil = due - daysSinceAnchor;
     if (daysUntil <= timing.planLeadTimeDays) {
       return {
         fieldId: field.id,
         fieldName: field.name,
         kind: 'grazing_due',
-        days: daysSinceCut,
+        days: daysSinceAnchor,
         daysUntil,
       };
     }
     return null;
   }
 
-  // Nitrogen-after-cut path. Skip if N already applied since the cut.
-  if (nitrogenAppliedSince(field.id, sinceCut, applications, products)) {
-    return null;
-  }
-  // Skip if the field is finished for the season (maintenance with no further
-  // cut expected is still worth an N top-up, so we keep it; only truly nothing
-  // -follows would skip, which we don't model yet).
+  // rhythm === 'after_cut': nitrogen-after-cut prompt. Needs a cut to anchor to.
+  if (!lastCut) return null;
+  const sinceCut = lastCut.cut_date;
+  const daysSinceCut = daysBetween(sinceCut, now);
+  // Skip if (whole-field) N already applied since the cut.
+  if (nitrogenAppliedSince(field.id, sinceCut, applications, products)) return null;
   if (daysSinceCut < timing.nDueAfterCutDays) return null;
-
   const overdue = daysSinceCut >= timing.nOverdueAfterCutDays;
   return {
     fieldId: field.id,

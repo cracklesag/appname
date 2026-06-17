@@ -40,6 +40,8 @@ export default async function AllocationTypesPage() {
           const isSeed = t.user_id === null;
           const bits = [
             ALLOCATION_KIND_LABEL[t.kind],
+            t.dressing_rhythm === 'recurring' ? 'recurring dressing'
+              : t.dressing_rhythm === 'none' ? 'review only' : null,
             t.low_input ? 'low input' : null,
             t.n_cap_kg_per_ha != null ? `≤${t.n_cap_kg_per_ha} kg N/ha` : null,
             mdLabel(t.earliest_fert_md) ? `from ${mdLabel(t.earliest_fert_md)}` : null,
@@ -91,6 +93,15 @@ export default async function AllocationTypesPage() {
                 <label style={lbl}>Earliest fert (MM-DD)</label>
                 <input name="earliest_fert_md" placeholder="02-15" style={inp} />
               </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>Dressing rhythm</label>
+              <select name="dressing_rhythm" defaultValue="after_cut" style={inp}>
+                <option value="after_cut">After each cut — N prompt after cutting</option>
+                <option value="recurring">Recurring dressing — every N days (grazing)</option>
+                <option value="none">Review only — no automatic prompt</option>
+              </select>
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'flex-end' }}>

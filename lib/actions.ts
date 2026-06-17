@@ -4355,6 +4355,7 @@ export async function createAllocationType(formData: FormData) {
     earliest_fert_md: gMd(formData, 'earliest_fert_md'),
     n_cap_kg_per_ha: gNum(formData, 'n_cap_kg_per_ha'),
     low_input: gBool(formData, 'low_input'),
+    dressing_rhythm: ['after_cut','recurring','none'].includes(gStr(formData, 'dressing_rhythm')) ? gStr(formData, 'dressing_rhythm') : 'after_cut',
     note: gStr(formData, 'note') || null,
   });
   if (error) throw new Error(error.message);
@@ -4374,6 +4375,7 @@ export async function updateAllocationType(formData: FormData) {
     earliest_fert_md: gMd(formData, 'earliest_fert_md'),
     n_cap_kg_per_ha: gNum(formData, 'n_cap_kg_per_ha'),
     low_input: gBool(formData, 'low_input'),
+    dressing_rhythm: ['after_cut','recurring','none'].includes(gStr(formData, 'dressing_rhythm')) ? gStr(formData, 'dressing_rhythm') : 'after_cut',
     note: gStr(formData, 'note') || null,
   }).eq('id', id).eq('user_id', ctx.ownerId);
   if (error) throw new Error(error.message);
@@ -4395,7 +4397,8 @@ export async function forkAllocationType(formData: FormData) {
   if (clash) label = `${label} (copy)`;
   const { error } = await supabase.from('allocation_types').insert({
     user_id: ctx.ownerId, seed_key: null, label, kind: s.kind, regime_default: s.regime_default,
-    earliest_fert_md: s.earliest_fert_md, n_cap_kg_per_ha: s.n_cap_kg_per_ha, low_input: s.low_input, note: s.note,
+    earliest_fert_md: s.earliest_fert_md, n_cap_kg_per_ha: s.n_cap_kg_per_ha, low_input: s.low_input,
+    dressing_rhythm: s.dressing_rhythm ?? 'after_cut', note: s.note,
   });
   if (error) throw new Error(error.message);
   revalidatePath('/settings/allocation-types');
