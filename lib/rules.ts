@@ -1655,6 +1655,11 @@ function nitrogenAppliedSince(
   return applications.some((a) => {
     if (a.field_id !== fieldId) return false;
     if (a.date_applied < sinceIso) return false;
+    // A part-field application doesn't satisfy the whole field — the un-sprayed
+    // part still needs N — so a pending (unreconciled) partial must not suppress
+    // the "needs nitrogen" prompt. Once a partial reconciles to full coverage it
+    // counts like any whole-field application.
+    if (a.coverage === 'partial' && a.reconciled_at == null) return false;
     const p = byId.get(a.product_id);
     if (!p) return false;
     const ep = effectiveProductOn(p, a.date_applied);
