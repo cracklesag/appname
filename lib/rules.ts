@@ -1689,6 +1689,7 @@ export function getComingUpForField(
   products: Product[],
   settings: Settings,
   now: Date = new Date(),
+  opts: { suppressRecurringDressing?: boolean } = {},
 ): ComingUpItem | null {
   const timing = settings.timingDefaults ?? DEFAULT_SETTINGS.timingDefaults;
   const seasonStart = getSeasonStart(now);
@@ -1703,6 +1704,8 @@ export function getComingUpForField(
     // grazing top-up report so the home tile and the report agree.
     const planned = getPlannedCuts(field);
     if (planned[0] === 'grazing') {
+      // Low-input ground isn't on a recurring dressing cadence.
+      if (opts.suppressRecurringDressing) return null;
       const due = timing.grazingDressingIntervalDays;
       const byId = new Map(products.map((p) => [p.id, p]));
       let lastNDate: string | null = null;
@@ -1739,6 +1742,8 @@ export function getComingUpForField(
     lastCut.cut_type === 'grazing';
 
   if (isGrazing) {
+    // Low-input ground isn't on a recurring dressing cadence.
+    if (opts.suppressRecurringDressing) return null;
     const due = timing.grazingDressingIntervalDays;
     const daysUntil = due - daysSinceCut;
     // Show when within the lead-time window (or already past due).

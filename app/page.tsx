@@ -8,7 +8,7 @@ import {
   loadFields,
   loadAllApplications,
   loadAllCuts,
-  loadSettings, countJobsAwaitingApproval } from '@/lib/data';
+  loadSettings, loadAllocationTypes, countJobsAwaitingApproval } from '@/lib/data';
 import {
   getComingUpForField,
   getSeasonLabel,
@@ -25,11 +25,12 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   if (settings.accountType === 'contractor') redirect('/jobs');
   const jobsAwaiting = await countJobsAwaitingApproval();
 
-  const [fields, products, applications, cuts] = await Promise.all([
+  const [fields, products, applications, cuts, allocationTypes] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
+    loadAllocationTypes(),
   ]);
 
   const farmCtx = await getFarmContext();
@@ -46,11 +47,17 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   const seasonLabel = getSeasonLabel();
 
   // Coming-up timing prompts (pure timing — no RB209 dependency).
+  // Low-input fields aren't on a recurring dressing cadence (early-season input
+  // then a manual review), so suppress their dressing prompt on the home tile.
+  const lowInputTypeIds = new Set(
+    allocationTypes.filter((t) => t.kind === 'low_input').map((t) => t.id),
+  );
   const comingUp = fields
     .map((f) => {
       const fCuts = cuts.filter((c) => c.field_id === f.id);
       const fApps = applications.filter((a) => a.field_id === f.id);
-      return getComingUpForField(f, fCuts, fApps, products, settings);
+      const lowInput = f.allocation_type_id != null && lowInputTypeIds.has(f.allocation_type_id);
+      return getComingUpForField(f, fCuts, fApps, products, settings, new Date(), { suppressRecurringDressing: lowInput });
     })
     .filter((x): x is NonNullable<typeof x> => x != null);
 

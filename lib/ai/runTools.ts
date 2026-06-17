@@ -5,7 +5,7 @@
 
 import {
   loadFields, loadAllCuts, loadAllApplications, loadAllProducts,
-  loadSettings, loadGrassSystems, loadGroups,
+  loadSettings, loadGrassSystems, loadGroups, loadAllocationTypes,
   loadJobs, loadSprayProducts, loadSprayPurchases, loadSprayRecords,
 } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
@@ -169,12 +169,14 @@ export async function runTool(name: string, input: Json): Promise<Json> {
       }
 
       case 'get_grazing_schedule': {
-        const [fields, applications, cuts, products, grassSystems, settings] = await Promise.all([
-          loadFields(), loadAllApplications(), loadAllCuts(), loadAllProducts(), loadGrassSystems(), loadSettings(),
+        const [fields, applications, cuts, products, grassSystems, settings, allocationTypes] = await Promise.all([
+          loadFields(), loadAllApplications(), loadAllCuts(), loadAllProducts(), loadGrassSystems(), loadSettings(), loadAllocationTypes(),
         ]);
         const todayIso = new Date().toISOString().slice(0, 10);
+        const lowInputTypeIds = new Set(allocationTypes.filter((t) => t.kind === 'low_input').map((t) => t.id));
         const rows = computeGrazingSchedule({
-          fields, applications, cuts, products, grassSystems, settings,
+          fields: fields.filter((f) => !(f.allocation_type_id != null && lowInputTypeIds.has(f.allocation_type_id))),
+          applications, cuts, products, grassSystems, settings,
           seasonStart: getSeasonStart(), todayIso,
         });
         const statusLabel = (st: GrazingDueStatus): string =>
