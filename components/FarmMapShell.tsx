@@ -347,13 +347,13 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken, blockNa
           id: "fields-fill",
           type: "fill",
           source: "fields",
-          paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.35 },
+          paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.45 },
         });
         map.addLayer({
           id: "fields-line",
           type: "line",
           source: "fields",
-          paint: { "line-color": ["get", "colour"], "line-width": 2 },
+          paint: { "line-color": "#ffffff", "line-width": 2.5 },
         });
 
         // Parcel layers (hidden until adopt mode). Allocated parcels (already

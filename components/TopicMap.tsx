@@ -95,8 +95,8 @@ export function TopicMap({
           })),
         });
         map.addSource("fields", { type: "geojson", data: toFC() as any });
-        map.addLayer({ id: "fields-fill", type: "fill", source: "fields", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.42 } });
-        map.addLayer({ id: "fields-line", type: "line", source: "fields", paint: { "line-color": ["get", "colour"], "line-width": 2 } });
+        map.addLayer({ id: "fields-fill", type: "fill", source: "fields", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.45 } });
+        map.addLayer({ id: "fields-line", type: "line", source: "fields", paint: { "line-color": "#ffffff", "line-width": 2.5 } });
 
         const b = boundsOf(mapped);
         if (b) map.fitBounds(b, { padding: 36, maxZoom: 16, duration: 0 });

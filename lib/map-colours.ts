@@ -26,14 +26,14 @@ export type ColourField = {
 
 // Colours echo the app's forest / amber / red conventions.
 export const COLOURS = {
-  good: "#3f8f4f",
-  warn: "#e0a210",
-  bad: "#d6492f",
-  unknown: "#9aa0a6",
-  neutral: "#2f7d6a",
-  parcel: "#22d3ee",
-  draw: "#f59e0b",
-  allocated: "#f97316",
+  good: "#22c55e",      // vivid green — target (brighter than grass so it reads)
+  warn: "#f59e0b",      // amber
+  bad: "#ef4444",       // red
+  unknown: "#cbd1d6",   // light grey — not sampled
+  neutral: "#64748b",   // slate (default fill: non-green, calm, reads on grass)
+  parcel: "#22d3ee",    // cyan — RPA land parcels overlay
+  draw: "#f59e0b",      // amber — in-progress drawing
+  allocated: "#f97316", // orange — parcel already allocated
 };
 
 export function indexColour(v: number | null | undefined): string {
@@ -80,8 +80,10 @@ export function fieldsToFC(fields: ColourField[], colourOf: (f: ColourField) => 
 // Distinct, satellite-readable hues for categorical modes (block/type/agreement).
 // Assigned by sorted label so a field keeps its colour across renders.
 export const CATEGORICAL = [
-  "#2f7d6a", "#b5651d", "#3f6fb0", "#8a5fb0", "#b0843f", "#4f8f4f",
-  "#c0566f", "#4f9fb0", "#8f7a3f", "#6f6f9f", "#3f9f8f", "#a05f3f",
+  // High-chroma hues chosen to read on green/brown satellite imagery. No
+  // greens, teals or browns (they vanish against grass and soil).
+  "#f97316", "#3b82f6", "#e11d48", "#a855f7", "#eab308", "#06b6d4",
+  "#ec4899", "#8b5cf6", "#fb923c", "#0ea5e9", "#d946ef", "#14b8c6",
 ];
 export function categoricalColour(i: number): string {
   return CATEGORICAL[i % CATEGORICAL.length];
