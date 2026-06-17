@@ -6,7 +6,7 @@ import {
 } from '@/lib/data';
 import { buildCropPlan, currentCropSeason, seasonLabel, type CropPlan } from '@/lib/cropplan';
 import { type LoadedCrop, CATEGORY_LABEL, loadedCropsByCategory } from '@/lib/crops';
-import { forkCrop } from '@/lib/actions';
+import { forkCrop, allocateFieldToCrop } from '@/lib/actions';
 import { FieldCropAllocation } from '@/lib/types';
 import { displayFieldArea, fmt } from '@/lib/rules';
 import { axisChipOptions, fieldPassesAxisParams, axisParamsActive } from '@/lib/grouping';
@@ -45,6 +45,8 @@ export default async function CropsPage({
   ]);
 
   const isAdmin = !!farmCtx && (farmCtx.isAdmin || farmCtx.role === 'admin');
+  const canAllocate = !!farmCtx && farmCtx.role !== 'agronomist';
+  const allCropGroups = loadedCropsByCategory(crops); // full picker (seeded + custom)
 
   // Crop-library management lives on this hub for admins: their custom crops
   // (editable) and a picker of the read-only seeded crops to duplicate from.
@@ -160,6 +162,75 @@ export default async function CropsPage({
             </Link>
           ))}
         </div>
+
+        {/* Add a field to a crop — field-first allocator (admin + staff) */}
+        {canAllocate && (
+          <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ink)', marginBottom: 3 }}>Add a field to a crop</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 12 }}>
+              Crop a field from here without opening it — handy when setting up. Active = in the ground now; Planned = drilling later.
+            </div>
+            <form action={allocateFieldToCrop} style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+              <input type="hidden" name="season" value={season} />
+
+              <div>
+                <label style={allocLbl}>Field</label>
+                <select name="field_id" required defaultValue="" style={allocInp}>
+                  <option value="" disabled>Choose a field…</option>
+                  {fields.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={allocLbl}>Crop</label>
+                <select name="crop_id" required defaultValue="" style={allocInp}>
+                  <option value="" disabled>Choose a crop…</option>
+                  {allCropGroups.map((g) => (
+                    <optgroup key={g.category} label={g.label}>
+                      {g.crops.map((c) => <option key={c.id} value={c.id}>{c.profile.label}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={allocLbl}>Status</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label style={statusOpt}><input type="radio" name="status" value="active" defaultChecked style={{ marginRight: 6 }} />Active</label>
+                  <label style={statusOpt}><input type="radio" name="status" value="planned" style={{ marginRight: 6 }} />Planned</label>
+                </div>
+              </div>
+
+              <details>
+                <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--forest-dark)', listStyle: 'none', padding: '4px 0' }}>
+                  Yield &amp; dates (optional)
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
+                  <div>
+                    <label style={allocLbl}>Expected yield <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(blank = crop default)</span></label>
+                    <input type="number" name="expected_yield" step="0.1" min="0" placeholder="e.g. 12" style={allocInp} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={allocLbl}>Sown date</label>
+                      <input type="date" name="sown_date" style={allocInp} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={allocLbl}>Harvest date</label>
+                      <input type="date" name="harvest_date" style={allocInp} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={allocLbl}>Notes</label>
+                    <input type="text" name="notes" placeholder="e.g. after second-cut silage" style={allocInp} />
+                  </div>
+                </div>
+              </details>
+
+              <button type="submit" className="btn-primary" style={{ width: '100%' }}>Allocate to {seasonLabel(season)}</button>
+            </form>
+          </div>
+        )}
 
         {/* Land filters (block / type / agreement) — only when there's something to pick */}
         {showLandFilters && (
@@ -351,3 +422,7 @@ function PlanStat({ label, value, sub }: { label: string; value: number; sub: st
     </div>
   );
 }
+
+const allocLbl: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 5 };
+const allocInp: React.CSSProperties = { width: '100%', padding: '10px 11px', fontSize: 14, border: '1px solid var(--line)', borderRadius: 8, background: '#fff', color: 'var(--ink)', boxSizing: 'border-box' };
+const statusOpt: React.CSSProperties = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' };

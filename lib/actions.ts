@@ -4026,12 +4026,28 @@ export async function allocateFieldToCrop(formData: FormData) {
   const { data: crop } = await supabase.from('crops').select('id, seed_key, yield_unit').eq('id', cropId).maybeSingle();
   if (!crop) throw new Error('Crop not found');
 
-  // One active occupant: if the field already has an active crop, queue this as
-  // 'planned' rather than colliding with the unique index.
+  // One active occupant per field (unique index). The per-field form omits
+  // 'status' and we auto-decide (planned if a crop is already active, else
+  // active). The crops-menu allocator passes an explicit 'planned'/'active';
+  // forcing 'active' over an existing active crop performs the catch-crop ->
+  // main-crop handover (the current active is marked harvested first).
   const { data: active } = await supabase
     .from('field_crop_allocations').select('id')
     .eq('field_id', fieldId).eq('status', 'active').maybeSingle();
-  const status = active ? 'planned' : 'active';
+
+  const requested = String(formData.get('status') ?? '').trim();
+  const status: 'planned' | 'active' =
+    requested === 'planned' || requested === 'active'
+      ? requested
+      : (active ? 'planned' : 'active');
+
+  if (status === 'active' && active) {
+    const { error: handoverErr } = await supabase
+      .from('field_crop_allocations')
+      .update({ status: 'harvested' })
+      .eq('id', (active as { id: string }).id);
+    if (handoverErr) throw new Error(`Could not hand over the current crop: ${handoverErr.message}`);
+  }
 
   const { error } = await supabase.from('field_crop_allocations').insert({
     user_id: ctx.ownerId,
