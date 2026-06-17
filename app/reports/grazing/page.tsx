@@ -44,16 +44,17 @@ export default async function GrazingReportPage({
   const todayIso = new Date().toISOString().slice(0, 10);
   const seasonStart = getSeasonStart();
 
-  const typeFilter = searchParams.type || 'all';
   const agreementFilter = searchParams.agreement || 'all';
 
-  // Active-crop fields drop out of the grass grazing schedule this season, then
-  // type & agreement pre-filter the rest; block stays in the grazing shell.
+  // This report is rotational-grazing only: computeGrazingSchedule already
+  // scopes to fields heading for rotational grazing, so a type picker is
+  // redundant (any other type just empties it). We keep the active-crop
+  // exclusion and an optional agreement filter; block stays in the shell.
   const activeCropIds = activeCropFieldIds(cropAllocations);
   const grassFields = fields.filter((f) => !activeCropIds.has(f.id));
-  const visibleFields = (typeFilter === 'all' && agreementFilter === 'all')
+  const visibleFields = agreementFilter === 'all'
     ? grassFields
-    : grassFields.filter((f) => fieldPassesAxisParams(f, { type: typeFilter, agreement: agreementFilter }, fieldAgreementMap));
+    : grassFields.filter((f) => fieldPassesAxisParams(f, { agreement: agreementFilter }, fieldAgreementMap));
 
   const axisOptions = axisChipOptions({
     fields,
@@ -65,11 +66,11 @@ export default async function GrazingReportPage({
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      <Header tone="forest" title="Grazing top-up" subtitle="N cadence schedule" backHref={searchParams.from || '/'} />
+      <Header tone="forest" title="Grazing top-up" subtitle="Rotational grazing · N cadence" backHref={searchParams.from || '/'} />
       <ReportAxisFilters
-        typeOptions={axisOptions.type}
+        typeOptions={[]}
         agreementOptions={axisOptions.agreement}
-        typeValue={typeFilter}
+        typeValue="all"
         agreementValue={agreementFilter}
       />
       <GrazingReportShell
