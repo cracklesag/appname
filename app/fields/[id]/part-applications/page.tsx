@@ -82,7 +82,7 @@ export default async function PartApplicationsPage({ params }: { params: { id: s
 
   return (
     <div>
-      <Header title="Part applications" subtitle={`${field.name} · K loading`} backHref={backHref} />
+      <Header title="Part applications" subtitle={`${field.name} · part-field spreading`} backHref={backHref} />
       <div style={{ padding: 16 }}>
         <PartApplicationsHeatMap
           boundary={boundary}
@@ -90,6 +90,7 @@ export default async function PartApplicationsPage({ params }: { params: { id: s
           items={items}
           unitSystem={settings.unitSystem}
           thresholdPct={settings.spreadCoverageThresholdPct ?? 80}
+          editBasePath={`/fields/${field.id}/part-applications`}
         />
       </div>
     </div>

@@ -53,6 +53,17 @@ export const K_BAND_COLOURS = [
   "#B91C1C", // >150     deep red
 ] as const;
 
+// "Times spread" bands — how many part-applications overlap a cell. A light→dark
+// ramp so ground done once reads pale and ground done repeatedly reads strong.
+export const PASS_BAND_LABELS = ['1×', '2×', '3×', '4×+'] as const;
+export const PASS_BAND_COLOURS = ['#cfe3f2', '#88b9e2', '#3f86c5', '#1f5b8f'] as const;
+export function passBandIndex(passes: number): number {
+  if (passes <= 1) return 0;
+  if (passes === 2) return 1;
+  if (passes === 3) return 2;
+  return 3; // 4 or more
+}
+
 /** Band index 0..5 for a kg K₂O/ac value. */
 export function kBandIndex(kPerAc: number): number {
   for (let i = 0; i < K_BAND_EDGES.length; i++) {
@@ -175,12 +186,16 @@ export interface HeatGrid {
   band: Int8Array;
   /** Per-cell summed kg K₂O/ac (0 where outside / uncovered). */
   kPerAc: Float32Array;
+  /** Per-cell overlap count (number of part-applications covering the cell). */
+  passes: Int8Array;
   inFieldCells: number;
   coveredCells: number;
   /** coveredCells / inFieldCells — the reconciliation coverage. */
   coverageFraction: number;
   /** Highest band index present (for legend trimming); -1 if none. */
   maxBand: number;
+  /** Highest overlap count present (for legend trimming); 0 if none. */
+  maxPasses: number;
 }
 
 /** Choose aspect-correct grid dimensions for a bbox, `resolution` cells on the
@@ -215,12 +230,14 @@ export function buildHeatGrid(
   const { cols, rows } = gridDims(bbox, resolution);
   const band = new Int8Array(cols * rows);
   const kPerAc = new Float32Array(cols * rows);
+  const passesArr = new Int8Array(cols * rows);
   const wDeg = bbox.maxLng - bbox.minLng;
   const hDeg = bbox.maxLat - bbox.minLat;
 
   let inFieldCells = 0;
   let coveredCells = 0;
   let maxBand = -1;
+  let maxPasses = 0;
 
   for (let r = 0; r < rows; r++) {
     const lat = bbox.maxLat - ((r + 0.5) / rows) * hDeg; // top-down
@@ -233,18 +250,21 @@ export function buildHeatGrid(
       }
       inFieldCells++;
       let sumKHa = 0;
-      let covered = false;
+      let passCount = 0;
       for (let p = 0; p < patches.length; p++) {
         if (pointInGeometry(lng, lat, patches[p].geometry)) {
           sumKHa += patches[p].kPerHa;
-          covered = true;
+          passCount++;
         }
       }
+      const covered = passCount > 0;
       if (!covered) {
         band[idx] = -2; // in-field, no application here
         continue;
       }
       coveredCells++;
+      passesArr[idx] = passCount > 127 ? 127 : passCount;
+      if (passCount > maxPasses) maxPasses = passCount;
       const perAc = sumKHa * KG_PER_HA_TO_KG_PER_AC;
       kPerAc[idx] = perAc;
       const bi = kBandIndex(perAc);
@@ -259,10 +279,12 @@ export function buildHeatGrid(
     bbox,
     band,
     kPerAc,
+    passes: passesArr,
     inFieldCells,
     coveredCells,
     coverageFraction: inFieldCells > 0 ? coveredCells / inFieldCells : 0,
     maxBand,
+    maxPasses,
   };
 }
 

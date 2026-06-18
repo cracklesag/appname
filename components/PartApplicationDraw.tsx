@@ -26,12 +26,14 @@ interface Props {
   unitSystem: 'acres' | 'hectares';
   onCancel: () => void;
   onDone: (geometry: FieldGeometry, areaHa: number) => void;
+  /** Existing area to show faintly as a guide while redrawing (edit flow). */
+  guideArea?: FieldGeometry;
 }
 
 interface Pt { x: number; y: number; }
 
 export default function PartApplicationDraw({
-  boundary, productName, k2oPerHa, unitSystem, onCancel, onDone, showLoading = true,
+  boundary, productName, k2oPerHa, unitSystem, onCancel, onDone, showLoading = true, guideArea,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 360, h: 440 });
@@ -97,6 +99,20 @@ export default function PartApplicationDraw({
     }
     return d.trim();
   }, [rings, proj]);
+
+  // Existing drawn area as a faint dashed guide (edit / redraw flow).
+  const guidePath = useMemo(() => {
+    if (!guideArea) return '';
+    let d = '';
+    for (const ring of ringsOfGeometry(guideArea)) {
+      (ring as Position[]).forEach(([lng, lat], i) => {
+        const pt = proj.toXY(lng, lat);
+        d += `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)} `;
+      });
+      d += 'Z ';
+    }
+    return d.trim();
+  }, [guideArea, proj]);
 
   const drawnPath = useMemo(() => {
     if (points.length === 0) return '';
@@ -203,6 +219,10 @@ export default function PartApplicationDraw({
         <svg width={size.w} height={size.h} style={{ display: 'block', position: 'absolute', inset: 0 }}>
           {/* field outline */}
           <path d={boundaryPath} fill="var(--card)" stroke="var(--forest)" strokeWidth={2} strokeLinejoin="round" opacity={0.95} />
+          {/* existing area guide (edit flow) */}
+          {guidePath && !result && (
+            <path d={guidePath} fill="var(--ink-soft)" fillOpacity={0.1} stroke="var(--ink-soft)" strokeWidth={1.5} strokeDasharray="5 4" strokeLinejoin="round" />
+          )}
           {/* live freehand stroke */}
           {drawing && drawnPath && (
             <path d={drawnPath} fill="none" stroke="var(--amber)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />

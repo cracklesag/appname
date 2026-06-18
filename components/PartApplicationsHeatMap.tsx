@@ -7,8 +7,11 @@
 // applications with pending/counted badges.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Pencil } from 'lucide-react';
 import {
   buildHeatGrid, K_BAND_COLOURS, K_BAND_LABELS, RECONCILE_COVERAGE_THRESHOLD,
+  PASS_BAND_COLOURS, PASS_BAND_LABELS, passBandIndex,
   type HeatPatch,
 } from '@/lib/partials';
 import { ringsOfGeometry, type FieldGeometry, type Position } from '@/lib/geo';
@@ -30,6 +33,8 @@ interface Props {
   unitSystem: 'acres' | 'hectares';
   /** Reconcile threshold as a percentage (from Settings). Defaults to the lib constant. */
   thresholdPct?: number;
+  /** When set, each part-application row links to `${editBasePath}/${id}/edit`. */
+  editBasePath?: string;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -37,8 +42,10 @@ function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 const BAND_RGB = K_BAND_COLOURS.map(hexToRgb);
+const PASS_BAND_RGB = PASS_BAND_COLOURS.map(hexToRgb);
 
-export default function PartApplicationsHeatMap({ boundary, patches, items, unitSystem, thresholdPct = Math.round(RECONCILE_COVERAGE_THRESHOLD * 100) }: Props) {
+export default function PartApplicationsHeatMap({ boundary, patches, items, unitSystem, thresholdPct = Math.round(RECONCILE_COVERAGE_THRESHOLD * 100), editBasePath }: Props) {
+  const [mode, setMode] = useState<'passes' | 'loading'>('passes');
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [width, setWidth] = useState(340);
@@ -72,7 +79,7 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
     ctx.clearRect(0, 0, width, height);
 
     // 1) Heat fill: paint the grid to a small offscreen canvas, scale up smooth.
-    const { cols, rows, band } = grid;
+    const { cols, rows, band, passes } = grid;
     const off = document.createElement('canvas');
     off.width = cols; off.height = rows;
     const octx = off.getContext('2d');
@@ -82,7 +89,7 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
         const b = band[i];
         const o = i * 4;
         if (b < 0) { img.data[o + 3] = 0; continue; } // outside / no application → transparent
-        const [r, g, bl] = BAND_RGB[b];
+        const [r, g, bl] = mode === 'passes' ? PASS_BAND_RGB[passBandIndex(passes[i])] : BAND_RGB[b];
         img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = bl; img.data[o + 3] = 205;
       }
       octx.putImageData(img, 0, 0);
@@ -110,7 +117,7 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
       ctx.closePath();
       ctx.stroke();
     }
-  }, [grid, width, height, boundary]);
+  }, [grid, width, height, boundary, mode]);
 
   const coveragePct = Math.round(grid.coverageFraction * 100);
   const reconciled = grid.coverageFraction >= thresholdPct / 100;
@@ -121,19 +128,50 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
     <div ref={wrapRef}>
       {/* Heat map */}
       <div className="card" style={{ padding: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {(['passes', 'loading'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              style={{
+                flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid var(--line)',
+                background: mode === m ? 'var(--forest)' : 'transparent',
+                color: mode === m ? 'var(--paper)' : 'var(--ink-soft)',
+              }}
+            >
+              {m === 'passes' ? 'Times spread' : 'K loading'}
+            </button>
+          ))}
+        </div>
         <canvas
           ref={canvasRef}
           style={{ width: '100%', height, display: 'block', borderRadius: 6, background: 'var(--paper-deep)' }}
         />
         {/* Legend */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', marginTop: 10 }}>
-          {K_BAND_COLOURS.slice(0, lastBand + 1).map((c, i) => (
-            <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--ink-soft)' }}>
-              <span style={{ width: 13, height: 13, borderRadius: 3, background: c, border: '1px solid rgba(0,0,0,0.1)' }} />
-              {K_BAND_LABELS[i]}
-            </div>
-          ))}
-          <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>kg K₂O / ac</div>
+          {mode === 'passes' ? (
+            <>
+              {PASS_BAND_COLOURS.slice(0, passBandIndex(Math.max(1, grid.maxPasses)) + 1).map((c, i) => (
+                <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--ink-soft)' }}>
+                  <span style={{ width: 13, height: 13, borderRadius: 3, background: c, border: '1px solid rgba(0,0,0,0.1)' }} />
+                  {PASS_BAND_LABELS[i]}
+                </div>
+              ))}
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>times spread</div>
+            </>
+          ) : (
+            <>
+              {K_BAND_COLOURS.slice(0, lastBand + 1).map((c, i) => (
+                <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--ink-soft)' }}>
+                  <span style={{ width: 13, height: 13, borderRadius: 3, background: c, border: '1px solid rgba(0,0,0,0.1)' }} />
+                  {K_BAND_LABELS[i]}
+                </div>
+              ))}
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>kg K₂O / ac</div>
+            </>
+          )}
         </div>
       </div>
 
@@ -186,6 +224,13 @@ export default function PartApplicationsHeatMap({ boundary, patches, items, unit
               <span>{it.areaLabel}</span>
               <span style={{ marginLeft: 'auto' }}>~{it.kPerAc} kg K₂O/ac</span>
             </div>
+            {editBasePath && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line-soft)' }}>
+                <Link href={`${editBasePath}/${it.id}/edit`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: 'var(--forest-dark)', textDecoration: 'none' }}>
+                  <Pencil size={13} /> Edit area
+                </Link>
+              </div>
+            )}
           </div>
         ))
       )}

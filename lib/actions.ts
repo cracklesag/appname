@@ -4731,3 +4731,63 @@ export async function deleteCrop(formData: FormData) {
   }
   revalidatePath('/settings/crops');
 }
+
+
+/**
+ * Replace the drawn area of an existing part-application (edit flow). Swaps the
+ * polygon, recomputes drawn_ha, and re-runs reconciliation since coverage may
+ * have changed — then returns to the field's part-applications view.
+ */
+export async function updatePartApplicationArea(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+
+  const applicationId = String(formData.get('application_id') || '');
+  const fieldId = String(formData.get('field_id') || '');
+  const areaJson = formData.get('application_area') ? String(formData.get('application_area')) : null;
+  if (!applicationId || !fieldId || !areaJson) throw new Error('Missing required fields');
+
+  let geometry: FieldGeometry;
+  try {
+    geometry = JSON.parse(areaJson) as FieldGeometry;
+  } catch {
+    throw new Error('Could not read the drawn area');
+  }
+  const ha = polygonAreaHectares(geometry);
+  if (!(ha > 0)) throw new Error('The drawn area is empty — draw the spread area and try again');
+
+  // Verify it's the owner's part-application on this field.
+  const { data: app } = await supabase
+    .from('applications')
+    .select('id, coverage')
+    .eq('id', applicationId).eq('user_id', ctx.ownerId).eq('field_id', fieldId)
+    .maybeSingle();
+  if (!app) throw new Error('Application not found');
+  if ((app as { coverage: string }).coverage !== 'partial') {
+    throw new Error('Only part applications have an editable area');
+  }
+
+  // One area row per part-application: clear then write the new shape.
+  await supabase.from('application_areas')
+    .delete().eq('application_id', applicationId).eq('user_id', ctx.ownerId);
+  const { error: areaErr } = await supabase.from('application_areas').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    application_id: applicationId,
+    field_id: fieldId,
+    polygon: geometry,
+    area_ha: ha,
+  });
+  if (areaErr) throw new Error(areaErr.message);
+
+  const { error: appErr } = await supabase
+    .from('applications')
+    .update({ drawn_ha: ha })
+    .eq('id', applicationId).eq('user_id', ctx.ownerId);
+  if (appErr) throw new Error(appErr.message);
+
+  await reconcileFieldPartials(fieldId);
+  revalidatePath(`/fields/${fieldId}`);
+  revalidatePath(`/fields/${fieldId}/part-applications`);
+}
