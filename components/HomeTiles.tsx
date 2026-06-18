@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronRight, Leaf } from 'lucide-react';
 
 /**
  * Tappable summary tiles for the home screen. Each tile shows a count; tapping
@@ -33,7 +33,7 @@ export function HomeTiles({
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button
           type="button"
           onClick={() => setOpen(open === 'n' ? null : 'n')}
@@ -55,7 +55,10 @@ export function HomeTiles({
               ? <ChevronUp size={15} style={{ color: '#FAC775' }} />
               : <ChevronDown size={15} style={{ color: '#FAC775' }} />)}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.8)', marginTop: 1 }}>Need nitrogen</div>
+          <div style={{ marginTop: 1 }}>
+            <div style={{ fontSize: 11.5, color: 'rgba(239,231,214,0.85)', fontWeight: 600 }}>After-cut N</div>
+            <div style={{ fontSize: 10, color: 'rgba(239,231,214,0.5)', marginTop: 1 }}>after each cut</div>
+          </div>
         </button>
 
         <button
@@ -79,27 +82,11 @@ export function HomeTiles({
               ? <ChevronUp size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />
               : <ChevronDown size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />)}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Dressing due</div>
-        </button>
-
-        <Link
-          href="/reports/low-input"
-          aria-label="Low input review"
-          style={{
-            textAlign: 'left',
-            border: '1px solid transparent',
-            background: 'rgba(239,231,214,0.1)',
-            borderRadius: 10,
-            padding: '10px 12px',
-            textDecoration: 'none',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 23, fontWeight: 700, color: 'var(--brand-cream)' }}>{lowInputCount}</span>
-            <ChevronRight size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />
+          <div style={{ marginTop: 1 }}>
+            <div style={{ fontSize: 11.5, color: 'rgba(239,231,214,0.85)', fontWeight: 600 }}>Grazing dressing</div>
+            <div style={{ fontSize: 10, color: 'rgba(239,231,214,0.5)', marginTop: 1 }}>every ~4 weeks</div>
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(239,231,214,0.75)', marginTop: 1 }}>Low input</div>
-        </Link>
+        </button>
       </div>
 
       {/* Expanded lists render below the tile row, inside the hero's dark area */}
@@ -138,6 +125,18 @@ export function HomeTiles({
           ))}
           <div style={{ height: 0 }} />
         </div>
+      )}
+    
+      {lowInputCount > 0 && (
+        <Link
+          href="/reports/low-input"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 12, textDecoration: 'none', color: 'rgba(239,231,214,0.75)' }}
+        >
+          <Leaf size={15} style={{ opacity: 0.85 }} />
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>Low input</span>
+          <span style={{ fontSize: 11.5, opacity: 0.55 }}>· {lowInputCount}</span>
+          <ChevronRight size={13} style={{ opacity: 0.55 }} />
+        </Link>
       )}
     </>
   );
