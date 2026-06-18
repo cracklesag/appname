@@ -446,6 +446,24 @@ export function FertPlanShell({
         </div>
       )}
 
+      {/* Master select + expand controls. "All off" clears every field (any
+          group), so you can switch on just the ones you want to spread. */}
+      {computed.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setExcludedFieldIds([])} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All on</button>
+            <button type="button" onClick={() => setExcludedFieldIds(rows.map((r) => r.id))} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All off</button>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>
+            {rows.filter((r) => !excludedFieldIds.includes(r.id)).length} on
+          </span>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            <button type="button" onClick={() => setExpanded(Object.fromEntries(computed.map((c) => [c.row.id, true])))} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>Expand all</button>
+            <button type="button" onClick={() => setExpanded({})} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>Collapse all</button>
+          </div>
+        </div>
+      )}
+
       {computed.length === 0 && (
         <div className="card" style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
           No fields to show.
