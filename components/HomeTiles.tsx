@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronUp, ChevronDown, ChevronRight, Leaf } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 
 /**
  * Tappable summary tiles for the home screen. Each tile shows a count; tapping
@@ -23,11 +23,9 @@ export type ComingUpEntry = {
 export function HomeTiles({
   nNow,
   grazingDue,
-  lowInputCount,
 }: {
   nNow: ComingUpEntry[];
   grazingDue: ComingUpEntry[];
-  lowInputCount: number;
 }) {
   const [open, setOpen] = useState<'n' | 'grazing' | null>(null);
 
@@ -127,17 +125,6 @@ export function HomeTiles({
         </div>
       )}
     
-      {lowInputCount > 0 && (
-        <Link
-          href="/reports/low-input"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 12, textDecoration: 'none', color: 'rgba(239,231,214,0.75)' }}
-        >
-          <Leaf size={15} style={{ opacity: 0.85 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 600 }}>Low input</span>
-          <span style={{ fontSize: 11.5, opacity: 0.55 }}>· {lowInputCount}</span>
-          <ChevronRight size={13} style={{ opacity: 0.55 }} />
-        </Link>
-      )}
-    </>
+        </>
   );
 }

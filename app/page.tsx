@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, FileUp, ChevronRight, ClipboardList, ClipboardCheck, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan } from 'lucide-react';
+import { Plus, FileUp, ChevronRight, ClipboardList, ClipboardCheck, Repeat, Mountain, Wheat, Map as MapIcon, Sparkles, SprayCan, Sprout, Leaf } from 'lucide-react';
 import { LogActionButton } from '@/components/LogActionButton';
 import { HomeTiles, ComingUpEntry } from '@/components/HomeTiles';
 import {
@@ -50,7 +50,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   // Each field prompts per its allocation type's dressing rhythm: low input is
   // 'none' (review only), rotational grazing 'recurring', silage 'after_cut'.
   const rhythmByTypeId = new Map(allocationTypes.map((t) => [t.id, t.dressing_rhythm]));
-  const lowInputCount = fields.filter((f) => f.allocation_type_id != null && rhythmByTypeId.get(f.allocation_type_id) === 'none').length;
   const comingUp = fields
     .map((f) => {
       const fCuts = cuts.filter((c) => c.field_id === f.id);
@@ -120,7 +119,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
 
         {hasFields ? (
           <div style={{ marginTop: 16 }}>
-            <HomeTiles nNow={nNow} grazingDue={grazingDue} lowInputCount={lowInputCount} />
+            <HomeTiles nNow={nNow} grazingDue={grazingDue} />
           </div>
         ) : (
           <div style={{ fontSize: 13, color: 'rgba(239,231,214,0.8)', marginTop: 12 }}>{seasonLabel}</div>
@@ -192,18 +191,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 <ClipboardList size={21} style={{ color: 'var(--forest)' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Grazing top-ups</span>
               </Link>
-              <Link href="/reports/lime?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <Mountain size={21} style={{ color: '#8a7a4a' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Lime status</span>
-              </Link>
-              <Link href="/crops?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <Wheat size={21} style={{ color: '#b8902f' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Crops</span>
-              </Link>
-              <Link href="/spray" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
-                <SprayCan size={21} style={{ color: '#7a6cb5' }} />
-                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spray records</span>
-              </Link>
               <Link href="/jobs?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <span style={{ position: 'relative', display: 'inline-flex' }}>
                   <ClipboardCheck size={21} style={{ color: '#c2683a' }} />
@@ -213,6 +200,27 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>{jobsAwaiting > 0 ? 'Jobs to approve' : 'Job sheets'}</span>
               </Link>
+              <Link href="/reports/fert-plan?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Sprout size={21} style={{ color: '#5f9e4a' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Fert plan</span>
+              </Link>
+              <Link href="/spray" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <SprayCan size={21} style={{ color: '#7a6cb5' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Spray records</span>
+              </Link>
+              <Link href="/reports/lime?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Mountain size={21} style={{ color: '#8a7a4a' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Lime status</span>
+              </Link>
+              <Link href="/crops?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Wheat size={21} style={{ color: '#b8902f' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Crops</span>
+              </Link>
+              <Link href="/reports/low-input" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+                <Leaf size={21} style={{ color: '#7a8a4a' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Low input</span>
+              </Link>
+              {/* Parked: not in the 8-tile layout you described — kept so /map stays reachable from home */}
               <Link href="/map" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <MapIcon size={21} style={{ color: '#2f7d6a' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Farm map</span>
