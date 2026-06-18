@@ -115,6 +115,7 @@ export function FertPlanShell({
   // the auto granular plan for that field and is not N-capped (user's call).
   const [granularOverrides, setGranularOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [reviewMode, setReviewMode] = useState(false);
 
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
@@ -187,6 +188,10 @@ export function FertPlanShell({
     })),
     [visible, planState, organics, granular, slurryUnit, unitSystem, minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa],
   );
+
+  // Selected (on) fields and, in review mode, the focused subset shown.
+  const onCount = useMemo(() => rows.filter((r) => !excludedFieldIds.includes(r.id)).length, [rows, excludedFieldIds]);
+  const shown = reviewMode ? computed.filter((c) => !excludedFieldIds.includes(c.row.id)) : computed;
 
   // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
   // reads its current group's profile live, so moving a field between groups
@@ -273,13 +278,24 @@ export function FertPlanShell({
 
   return (
     <div style={{ padding: '14px 16px' }}>
-      <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
-        Plan the slurry or digestate you intend to spread, and the granular fertiliser
-        updates to cover only what&apos;s left of each field&apos;s RB209 shortfall.
-      </p>
+      {reviewMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <button type="button" onClick={() => setReviewMode(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--forest)', fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}>← Back to plan</button>
+          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>Review · spreading</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{onCount} field{onCount === 1 ? '' : 's'} for this round</div>
+          </div>
+        </div>
+      )}
+      {!reviewMode && (
+        <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
+          Plan the slurry or digestate you intend to spread, and the granular fertiliser
+          updates to cover only what&apos;s left of each field&apos;s RB209 shortfall.
+        </p>
+      )}
 
       {/* Intended organic planning panel */}
-      {organics.length > 0 && (
+      {!reviewMode && organics.length > 0 && (
         <div className="card" style={{ padding: 13, marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 9 }}>
             Intended slurry / digestate — all fields
@@ -312,7 +328,7 @@ export function FertPlanShell({
       )}
 
       {/* Fertiliser sources in use — toggle which bag products the plan may use */}
-      {granular.length > 0 && (
+      {!reviewMode && granular.length > 0 && (
         <div className="card" style={{ padding: 13, marginBottom: 14 }}>
           <button
             type="button"
@@ -365,7 +381,7 @@ export function FertPlanShell({
       )}
 
       {/* Group filter */}
-      {groups.length > 0 && (
+      {!reviewMode && groups.length > 0 && (
         <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
           {chips.map((c) => {
             const active = groupFilter === c.v;
@@ -418,7 +434,7 @@ export function FertPlanShell({
       )}
 
       {/* Compile spread lists for the contractor */}
-      {computed.length > 0 && (
+      {!reviewMode && computed.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <button
             type="button"
@@ -448,7 +464,7 @@ export function FertPlanShell({
 
       {/* Master select + expand controls. "All off" clears every field (any
           group), so you can switch on just the ones you want to spread. */}
-      {computed.length > 0 && (
+      {!reviewMode && computed.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" onClick={() => setExcludedFieldIds([])} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All on</button>
@@ -470,9 +486,9 @@ export function FertPlanShell({
         </div>
       )}
 
-      {computed.map((c) => {
+      {shown.map((c) => {
         const row = c.row;
-        const isOpen = !!expanded[row.id];
+        const isOpen = reviewMode || !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
         const granOv = granularOverrides[row.id];
         const hasGranOverride = !!granOv;
@@ -807,6 +823,12 @@ export function FertPlanShell({
           </div>
         );
       })}
+
+      {!reviewMode && onCount > 0 && (
+        <button type="button" onClick={() => setReviewMode(true)} style={{ width: '100%', marginTop: 14, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          Review {onCount} selected →
+        </button>
+      )}
 
       <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14 }}>
         Granular plans meet RB209 Section 3 (June 2023) P &amp; K recommendations at each field&apos;s
