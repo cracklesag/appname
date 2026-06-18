@@ -186,8 +186,12 @@ export interface PlanState {
   slurryOffFieldIds: string[];
   /** Per-field MANUAL granular override: fieldId -> { productId, rate }. When
    *  set, this product+rate replaces the auto granular plan and is NOT capped
-   *  by N (a deliberate user choice). */
+   *  by N (a deliberate user choice). LEGACY — superseded by granularPlans. */
   granularOverrides?: Record<string, { productId: number | ''; rate: string }>;
+  /** Per-field MANUAL granular plan: fieldId -> LIST of { productId, rate }.
+   *  When non-empty it replaces the auto plan (any mix of bag products — an N
+   *  compound, a straight MOP/TSP, several, or none). Not capped by N. */
+  granularPlans?: Record<string, { productId: number | ''; rate: string }[]>;
 }
 
 export interface PlannedField {
@@ -267,39 +271,46 @@ export function planField(
   // Manual granular override: the user has fixed a bag-fert product + rate for
   // this field, replacing the auto plan. A manual rate is deliberately NOT
   // capped by N (it's the user's call) — any over-supply just shows on the bars.
-  const granOv = state.granularOverrides?.[row.id];
-  const granOvProduct = granOv && granOv.productId !== ''
-    ? granularAll.find((p) => p.id === granOv.productId)
-    : undefined;
-  const granOvRate = granOv ? parseFloat(granOv.rate) : NaN;
-  const useGranOverride = !!granOvProduct && Number.isFinite(granOvRate) && granOvRate > 0;
+  // Manual granular plan: a per-field LIST of bag products + rates set by the
+  // user, replacing the auto plan (and not capped by N). Falls back to a single
+  // legacy override for older saved state.
+  const manualListRaw = state.granularPlans?.[row.id]
+    ?? (state.granularOverrides?.[row.id] ? [state.granularOverrides[row.id]] : undefined);
+  const manualEntries = (manualListRaw ?? [])
+    .map((e) => {
+      const prod = e.productId !== '' ? granularAll.find((pp) => pp.id === e.productId) : undefined;
+      const r = parseFloat(e.rate);
+      return prod && Number.isFinite(r) && r > 0 ? { prod, rate: r } : null;
+    })
+    .filter((x): x is { prod: Product; rate: number } => x !== null);
+  const useManual = manualEntries.length > 0;
 
   // Minimum-rate hold on the residual the auto granular plan would cover (only
   // when not manually overridden). Below the threshold it's too small to spread
   // accurately — hold it (it stays owed and re-presents on a later cut).
   const minP = settings.minSpreadP2O5KgPerHa;
   const minK = settings.minSpreadK2OKgPerHa;
-  const pHeld = !useGranOverride && pAfter > 0 && pAfter < minP;
-  const kHeld = !useGranOverride && kAfter > 0 && kAfter < minK;
+  const pHeld = !useManual && pAfter > 0 && pAfter < minP;
+  const kHeld = !useManual && kAfter > 0 && kAfter < minK;
   if (pHeld) pAfter = 0;
   if (kHeld) kAfter = 0;
 
   // Apply product on/off: excluded bag products can't be chosen by the planner.
   const granular = granularAll.filter((p) => !state.excludedProductIds.includes(p.id));
-  const plan = useGranOverride
+  const plan = useManual
     ? {
-        products: [{
-          productId: granOvProduct!.id,
-          productName: granOvProduct!.name,
-          rateKgPerHa: Math.round(granOvRate),
-          deliversN: Math.round(granOvRate * (granOvProduct!.n_pct ?? 0) / 100),
-          deliversP2O5: Math.round(granOvRate * (granOvProduct!.p2o5_pct ?? 0) / 100),
-          deliversK2O: Math.round(granOvRate * (granOvProduct!.k2o_pct ?? 0) / 100),
-        }],
+        products: manualEntries.map(({ prod, rate }) => ({
+          productId: prod.id,
+          productName: prod.name,
+          rateKgPerHa: Math.round(rate),
+          deliversN: Math.round(rate * (prod.n_pct ?? 0) / 100),
+          deliversP2O5: Math.round(rate * (prod.p2o5_pct ?? 0) / 100),
+          deliversK2O: Math.round(rate * (prod.k2o_pct ?? 0) / 100),
+        })),
         nBalance: 0,
         p2o5Balance: 0,
         k2oBalance: 0,
-        note: 'Manual rate — set by you.',
+        note: 'Manual — set by you.',
       }
     : planFieldFertiliser(pAfter, kAfter, granular, nAfter);
 

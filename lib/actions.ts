@@ -3360,6 +3360,88 @@ export async function createJob(formData: FormData) {
   redirect(`/jobs/${job.id}`);
 }
 
+export async function createJobsFromPlan(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+
+  let items: { field_id: string; product_id: number; rate_kg_ha: number }[];
+  try {
+    items = JSON.parse(String(formData.get('items') ?? ''));
+  } catch {
+    throw new Error('Could not read the plan — try again');
+  }
+  items = (Array.isArray(items) ? items : []).filter(
+    (i) => i && typeof i.field_id === 'string' && Number.isFinite(i.product_id) && Number.isFinite(i.rate_kg_ha) && i.rate_kg_ha > 0,
+  );
+  if (items.length === 0) throw new Error('No granular ferts to turn into a job');
+
+  // Enrich fields (name / boundary / area) and product names from the DB so the
+  // created job sheets carry map polygons and readable titles.
+  const fieldIds = [...new Set(items.map((i) => i.field_id))];
+  const { data: fieldRows } = await supabase
+    .from('fields').select('id, name, boundary, ha').in('id', fieldIds);
+  const fieldById = new Map((fieldRows ?? []).map((f) => [f.id as string, f]));
+
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const { data: prodRows } = await supabase
+    .from('products').select('id, name').in('id', productIds);
+  const prodById = new Map((prodRows ?? []).map((p) => [p.id as number, p.name as string]));
+
+  const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
+  const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? null;
+
+  // One job sheet per distinct product + rate; fields sharing it ride together.
+  const groups = new Map<string, { productId: number; rate: number; fieldIds: string[] }>();
+  for (const it of items) {
+    const key = `${it.product_id}|${it.rate_kg_ha}`;
+    const g = groups.get(key) ?? { productId: it.product_id, rate: it.rate_kg_ha, fieldIds: [] };
+    if (!g.fieldIds.includes(it.field_id)) g.fieldIds.push(it.field_id);
+    groups.set(key, g);
+  }
+
+  for (const g of groups.values()) {
+    const pName = prodById.get(g.productId) ?? 'Fertiliser';
+    const { data: job, error } = await supabase.from('jobs').insert({
+      user_id: ctx.ownerId,
+      created_by: ctx.userId,
+      farm_name: farmName,
+      title: `Spread ${pName} @ ${g.rate} kg/ha`,
+      job_type: 'fertiliser',
+      status: 'sent',
+      product_id: g.productId,
+      rate_value: g.rate,
+      rate_unit: 'kg/ha',
+      water_l_per_ha: null,
+      spray_spec: null,
+      instruction: null,
+      notes: 'Created from the fert plan.',
+      due_date: null,
+      assignee_user_id: null,
+      contractor_label: null,
+    }).select('id').single();
+    if (error || !job) continue;
+
+    const fieldsInsert = g.fieldIds.map((fid, i) => {
+      const f = fieldById.get(fid);
+      return {
+        job_id: job.id as string,
+        field_id: fid,
+        field_name: (f?.name as string) ?? 'Field',
+        boundary: f?.boundary ?? null,
+        area_ha: typeof f?.ha === 'number' ? f.ha : null,
+        planned_rate_value: g.rate,
+        planned_rate_unit: 'kg/ha',
+        sort_order: i,
+      };
+    });
+    await supabase.from('job_fields').insert(fieldsInsert);
+  }
+
+  revalidatePath('/jobs');
+  revalidatePath('/');
+  redirect('/jobs');
+}
+
 export async function deleteJob(formData: FormData) {
   const supabase = createClient();
   await requireAdmin();

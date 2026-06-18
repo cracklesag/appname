@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fmt, nutrientPerArea, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
+import { createJobsFromPlan } from '@/lib/actions';
 import { SupplyBar } from '@/components/NutrientBar';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
 import { Product, RateUnit, Group } from '@/lib/types';
@@ -113,7 +114,7 @@ export function FertPlanShell({
   const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   // Per-field MANUAL granular override: fieldId -> { productId, rate }. Replaces
   // the auto granular plan for that field and is not N-capped (user's call).
-  const [granularOverrides, setGranularOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
+  const [granularPlans, setGranularPlans] = useState<Record<string, { productId: number | ''; rate: string }[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [reviewMode, setReviewMode] = useState(false);
 
@@ -140,7 +141,11 @@ export function FertPlanShell({
         if (s.defaultOrganicId !== undefined) setDefaultOrganicId(s.defaultOrganicId);
         if (typeof s.defaultRate === 'string') setDefaultRate(s.defaultRate);
         if (s.overrides) setOverrides(s.overrides);
-        if (s.granularOverrides) setGranularOverrides(s.granularOverrides);
+        // Migrate legacy single overrides -> one-item lists; prefer saved plans.
+        const plans: Record<string, { productId: number | ''; rate: string }[]> = {};
+        if (s.granularOverrides) for (const [fid, ov] of Object.entries(s.granularOverrides)) plans[fid] = [ov as { productId: number | ''; rate: string }];
+        if (s.granularPlans) Object.assign(plans, s.granularPlans);
+        if (Object.keys(plans).length) setGranularPlans(plans);
         if (Array.isArray(s.excludedProductIds)) setExcludedProductIds(s.excludedProductIds);
         if (Array.isArray(s.excludedFieldIds)) setExcludedFieldIds(s.excludedFieldIds);
         if (Array.isArray(s.slurryOffFieldIds)) setSlurryOffFieldIds(s.slurryOffFieldIds);
@@ -153,9 +158,9 @@ export function FertPlanShell({
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
   const planState: PlanState = useMemo(() => ({
-    defaultOrganicId, defaultRate, overrides, granularOverrides,
+    defaultOrganicId, defaultRate, overrides, granularPlans,
     excludedProductIds, excludedFieldIds, slurryOffFieldIds,
-  }), [defaultOrganicId, defaultRate, overrides, granularOverrides, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
+  }), [defaultOrganicId, defaultRate, overrides, granularPlans, excludedProductIds, excludedFieldIds, slurryOffFieldIds]);
 
   // Persist whenever the plan state changes (after the initial hydrate).
   useEffect(() => {
@@ -192,6 +197,15 @@ export function FertPlanShell({
   // Selected (on) fields and, in review mode, the focused subset shown.
   const onCount = useMemo(() => rows.filter((r) => !excludedFieldIds.includes(r.id)).length, [rows, excludedFieldIds]);
   const shown = reviewMode ? computed.filter((c) => !excludedFieldIds.includes(c.row.id)) : computed;
+
+  // Review → job sheets: one line item per field per granular fert. Grouped by
+  // product + rate into job sheets server-side; slurry stays out (logged as spread).
+  const jobLineItems = useMemo(
+    () => shown.flatMap((c) => c.planProducts.map((pp) => ({ field_id: c.row.id, product_id: pp.productId, rate_kg_ha: pp.rateKgPerHa }))),
+    [shown],
+  );
+  const jobGroupCount = useMemo(() => new Set(jobLineItems.map((i) => `${i.product_id}|${i.rate_kg_ha}`)).size, [jobLineItems]);
+  const jobFieldCount = useMemo(() => new Set(jobLineItems.map((i) => i.field_id)).size, [jobLineItems]);
 
   // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
   // reads its current group's profile live, so moving a field between groups
@@ -262,18 +276,34 @@ export function FertPlanShell({
     });
   };
 
-  const setGranularOverride = (id: string, patch: Partial<{ productId: number | ''; rate: string }>) => {
-    setGranularOverrides((prev) => {
-      const cur = prev[id] ?? { productId: '' as number | '', rate: '' };
-      return { ...prev, [id]: { ...cur, ...patch } };
+  const seedGranularPlan = (id: string, products: { productId: number; rateKgPerHa: number }[]) => {
+    setGranularPlans((prev) => ({
+      ...prev,
+      [id]: products.length
+        ? products.map((p) => ({ productId: p.productId as number | '', rate: String(p.rateKgPerHa) }))
+        : [{ productId: '', rate: '' }],
+    }));
+  };
+  const setGranularPlanEntry = (id: string, index: number, patch: Partial<{ productId: number | ''; rate: string }>) => {
+    setGranularPlans((prev) => {
+      const list = (prev[id] ?? []).slice();
+      list[index] = { ...list[index], ...patch };
+      return { ...prev, [id]: list };
     });
   };
-  const clearGranularOverride = (id: string) => {
-    setGranularOverrides((prev) => {
+  const addGranularFert = (id: string) => {
+    setGranularPlans((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), { productId: '', rate: '' }] }));
+  };
+  const removeGranularFert = (id: string, index: number) => {
+    setGranularPlans((prev) => {
+      const list = (prev[id] ?? []).filter((_, i) => i !== index);
       const next = { ...prev };
-      delete next[id];
+      if (list.length) next[id] = list; else delete next[id];
       return next;
     });
+  };
+  const clearGranularPlan = (id: string) => {
+    setGranularPlans((prev) => { const n = { ...prev }; delete n[id]; return n; });
   };
 
   return (
@@ -490,8 +520,8 @@ export function FertPlanShell({
         const row = c.row;
         const isOpen = reviewMode || !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
-        const granOv = granularOverrides[row.id];
-        const hasGranOverride = !!granOv;
+        const manualList = granularPlans[row.id];
+        const hasManualList = !!manualList?.length;
         const excluded = excludedFieldIds.includes(row.id);
         const slurryOff = slurryOffFieldIds.includes(row.id);
         const cutLabel = row.cutType === 'grazing' ? 'grazing'
@@ -756,58 +786,72 @@ export function FertPlanShell({
               </div>
             )}
 
-            {/* Per-field MANUAL granular override (expand) — tweak the bag-fert
-                product/rate before the spread report. Not capped by N. */}
+            {/* Per-field MANUAL granular plan (expand) — any mix of bag products
+                (an N compound, a straight MOP/TSP, several, or none). Not N-capped. */}
             {isOpen && granular.length > 0 && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
-                  Granular for this field {hasGranOverride ? '(manual — overrides the auto plan)' : '(auto)'}
+                  Granular for this field {hasManualList ? '(manual — overrides the auto plan)' : '(auto)'}
                 </div>
-                {!hasGranOverride ? (
+                {!hasManualList ? (
                   <button
                     type="button"
-                    onClick={() => setGranularOverride(row.id, {
-                      productId: c.planProducts[0]?.productId ?? granular[0].id,
-                      rate: c.planProducts[0] ? String(c.planProducts[0].rateKgPerHa) : '',
-                    })}
+                    onClick={() => seedGranularPlan(row.id, c.planProducts)}
                     style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)' }}
                   >
-                    Set a manual rate
+                    Customise ferts
                   </button>
                 ) : (
                   <>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <select
-                        className="select"
-                        value={granOv?.productId ?? ''}
-                        onChange={(e) => setGranularOverride(row.id, { productId: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ flex: 1, minWidth: 0 }}
-                      >
-                        <option value="">Choose…</option>
-                        {granular.map((gp) => <option key={gp.id} value={gp.id}>{gp.name}</option>)}
-                      </select>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        className="input"
-                        placeholder="rate"
-                        value={granOv?.rate ?? ''}
-                        onChange={(e) => setGranularOverride(row.id, { rate: e.target.value })}
-                        style={{ width: 84, textAlign: 'right' }}
-                      />
-                      <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{nUnit}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
-                      <span style={{ fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.4 }}>
-                        Manual rate isn&apos;t capped by N — over-supply just shows on the bars.
-                      </span>
+                    {(granularPlans[row.id] ?? []).map((entry, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                        <select
+                          className="select"
+                          value={entry.productId}
+                          onChange={(e) => setGranularPlanEntry(row.id, i, { productId: e.target.value === '' ? '' : Number(e.target.value) })}
+                          style={{ flex: 1, minWidth: 0 }}
+                        >
+                          <option value="">Choose…</option>
+                          {granular.map((gp) => <option key={gp.id} value={gp.id}>{gp.name}</option>)}
+                        </select>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          className="input"
+                          placeholder="rate"
+                          value={entry.rate}
+                          onChange={(e) => setGranularPlanEntry(row.id, i, { rate: e.target.value })}
+                          style={{ width: 72, textAlign: 'right' }}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{nUnit}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeGranularFert(row.id, i)}
+                          aria-label="Remove fert"
+                          style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 2 }}>
                       <button
                         type="button"
-                        onClick={() => clearGranularOverride(row.id)}
-                        style={{ flexShrink: 0, fontSize: 12, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
+                        onClick={() => addGranularFert(row.id)}
+                        style={{ fontSize: 12, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', border: 'none', borderRadius: 7, padding: '7px 11px', cursor: 'pointer' }}
+                      >
+                        + Add fert
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => clearGranularPlan(row.id)}
+                        style={{ fontSize: 12, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}
                       >
                         Reset to auto
                       </button>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.4 }}>
+                      Manual rates aren&apos;t capped by N — over/under-supply just shows on the bars.
                     </div>
                   </>
                 )}
@@ -823,6 +867,24 @@ export function FertPlanShell({
           </div>
         );
       })}
+
+      {reviewMode && shown.length > 0 && (
+        <form action={createJobsFromPlan} style={{ marginTop: 14 }}>
+          <input type="hidden" name="items" value={JSON.stringify(jobLineItems)} />
+          <button
+            type="submit"
+            disabled={jobLineItems.length === 0}
+            style={{ width: '100%', background: jobLineItems.length === 0 ? 'var(--line)' : 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: jobLineItems.length === 0 ? 'default' : 'pointer' }}
+          >
+            Create job sheet{jobGroupCount === 1 ? '' : 's'} →
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 7, lineHeight: 1.4 }}>
+            {jobLineItems.length === 0
+              ? 'No granular ferts in the selected fields — slurry alone covers them.'
+              : `${jobGroupCount} job sheet${jobGroupCount === 1 ? '' : 's'} (one per product + rate) across ${jobFieldCount} field${jobFieldCount === 1 ? '' : 's'}. Slurry isn’t included — log it as you spread.`}
+          </div>
+        </form>
+      )}
 
       {!reviewMode && onCount > 0 && (
         <button type="button" onClick={() => setReviewMode(true)} style={{ width: '100%', marginTop: 14, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
