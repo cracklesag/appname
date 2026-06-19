@@ -654,12 +654,14 @@ export function PlanShell({
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{row.name}</div>
-                <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: SEV_META[sev].bg, color: SEV_META[sev].fg }}>{SEV_META[sev].label}</span>
+                {isOpen && <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: SEV_META[sev].bg, color: SEV_META[sev].fg }}>{SEV_META[sev].label}</span>}
+                {isOpen && (
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
                   {fmt(row.areaValue, 1)} {row.areaUnit}
                   {row.groupName && <> · {row.groupName}</>}
                   {' · '}{cutLabel}
                 </div>
+                )}
               </div>
               {excluded ? (
                 <button
@@ -690,7 +692,7 @@ export function PlanShell({
             </div>
 
             {/* Group-profile warnings (soft — never change the numbers). */}
-            {!excluded && (() => {
+            {!excluded && isOpen && (() => {
               const ws = warningsFor(c);
               if (ws.length === 0) return null;
               return (
@@ -711,7 +713,7 @@ export function PlanShell({
                 </div>
               );
             })()}
-            {row.sampled ? (
+            {isOpen && (row.sampled ? (
               <div style={{ marginTop: 9 }}>
                 <SoilHeatBar label="pH" value={row.ph} target={SOIL_TARGET.ph} max={7.5} />
                 <SoilHeatBar label="P" value={row.pIdx} target={SOIL_TARGET.pIdx} max={4} />
@@ -721,12 +723,12 @@ export function PlanShell({
               <div style={{ fontSize: 11, color: '#7A5B12', marginTop: 7 }}>
                 No soil sample — plan assumes target index.
               </div>
-            )}
+            ))}
 
             {/* Planned slurry contribution — with an inline rate editor so you
                 can bump the volume up or down per field; bars + granular below
                 recalculate live as you type. */}
-            {c.slurryTotal > 0 && (
+            {isOpen && c.slurryTotal > 0 && (
               <div style={{ marginTop: 8, background: 'var(--forest-soft)', borderRadius: 6, padding: '7px 9px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontSize: 11, color: 'var(--forest-dark)', minWidth: 0 }}>
@@ -771,8 +773,8 @@ export function PlanShell({
               </div>
             )}
 
-            {/* Granular plan */}
-            {c.planProducts.length > 0 ? (
+            {/* Granular plan (expanded only) */}
+            {isOpen && (c.planProducts.length > 0 ? (
               <div style={{ marginTop: 9 }}>
                 {c.planProducts.map((p, i) => (
                   <div
@@ -798,7 +800,7 @@ export function PlanShell({
               <div style={{ fontSize: 12, color: 'var(--forest-dark)', marginTop: 9, fontWeight: 600 }}>
                 {c.slurryTotal > 0 ? 'Slurry covers it — no granular needed.' : 'No granular needed.'}
               </div>
-            ) : null}
+            ) : null)}
 
             {/* Need-vs-supply bars. N stays a simple supply bar; P & K show
                 the source breakdown (carryover / slurry / granular), with the
@@ -806,11 +808,11 @@ export function PlanShell({
             {!atTarget && (
               <div style={{ marginTop: 9 }}>
                 <SourceBar label="N"    bands={c.nBands} unit={nUnit} disp={disp} showFigures={isOpen} />
-                <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />
-                <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />
+                {isOpen && <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />}
+                {isOpen && <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />}
                 {!isOpen && (
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                    Tap to see N, P &amp; K split by source · carryover is an estimated release
+                    Tap for the full plan — P &amp; K, slurry and granular
                   </div>
                 )}
               </div>
@@ -819,7 +821,7 @@ export function PlanShell({
             {/* Low-rate hold notice — P or K shortfall too small to spread, so
                 it's held in the season balance and will combine with a later
                 cut once it's worth applying. */}
-            {(c.pHeld || c.kHeld) && (
+            {isOpen && (c.pHeld || c.kHeld) && (
               <div style={{
                 marginTop: 8, padding: '7px 10px', borderRadius: 8,
                 background: '#F4EFE2', border: '1px solid #E4D9BD',
