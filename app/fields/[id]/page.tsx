@@ -107,6 +107,7 @@ export default async function FieldDetailPage({
   // shows "Maintenance" / "Grazing" when the user has flagged the field
   // accordingly, not the static planned_cuts entry.
   const resolvedNextCutType = getResolvedNextCutType(field, fCuts);
+  const isBuildingToCut = resolvedNextCutType === 'silage' || resolvedNextCutType === 'bales';
   // N target from getCutTargets (offtake/system-based). P & K targets from the
   // RB209 recommendation (build-up at low index + catch-up K) so the field
   // detail matches the fertiliser plan and P&K status exactly.
@@ -387,7 +388,8 @@ export default async function FieldDetailPage({
               <div className="label" style={{ margin: 0 }}>
                 {(() => {
                   if (resolvedNextCutType === 'complete') return <>All {field.cut_profile} cuts taken</>;
-                  if (resolvedNextCutType === 'maintenance') return <>After cut {cutsDone} of {field.cut_profile} · Maintenance top-up</>;
+                  if (resolvedNextCutType === 'maintenance') return <>{cutsDone} cut{cutsDone === 1 ? '' : 's'} taken · Maintenance top-up</>;
+                  if (resolvedNextCutType === 'grazing') return cutsDone > 0 ? <>{cutsDone} cut{cutsDone === 1 ? '' : 's'} taken · Rotational grazing</> : <>Rotational grazing</>;
                   if (!targets) return <>All {field.cut_profile} cuts taken</>;
                   return <>Building toward cut {nextCutNumber} of {field.cut_profile} · {NEXT_CUT_LABELS[resolvedNextCutType]}</>;
                 })()}
@@ -401,7 +403,7 @@ export default async function FieldDetailPage({
               </Link>
               )}
             </div>
-            {targets && (() => {
+            {isBuildingToCut && targets && (() => {
               const nUnit = nutrientLabel(settings.bagFertUnit);
               const cv = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
               const nView   = { value: cv(availableForNextCut.n), unit: nUnit };
@@ -444,6 +446,16 @@ export default async function FieldDetailPage({
                 </>
               );
             })()}
+            {resolvedNextCutType === 'maintenance' && (
+              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+                On maintenance — N is handled as a light top-up, not a silage cut. See the grazing report for timing.
+              </div>
+            )}
+            {resolvedNextCutType === 'grazing' && (
+              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+                On rotational grazing — see the grazing report for top-up timing.
+              </div>
+            )}
             {!targets && (
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>Season complete. See <strong>This season</strong> tab for full totals.</div>
             )}

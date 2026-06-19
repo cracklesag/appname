@@ -101,7 +101,11 @@ export default async function FieldsPage({
     // Resolved next-cut type drives display + filtering. Per-cut next_action
     // (e.g. maintenance, rotational grazing) trumps the static planned_cuts.
     const nextCutType = getResolvedNextCutType(f, fCuts);
-    const targets = cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings, system, fCuts) : null;
+    // Only "building toward a cut" (with silage-cut targets) when the next cut is
+    // an actual silage/bales cut. Maintenance / rotational-grazing fields resolve
+    // to their own state and carry no silage-cut target.
+    const isBuildingToCut = nextCutType === 'silage' || nextCutType === 'bales';
+    const targets = isBuildingToCut && cutsDone < f.cut_profile ? getCutTargets(f, nextCut, settings, system, fCuts) : null;
 
     // P/K carryover from applications before the last cut, minus offtake already
     // taken by cuts done this season. N has no carryover (mobile in soil).
@@ -293,9 +297,13 @@ export default async function FieldsPage({
             const rowFor = (s: typeof visibleFields[number]): FieldRow => {
               const f = s.field;
               const a = displayFieldArea(f, settings.unitSystem);
-              const cutLine = s.targets
-                ? `Building toward cut ${s.nextCut}${s.lastCut ? ` · since cut ${s.lastCut.cut_number} on ${fmtDateShort(s.lastCut.cut_date)}` : ' · since season start'}`
-                : `All ${f.cut_profile} cuts taken`;
+              const cutsTakenBit = `${s.cutsDone} cut${s.cutsDone === 1 ? '' : 's'} taken`;
+              const cutLine =
+                s.nextCutType === 'maintenance' ? `${cutsTakenBit} · Maintenance top-up`
+                : s.nextCutType === 'grazing' ? (s.cutsDone > 0 ? `${cutsTakenBit} · Rotational grazing` : 'Rotational grazing')
+                : s.targets
+                  ? `Building toward cut ${s.nextCut}${s.lastCut ? ` · since cut ${s.lastCut.cut_number} on ${fmtDateShort(s.lastCut.cut_date)}` : ' · since season start'}`
+                  : `All ${f.cut_profile} cuts taken`;
               const bars = s.targets
                 ? {
                     n: { applied: displayBagAmount(s.available.n, settings.bagFertUnit).value, target: displayBagAmount(s.targets.n, settings.bagFertUnit).value, unit: displayBagAmount(s.available.n, settings.bagFertUnit).unit },
