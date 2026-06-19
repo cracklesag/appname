@@ -77,14 +77,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   // proxy for "worth reviewing" that doesn't need the full target/carryover
   // engine (which is being reworked for RB209). The real shortfall amounts
   // land with the RB209 engine + P/K-to-apply view.
-  const pTarget = settings.soilTargets?.pIdx ?? 2;
-  const kTarget = settings.soilTargets?.kIdx ?? 2;
-  const pkReviewCount = fields.filter(
-    (f) =>
-      (f.p_idx != null && f.p_idx < pTarget) ||
-      (f.k_idx != null && f.k_idx < kTarget),
-  ).length;
-
   const hasFields = fields.length > 0;
 
   return (
@@ -163,24 +155,6 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
               </div>
             </Link>
 
-            {/* The Plan — consolidated "what to apply" (replaces P&K status,
-                fertiliser plan, spread report and field snapshot). */}
-            <Link href="/plan?from=/" style={{ display: 'block', background: 'var(--forest)', border: '1px solid var(--forest)', borderRadius: 10, padding: '14px 15px', marginBottom: 9, textDecoration: 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <ClipboardList size={22} style={{ color: 'var(--brand-cream)', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--brand-cream)' }}>Plan</div>
-                  <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.85)', lineHeight: 1.4 }}>What to spread on every field — slurry first, then granular.</div>
-                  {pkReviewCount > 0 && (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#FAC775', marginTop: 4 }}>
-                      {pkReviewCount} field{pkReviewCount === 1 ? '' : 's'} below target for P/K
-                    </div>
-                  )}
-                </div>
-                <ChevronRight size={16} style={{ color: 'rgba(239,231,214,0.85)', flexShrink: 0 }} />
-              </div>
-            </Link>
-
             {/* Quick-access cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
               <Link href="/grazing" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
@@ -200,7 +174,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>{jobsAwaiting > 0 ? 'Jobs to approve' : 'Job sheets'}</span>
               </Link>
-              <Link href="/reports/fert-plan?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
+              <Link href="/plan?from=/" style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--ink)' }}>
                 <Sprout size={21} style={{ color: '#5f9e4a' }} />
                 <span style={{ fontSize: 12, fontWeight: 500, textAlign: 'center' }}>Fert plan</span>
               </Link>
