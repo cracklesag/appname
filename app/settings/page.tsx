@@ -228,6 +228,23 @@ export default async function SettingsPage() {
             </div>
           </div>
 
+          {/* Business name */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="label" style={{ marginBottom: 8 }}>Business name</div>
+            <input
+              type="text"
+              name="business_name"
+              className="input"
+              placeholder="e.g. P & M Crackles & Sons"
+              defaultValue={s.businessName ?? ''}
+              maxLength={120}
+              autoComplete="off"
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              Shown on job sheets so contractors and workers know who sent them.
+            </div>
+          </div>
+
           {/* Units */}
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="label" style={{ marginBottom: 10 }}>Units</div>

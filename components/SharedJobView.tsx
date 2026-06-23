@@ -10,7 +10,7 @@ type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
 type Phase = 'loading' | 'needpin' | 'badpin' | 'locked' | 'notfound' | 'expired' | 'ready' | 'submitted' | 'queued';
 
 interface SField { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null; }
-interface SJob { id: string; title: string; job_type: string; farm_name: string | null; instruction: string | null; product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null; water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null; notes: string | null; due_date: string | null; contractor_label: string | null; status: string; }
+interface SJob { id: string; title: string; job_type: string; farm_name: string | null; instruction: string | null; product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null; water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null; notes: string | null; due_date: string | null; contractor_label: string | null; status: string; business_name: string | null; }
 interface Line extends SField { uiStatus: FStatus; actualStr: string; }
 
 const OPTS: { v: FStatus; label: string }[] = [{ v: 'done', label: 'Done' }, { v: 'partial', label: 'Part' }, { v: 'skipped', label: 'Not done' }];
@@ -153,7 +153,13 @@ export function SharedJobView({ token }: { token: string }) {
     <div style={wrap}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--forest, #2f7d6a)', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>Job sheet</div>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink, #2b2b2b)', margin: '0 0 2px' }}>{job?.title}</h1>
-      {job?.farm_name && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--forest, #2f7d6a)', marginBottom: 12 }}>From {job.farm_name}</div>}
+      {(job?.business_name || job?.farm_name) && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>From</div>
+          {job?.business_name && <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--forest, #2f7d6a)' }}>{job.business_name}</div>}
+          {job?.farm_name && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-soft, #555)' }}>{job.farm_name}</div>}
+        </div>
+      )}
 
       <div style={card}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>What to do</div>

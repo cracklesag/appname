@@ -713,6 +713,7 @@ export async function saveSettings(formData: FormData) {
     ...existing,
     onboarded: existing.onboarded === false ? false : true,
     farmName: (String(formData.get('farm_name') || '').trim()) || null,
+    businessName: (String(formData.get('business_name') || '').trim()) || null,
     yieldMultipliers: {
       light: parseFloat(String(formData.get('yield_light'))),
       average: parseFloat(String(formData.get('yield_average'))),
@@ -3731,7 +3732,7 @@ interface SharedJobResult {
     id: string; title: string; job_type: string; instruction: string | null;
     product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null;
     water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null;
-    notes: string | null; due_date: string | null; contractor_label: string | null; status: string; farm_name: string | null;
+    notes: string | null; due_date: string | null; contractor_label: string | null; status: string; farm_name: string | null; business_name: string | null;
   };
   fields?: { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null }[];
 }
@@ -3798,6 +3799,16 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
   }
   const { data: fields } = await svc.from('job_fields').select('*').eq('job_id', j.id as string).order('sort_order');
   const spec = Array.isArray(j.spray_spec) ? (j.spray_spec as { name: string; l_per_ha: number | null }[]).map((s) => ({ name: s.name, l_per_ha: s.l_per_ha })) : null;
+  // Submitting farm's identity, read live from the owner's settings so the
+  // contractor/worker sees who sent the sheet (business name + farm name).
+  let businessName: string | null = null;
+  let ownerFarmName: string | null = null;
+  if (j.user_id) {
+    const { data: st } = await svc.from('settings').select('data').eq('user_id', j.user_id as string).maybeSingle();
+    const sd = (st?.data ?? {}) as { businessName?: string; farmName?: string };
+    businessName = (sd.businessName ?? '').trim() || null;
+    ownerFarmName = (sd.farmName ?? '').trim() || null;
+  }
   return {
     status: 'ok',
     job: {
@@ -3815,7 +3826,8 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
       due_date: (j.due_date as string) ?? null,
       contractor_label: (j.contractor_label as string) ?? null,
       status: j.status as string,
-      farm_name: (j.farm_name as string) ?? null,
+      farm_name: (j.farm_name as string) ?? ownerFarmName,
+      business_name: businessName,
     },
     fields: ((fields ?? []) as Record<string, unknown>[]).map((f) => ({
       id: f.id as string,

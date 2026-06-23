@@ -373,6 +373,7 @@ export type AgronomyOverrides = Partial<AgronomyConfig>;
 export interface Settings {
   /** The farm's display name, e.g. "Mill Farm". Set during onboarding. */
   farmName?: string | null;
+  businessName?: string | null;
   yieldMultipliers: { light: number; average: number; heavy: number };
   cutTypeMultipliers: { silage: number; bales: number; grazing: number };
   grazingReturnPct: number;

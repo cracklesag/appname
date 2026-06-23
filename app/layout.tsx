@@ -126,7 +126,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             padding: '4px 12px',
           }}
         >
-          Closed beta · in testing
+          Swardly · closed beta testing
         </div>
 
         <div className="app-shell">{children}</div>
