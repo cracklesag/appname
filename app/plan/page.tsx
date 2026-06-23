@@ -7,8 +7,6 @@ import {
 } from '@/lib/data';
 import { buildFertPlanRows } from '@/lib/fertplan';
 import { PlanShell } from '@/components/PlanShell';
-import { ReportAxisFilters } from '@/components/ReportAxisFilters';
-import { TopicMap } from '@/components/TopicMap';
 import { axisChipOptions, fieldPassesAxisParams, activeCropFieldIds } from '@/lib/grouping';
 import { Product } from '@/lib/types';
 
@@ -97,15 +95,6 @@ export default async function PlanPage({
           <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>Slurry first, then granular</div>
         </div>
       </div>
-      <ReportAxisFilters
-        typeOptions={axisOptions.type}
-        agreementOptions={axisOptions.agreement}
-        typeValue={typeFilter}
-        agreementValue={agreementFilter}
-      />
-      <div style={{ padding: '12px 16px 0' }}>
-        <TopicMap title="Soil P & K map" modes={['p', 'k']} fields={planTopicFields} />
-      </div>
       <PlanShell
         rows={rows}
         groups={groups}
@@ -116,6 +105,11 @@ export default async function PlanPage({
         slurryUnit={settings.slurryUnit}
         minSpreadP2O5KgPerHa={settings.reportDefaults.minSpreadP2O5KgPerHa}
         minSpreadK2OKgPerHa={settings.reportDefaults.minSpreadK2OKgPerHa}
+        typeOptions={axisOptions.type}
+        agreementOptions={axisOptions.agreement}
+        typeValue={typeFilter}
+        agreementValue={agreementFilter}
+        topicFields={planTopicFields}
       />
     </div>
   );
