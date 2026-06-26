@@ -16,7 +16,9 @@ import type { ColourField } from '@/lib/map-colours';
 export type { FertPlanRow };
 
 // Colours for the three supply sources (match the agreed mockup).
-const SRC = { carry: '#888780', slurry: '#1D9E75', granular: '#378ADD', over: '#E24B4A' };
+const SRC = { carry: '#B3AC9D', slurry: '#6F9A63', granular: '#3C7DD0', over: '#C0392B' };
+// Two-tone status palette: covered (soil + slurry) vs still-to-apply (granular).
+const CLR = { covered: '#6F9A63', need: '#3C7DD0', over: '#C0392B' };
 
 /**
  * Stacked source bar (Style A): one nutrient, filled left-to-right with
@@ -73,6 +75,59 @@ function SourceBar({
           {over > 0.5 && <span style={{ background: '#FCEBEB', color: '#A32D2D', padding: '1px 7px', borderRadius: 10 }}>over {disp(over)}</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Per-nutrient status derived from the supply bands. need == the RB209 target.
+type NutBands = { carry: number; slurry: number; granular: number; need: number };
+type NutStat = { target: number; covered: number; granular: number; supply: number; over: number; short: number; needsWork: boolean };
+function nutStatus(b: NutBands, held = false): NutStat {
+  const target = b.need;
+  const covered = b.carry + b.slurry;
+  const supply = covered + b.granular;
+  const over = Math.max(0, supply - target);
+  const short = held ? 0 : Math.max(0, target - supply);
+  const needsWork = b.granular > 0.5 || over > 0.5 || short > 0.5;
+  return { target, covered, granular: b.granular, supply, over, short, needsWork };
+}
+function fieldNeedsWork(c: { nBands: NutBands; pBands: NutBands; kBands: NutBands; pHeld?: boolean; kHeld?: boolean }): boolean {
+  return nutStatus(c.nBands).needsWork || nutStatus(c.pBands, c.pHeld).needsWork || nutStatus(c.kBands, c.kHeld).needsWork;
+}
+
+/**
+ * Two-tone status bar for the collapsed view: green = already covered
+ * (soil + slurry), blue = still to apply (granular), red = past target.
+ * The mark sits at the RB209 target; the end label is the short/over gap.
+ */
+function StatusBar({
+  label, st, unit, disp,
+}: {
+  label: string;
+  st: NutStat;
+  unit: string;
+  disp: (kgHa: number) => number;
+}) {
+  const { target, covered, granular, supply, over, short } = st;
+  const greenW = Math.min(covered, target);
+  const blueW = Math.max(0, Math.min(supply, target) - covered);
+  const scaleMax = Math.max(target * 1.12, supply, 1);
+  const pct = (v: number) => `${Math.max(0, (v / scaleMax) * 100)}%`;
+  const markerLeft = `${(target / scaleMax) * 100}%`;
+  const end = over > 0.5 ? `+${disp(over)}` : short > 0.5 ? `−${disp(short)}` : '✓';
+  const endColor = over > 0.5 ? CLR.over : short > 0.5 ? CLR.need : CLR.covered;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-soft)', width: 34, flexShrink: 0 }}>{label}</span>
+      <div style={{ position: 'relative', flex: 1, height: 12, background: 'var(--line-soft, #e8e4da)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+          {greenW > 0 && <div style={{ width: pct(greenW), background: CLR.covered }} />}
+          {blueW > 0 && <div style={{ width: pct(blueW), background: CLR.need }} />}
+          {over > 0.5 && <div style={{ width: pct(over), background: CLR.over }} />}
+        </div>
+        <div style={{ position: 'absolute', top: -2, bottom: -2, left: markerLeft, width: 2, background: 'var(--ink, #2c2c2a)', zIndex: 3 }} />
+      </div>
+      <span style={{ fontSize: 10.5, width: 38, textAlign: 'right', flexShrink: 0, color: endColor, fontWeight: 700 }}>{end} {over > 0.5 || short > 0.5 ? unit.replace('units/', '') : ''}</span>
     </div>
   );
 }
@@ -149,6 +204,7 @@ export function PlanShell({
   const [hydrated, setHydrated] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [hideMet, setHideMet] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -252,14 +308,26 @@ export function PlanShell({
 
   const onCount = useMemo(() => rows.filter((r) => !excludedFieldIds.includes(r.id)).length, [rows, excludedFieldIds]);
   const orderedShown = reviewMode ? ordered.filter(({ c }) => !excludedFieldIds.includes(c.row.id)) : ordered;
+  const cardsToShow = (hideMet && !reviewMode) ? orderedShown.filter(({ c }) => fieldNeedsWork(c)) : orderedShown;
+  const hiddenMet = orderedShown.length - cardsToShow.length;
   // Review -> job sheets: one line item per field per granular fert; grouped by
   // product + rate server-side. Slurry stays out (logged as spread).
   const jobLineItems = useMemo(
     () => orderedShown.flatMap(({ c }) => c.planProducts.map((pp) => ({ field_id: c.row.id, product_id: pp.productId, rate_kg_ha: pp.rateKgPerHa }))),
     [orderedShown],
   );
-  const jobGroupCount = useMemo(() => new Set(jobLineItems.map((i) => `${i.product_id}|${i.rate_kg_ha}`)).size, [jobLineItems]);
+  const jobGroupCount = useMemo(() => new Set(jobLineItems.map((i) => i.product_id)).size, [jobLineItems]);
   const jobFieldCount = useMemo(() => new Set(jobLineItems.map((i) => i.field_id)).size, [jobLineItems]);
+  const jobSheetSummary = useMemo(() => {
+    const m = new Map<string, { kg: number; fields: Set<string> }>();
+    for (const { c } of orderedShown) {
+      for (const p of c.planProducts) {
+        const e = m.get(p.productName) ?? { kg: 0, fields: new Set<string>() };
+        e.kg += p.totalKg; e.fields.add(c.row.id); m.set(p.productName, e);
+      }
+    }
+    return [...m.entries()].map(([name, e]) => ({ name, kg: e.kg, fields: e.fields.size })).sort((a, b) => b.kg - a.kg);
+  }, [orderedShown]);
 
   // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
   // reads its current group's profile live, so moving a field between groups
@@ -534,9 +602,9 @@ export function PlanShell({
       {/* P & K source legend */}
       {computed.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 11 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.carry }} /><span style={{ color: 'var(--muted)' }}>Carryover</span></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.slurry }} /><span style={{ color: 'var(--muted)' }}>Slurry / digestate</span></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: SRC.granular }} /><span style={{ color: 'var(--muted)' }}>Granular</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.covered }} /><span style={{ color: 'var(--muted)' }}>Covered (soil + slurry)</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.need }} /><span style={{ color: 'var(--muted)' }}>To apply (granular)</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.over }} /><span style={{ color: 'var(--muted)' }}>Over</span></span>
         </div>
       )}
 
@@ -550,9 +618,10 @@ export function PlanShell({
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" onClick={() => setExcludedFieldIds([])} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All on</button>
             <button type="button" onClick={() => setExcludedFieldIds(rows.map((r) => r.id))} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All off</button>
+            <button type="button" onClick={() => setHideMet((v) => !v)} style={{ fontSize: 12, fontWeight: 700, color: hideMet ? 'var(--paper)' : 'var(--ink-soft)', background: hideMet ? 'var(--forest)' : 'var(--card)', border: `1px solid ${hideMet ? 'var(--forest)' : 'var(--line)'}`, padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>{hideMet ? 'Met hidden' : 'Hide met'}</button>
           </div>
           <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>
-            {rows.filter((r) => !excludedFieldIds.includes(r.id)).length} on
+            {rows.filter((r) => !excludedFieldIds.includes(r.id)).length} on{hideMet && hiddenMet > 0 ? ` · ${hiddenMet} met hidden` : ''}
           </span>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             <button type="button" onClick={() => setExpanded(Object.fromEntries(computed.map((c) => [c.row.id, true])))} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>Expand all</button>
@@ -567,7 +636,7 @@ export function PlanShell({
         </div>
       )}
 
-      {orderedShown.map(({ c, sev }) => {
+      {cardsToShow.map(({ c, sev }) => {
         const row = c.row;
         const isOpen = reviewMode || !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
@@ -742,18 +811,42 @@ export function PlanShell({
             {/* Need-vs-supply bars. N stays a simple supply bar; P & K show
                 the source breakdown (carryover / slurry / granular), with the
                 per-source figures revealed when the field is expanded. */}
-            {!atTarget && (
-              <div style={{ marginTop: 9 }}>
-                <SourceBar label="N"    bands={c.nBands} unit={nUnit} disp={disp} showFigures={isOpen} />
-                {isOpen && <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures={isOpen} />}
-                {isOpen && <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures={isOpen} />}
-                {!isOpen && (
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
-                    Tap for the full plan — P &amp; K, slurry and granular
+            {(() => {
+              const items = [
+                { label: 'N', short: 'N', st: nutStatus(c.nBands) },
+                { label: 'P₂O₅', short: 'P', st: nutStatus(c.pBands, c.pHeld) },
+                { label: 'K₂O', short: 'K', st: nutStatus(c.kBands, c.kHeld) },
+              ];
+              const work = items.filter((x) => x.st.needsWork);
+              const met = items.filter((x) => !x.st.needsWork).map((x) => x.short);
+              if (isOpen) {
+                return (
+                  <div style={{ marginTop: 9 }}>
+                    <SourceBar label="N"    bands={c.nBands} unit={nUnit} disp={disp} showFigures />
+                    <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures />
+                    <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures />
                   </div>
-                )}
-              </div>
-            )}
+                );
+              }
+              if (work.length === 0) {
+                return atTarget ? null : (
+                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 700, color: CLR.covered }}>
+                    ✓ {c.slurryTotal > 0 ? 'slurry covers it' : 'met'} — no granular
+                  </div>
+                );
+              }
+              return (
+                <div style={{ marginTop: 9 }}>
+                  {work.map((x) => <StatusBar key={x.short} label={x.label} st={x.st} unit={nUnit} disp={disp} />)}
+                  {met.length > 0 && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: CLR.covered, marginTop: 2 }}>
+                      {met.join(' · ')} met ✓
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>Tap for the full breakdown</div>
+                </div>
+              );
+            })()}
 
             {/* Low-rate hold notice — P or K shortfall too small to spread, so
                 it's held in the season balance and will combine with a later
@@ -928,17 +1021,33 @@ export function PlanShell({
       {reviewMode && orderedShown.length > 0 && (
         <form action={createJobsFromPlan} style={{ marginTop: 14 }}>
           <input type="hidden" name="items" value={JSON.stringify(jobLineItems)} />
+          {jobSheetSummary.length > 0 && (
+            <div style={{ background: 'var(--forest-dark)', borderRadius: 12, padding: '13px 14px', marginBottom: 10, color: 'var(--brand-cream, #EFE7D6)' }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, opacity: 0.8, marginBottom: 9 }}>
+                Creates {jobSheetSummary.length} job sheet{jobSheetSummary.length === 1 ? '' : 's'} — one per product
+              </div>
+              {jobSheetSummary.map((sh, i) => (
+                <div key={sh.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.12)' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{sh.name}</div>
+                    <div style={{ fontSize: 10.5, opacity: 0.75 }}>{sh.fields} field{sh.fields === 1 ? '' : 's'}</div>
+                  </div>
+                  <span className="nutrient-num" style={{ fontSize: 14.5, fontWeight: 600 }}>{fmt(Math.round(sh.kg))} kg<span style={{ fontSize: 10.5, opacity: 0.7 }}> · {(sh.kg / 1000).toFixed(2)} t</span></span>
+                </div>
+              ))}
+            </div>
+          )}
           <button
             type="submit"
             disabled={jobLineItems.length === 0}
             style={{ width: '100%', background: jobLineItems.length === 0 ? 'var(--line)' : 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: jobLineItems.length === 0 ? 'default' : 'pointer' }}
           >
-            Create job sheet{jobGroupCount === 1 ? '' : 's'} →
+            Create {jobGroupCount} job sheet{jobGroupCount === 1 ? '' : 's'} →
           </button>
           <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 7, lineHeight: 1.4 }}>
             {jobLineItems.length === 0
               ? 'No granular ferts in the selected fields — slurry alone covers them.'
-              : `${jobGroupCount} job sheet${jobGroupCount === 1 ? '' : 's'} (one per product + rate) across ${jobFieldCount} field${jobFieldCount === 1 ? '' : 's'}. Slurry isn’t included — log it as you spread.`}
+              : `One sheet per product, each field's rate shown on its line. Slurry isn’t included — log it as you spread.`}
           </div>
         </form>
       )}

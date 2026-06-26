@@ -3391,26 +3391,27 @@ export async function createJobsFromPlan(formData: FormData) {
   const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
   const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? null;
 
-  // One job sheet per distinct product + rate; fields sharing it ride together.
-  const groups = new Map<string, { productId: number; rate: number; fieldIds: string[] }>();
+  // One job sheet per product; fields ride together, each carrying its own rate.
+  const groups = new Map<number, { fieldId: string; rate: number }[]>();
   for (const it of items) {
-    const key = `${it.product_id}|${it.rate_kg_ha}`;
-    const g = groups.get(key) ?? { productId: it.product_id, rate: it.rate_kg_ha, fieldIds: [] };
-    if (!g.fieldIds.includes(it.field_id)) g.fieldIds.push(it.field_id);
-    groups.set(key, g);
+    const arr = groups.get(it.product_id) ?? [];
+    if (!arr.some((r) => r.fieldId === it.field_id)) arr.push({ fieldId: it.field_id, rate: it.rate_kg_ha });
+    groups.set(it.product_id, arr);
   }
 
-  for (const g of groups.values()) {
-    const pName = prodById.get(g.productId) ?? 'Fertiliser';
+  for (const [productId, rows] of groups.entries()) {
+    const pName = prodById.get(productId) ?? 'Fertiliser';
+    const rates = [...new Set(rows.map((r) => r.rate))];
+    const uniform = rates.length === 1 ? rates[0] : null;
     const { data: job, error } = await supabase.from('jobs').insert({
       user_id: ctx.ownerId,
       created_by: ctx.userId,
       farm_name: farmName,
-      title: `Spread ${pName} @ ${g.rate} kg/ha`,
+      title: uniform != null ? `Spread ${pName} @ ${uniform} kg/ha` : `Spread ${pName}`,
       job_type: 'fertiliser',
       status: 'sent',
-      product_id: g.productId,
-      rate_value: g.rate,
+      product_id: productId,
+      rate_value: uniform,
       rate_unit: 'kg/ha',
       water_l_per_ha: null,
       spray_spec: null,
@@ -3422,15 +3423,15 @@ export async function createJobsFromPlan(formData: FormData) {
     }).select('id').single();
     if (error || !job) continue;
 
-    const fieldsInsert = g.fieldIds.map((fid, i) => {
-      const f = fieldById.get(fid);
+    const fieldsInsert = rows.map((r, i) => {
+      const f = fieldById.get(r.fieldId);
       return {
         job_id: job.id as string,
-        field_id: fid,
+        field_id: r.fieldId,
         field_name: (f?.name as string) ?? 'Field',
         boundary: f?.boundary ?? null,
         area_ha: typeof f?.ha === 'number' ? f.ha : null,
-        planned_rate_value: g.rate,
+        planned_rate_value: r.rate,
         planned_rate_unit: 'kg/ha',
         sort_order: i,
       };
