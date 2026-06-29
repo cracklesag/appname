@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Expand, X } from 'lucide-react';
 import type { Map as MlMap, GeoJSONSource, StyleSpecification, Marker } from 'maplibre-gl';
+import { clusterByGap, bboxDiagonalKm, type GeoPoint } from '@/lib/field-clusters';
 
 type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
 
@@ -46,10 +47,12 @@ function paintMarker(el: HTMLDivElement, status: FStatus, idx: number) {
   else { el.style.cssText = `${base};background:#fff;border:2.5px solid #15803d;color:#15803d`; el.textContent = String(idx); }
 }
 
-export function JobFieldsMap({
-  fields, height = 240, statuses, onSetStatus, detailLine, rateNoun, areaUnit = 'ha',
+type MapItem = { f: MapField; idx: number; id: string };
+
+function JobFieldsSubMap({
+  items, height = 240, statuses, onSetStatus, detailLine, rateNoun, areaUnit = 'ha',
 }: {
-  fields: MapField[];
+  items: MapItem[];
   height?: number;
   statuses?: Record<string, FStatus>;
   onSetStatus?: (id: string, s: FStatus) => void;
@@ -62,7 +65,7 @@ export function JobFieldsMap({
   const loadedRef = useRef(false);
   const markerEls = useRef<globalThis.Map<string, HTMLDivElement>>(new globalThis.Map());
   const markersRef = useRef<Marker[]>([]);
-  const fieldsRef = useRef(fields);
+  const itemsRef = useRef(items);
   const statusesRef = useRef(statuses);
   const interactiveRef = useRef(!!onSetStatus);
   statusesRef.current = statuses;
@@ -74,8 +77,8 @@ export function JobFieldsMap({
 
   const interactive = !!onSetStatus;
   const feats = useMemo(
-    () => fieldsRef.current
-      .map((f, i) => ({ idx: i + 1, id: f.id ?? String(i), f, geometry: f.boundary as { type: string; coordinates: unknown } | null }))
+    () => itemsRef.current
+      .map((it) => ({ idx: it.idx, id: it.id, f: it.f, geometry: it.f.boundary as { type: string; coordinates: unknown } | null }))
       .filter((x) => x.geometry && x.geometry.coordinates),
     [],
   );
@@ -165,7 +168,14 @@ export function JobFieldsMap({
           const m = new maplibregl.Marker({ element: hit }).setLngLat(cen as [number, number]).addTo(map);
           markersRef.current.push(m);
         });
-        if (minLng <= maxLng) map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 44, maxZoom: 16, duration: 0 });
+        if (minLng <= maxLng) {
+          map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 44, maxZoom: 16, duration: 0 });
+          // Fence panning to these fields + a generous margin: keeps the map on the
+          // job's ground and caps stray tile loads, without feeling boxed-in.
+          const padX = Math.max((maxLng - minLng) * 0.6, 0.015);
+          const padY = Math.max((maxLat - minLat) * 0.6, 0.015);
+          map.setMaxBounds([[minLng - padX, minLat - padY], [maxLng + padX, maxLat + padY]]);
+        }
         loadedRef.current = true;
       });
     })();
@@ -322,6 +332,65 @@ export function JobFieldsMap({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Outer wrapper: split a job's fields into separate maps when they fall into
+// distinct areas (e.g. an outlying parcel a couple of km off) so the main block
+// stays legible instead of one frame zooming right out. One map otherwise.
+export function JobFieldsMap({
+  fields, height = 240, statuses, onSetStatus, detailLine, rateNoun, areaUnit = 'ha',
+}: {
+  fields: MapField[];
+  height?: number;
+  statuses?: Record<string, FStatus>;
+  onSetStatus?: (id: string, s: FStatus) => void;
+  detailLine?: string | null;
+  rateNoun?: string | null;
+  areaUnit?: 'ha' | 'ac';
+}) {
+  const groups = useMemo<MapItem[][]>(() => {
+    const items: (MapItem & GeoPoint)[] = [];
+    fields.forEach((f, i) => {
+      const geom = f.boundary as { type: string; coordinates: unknown } | null;
+      if (!geom || !geom.coordinates) return;
+      const cen = centroidOf(geom);
+      if (!cen) return;
+      items.push({ f, idx: i + 1, id: f.id ?? String(i), lng: cen[0], lat: cen[1] });
+    });
+    if (items.length < 2) return [items];
+    const clusters = clusterByGap(items, 1.0);
+    // Only split when fields are genuinely far apart and it stays legible: a
+    // single group, a tight job (< 2 km across), or a very fragmented one all
+    // render as one map.
+    if (clusters.length <= 1 || bboxDiagonalKm(items) < 2.0 || clusters.length > 3) return [items];
+    return [...clusters].sort((a, b) => b.length - a.length); // main block first
+  }, [fields]);
+
+  if (groups.length <= 1) {
+    return (
+      <JobFieldsSubMap items={groups[0] ?? []} height={height} statuses={statuses}
+        onSetStatus={onSetStatus} detailLine={detailLine} rateNoun={rateNoun} areaUnit={areaUnit} />
+    );
+  }
+
+  return (
+    <div>
+      {groups.map((g, gi) => {
+        const n = g.length;
+        const names = g.map((it) => it.f.field_name).filter(Boolean);
+        const label = gi === 0
+          ? `Main block · ${n} field${n === 1 ? '' : 's'}`
+          : `${names.slice(0, 2).join(', ')}${n > 2 ? ` +${n - 2}` : ''} · ${n} field${n === 1 ? '' : 's'}`;
+        return (
+          <div key={gi} style={{ marginBottom: gi < groups.length - 1 ? 12 : 0 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted, #777)', textTransform: 'uppercase', letterSpacing: '.04em', margin: '0 2px 6px' }}>{label}</div>
+            <JobFieldsSubMap items={g} height={height} statuses={statuses}
+              onSetStatus={onSetStatus} detailLine={detailLine} rateNoun={rateNoun} areaUnit={areaUnit} />
+          </div>
+        );
+      })}
     </div>
   );
 }
