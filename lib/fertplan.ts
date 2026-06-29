@@ -201,6 +201,8 @@ export interface PlannedField {
   organicName: string | null;
   organicUnit: RateUnit;
   slurryN: number; slurryP: number; slurryK: number;
+  /** Display-only: manure N available to the next crop vs total content (kg/ha). */
+  slurryNAvail: number; slurryNTotal: number;
   slurryTotal: number;
   pAfter: number; kAfter: number; nAfter: number;
   /** P/K shortfall held back because it's below the minimum spread rate
@@ -257,11 +259,15 @@ export function planField(
   // a field with logged slurry >= intended adds 0 here (no double deduction),
   // while a field with no logged slurry still deducts the full intended rate.
   let slurryN = 0, slurryP = 0, slurryK = 0;
+  let slurryNAvail = 0, slurryNTotal = 0;
   if (!slurryOff && organic && rate > 0) {
     const n = calcNutrients(organic, rate, unit, ukTodayIso(), 'splash_plate');
     slurryN = Math.max(0, Math.round(n.nPerHa)    - row.loggedOrganicN);
     slurryP = Math.max(0, Math.round(n.p2o5PerHa) - row.loggedOrganicP);
     slurryK = Math.max(0, Math.round(n.k2oPerHa)  - row.loggedOrganicK);
+    slurryNAvail = Math.round(n.nPerHa);
+    const af = n.availFactor ?? 1;
+    slurryNTotal = af > 0 ? Math.round(n.nPerHa / af) : Math.round(n.nPerHa);
   }
 
   let pAfter = Math.max(0, row.p2o5ToApply - slurryP);
@@ -334,6 +340,7 @@ export function planField(
     organicName: (!slurryOff && organic) ? organic.name : null,
     organicUnit: unit,
     slurryN, slurryP, slurryK,
+    slurryNAvail, slurryNTotal,
     slurryTotal: (!slurryOff && organic && rate > 0) ? Math.round(rate * row.ha) : 0,
     pAfter, kAfter, nAfter,
     pHeld, kHeld,

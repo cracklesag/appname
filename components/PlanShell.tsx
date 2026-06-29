@@ -216,6 +216,7 @@ export function PlanShell({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const reviewMode = step === 3;
   const [reviewEditIds, setReviewEditIds] = useState<Set<string>>(new Set());
+  const [manureView, setManureView] = useState<'avail' | 'total'>('avail');
 
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
@@ -409,6 +410,21 @@ export function PlanShell({
     return [...totals.entries()];
   }, [computed, excludedFieldIds]);
 
+  // Manure volumes/tonnes across the selected fields (uses each field's
+  // effective rate, so per-field overrides are included).
+  const manureSummary = useMemo(() => {
+    const m = new Map<string, { name: string; unit: string; volume: number; fields: number }>();
+    for (const c of computed) {
+      if (excludedFieldIds.includes(c.row.id)) continue;
+      if (c.organicName && c.slurryTotal > 0) {
+        const key = `${c.organicName}|${c.organicUnit}`;
+        const e = m.get(key) ?? { name: c.organicName, unit: c.organicUnit.replace(/\/(ac|ha)$/, ''), volume: 0, fields: 0 };
+        e.volume += c.slurryTotal; e.fields += 1; m.set(key, e);
+      }
+    }
+    return [...m.values()].sort((a, b) => b.volume - a.volume);
+  }, [computed, excludedFieldIds]);
+
   const anyUngrouped = rows.some((r) => !r.groupId);
   const chips = [
     { v: 'all', label: 'All' },
@@ -529,6 +545,16 @@ export function PlanShell({
         </div>
       )}
 
+      {step === 3 && organicTotals.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>Manure N shown as</span>
+          <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+            <button type="button" onClick={() => setManureView('avail')} style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 11px', border: 'none', cursor: 'pointer', background: manureView === 'avail' ? 'var(--forest)' : 'var(--card)', color: manureView === 'avail' ? 'var(--paper)' : 'var(--ink-soft)' }}>To next crop</button>
+            <button type="button" onClick={() => setManureView('total')} style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 11px', border: 'none', borderLeft: '1px solid var(--line)', cursor: 'pointer', background: manureView === 'total' ? 'var(--forest)' : 'var(--card)', color: manureView === 'total' ? 'var(--paper)' : 'var(--ink-soft)' }}>Total in muck</button>
+          </div>
+        </div>
+      )}
+
       {step === 1 && (
       <>
       <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
@@ -624,6 +650,17 @@ export function PlanShell({
         ) : (
           <div className="card" style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>No slurry or FYM in your products yet — add one to plan manure, or carry on to fertiliser.</div>
         )}
+        {manureSummary.length > 0 && (
+          <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Total to spread · selected fields</div>
+            {manureSummary.map((mn) => (
+              <div key={mn.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '4px 0', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: 'var(--forest-dark)', flex: 1, minWidth: 0 }}>{mn.name}<span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {mn.fields} field{mn.fields === 1 ? '' : 's'}</span></span>
+                <span className="nutrient-num" style={{ fontWeight: 700 }}>{fmt(Math.round(mn.volume))} {mn.unit}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button type="button" onClick={() => setStep(1)} style={{ flex: '0 0 auto', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '13px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>← Back</button>
           <button type="button" onClick={() => setStep(3)} style={{ flex: 1, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Next: fertiliser →</button>
@@ -707,11 +744,18 @@ export function PlanShell({
                     </div>
                   ))}
                   {c.slurryTotal > 0 && (
+                    <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0', fontSize: 12.5 }}>
                       <span style={{ fontWeight: 600, color: 'var(--forest-dark)', flex: 1, minWidth: 0 }}>{c.organicName}</span>
                       <span style={{ color: 'var(--muted)' }}>{c.rateStr} {c.organicUnit}</span>
                       <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(Math.round(slurryVol))} {volUnit}</span>
                     </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '1px 0 2px', lineHeight: 1.4 }}>
+                      {manureView === 'total'
+                        ? <>holds N {disp(c.slurryNTotal)} · P {disp(c.slurryP)} · K {disp(c.slurryK)} {nUnit} total{c.slurryNTotal > c.slurryNAvail ? <span style={{ fontStyle: 'italic' }}> · only ~{disp(c.slurryNAvail)} N to this crop, rest releases later</span> : null}</>
+                        : <>supplies N {disp(c.slurryNAvail)} · P {disp(c.slurryP)} · K {disp(c.slurryK)} {nUnit} to the next crop</>}
+                    </div>
+                    </>
                   )}
                   {c.planProducts.length === 0 && c.slurryTotal === 0 && (
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nothing to apply — at target.</div>
