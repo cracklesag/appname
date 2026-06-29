@@ -24,7 +24,7 @@ const MODE_LABEL: Record<ColourMode, string> = {
 function buildSatelliteStyle(token: string | null): StyleSpecification {
   const sources: any = token
     ? { sat: { type: "raster", tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${token}`], tileSize: 512, attribution: "© Mapbox © Maxar" } }
-    : { sat: { type: "raster", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize: 256, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" } };
+    : { sat: { type: "raster", url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`, tileSize: 256, attribution: "© MapTiler © OpenStreetMap contributors" } };
   return { version: 8, sources, layers: [{ id: "sat", type: "raster", source: "sat" }] } as unknown as StyleSpecification;
 }
 

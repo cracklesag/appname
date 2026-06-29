@@ -23,7 +23,7 @@ const HA_TO_AC = 2.47105;
 function satelliteStyle(): StyleSpecification {
   return {
     version: 8,
-    sources: { sat: { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, attribution: 'Imagery © Esri' } },
+    sources: { sat: { type: 'raster', url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`, tileSize: 256, attribution: '© MapTiler © OpenStreetMap contributors' } },
     layers: [{ id: 'sat', type: 'raster', source: 'sat' }],
   } as unknown as StyleSpecification;
 }
@@ -92,7 +92,7 @@ function JobFieldsSubMap({
       const maplibregl = (await import('maplibre-gl')).default;
       if (cancelled || !ref.current || mapRef.current || feats.length === 0) return;
 
-      const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), maxZoom: 17, center: [-2.7, 54.0], zoom: 11, attributionControl: false });
+      const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), maxZoom: 17, center: [-2.7, 54.0], zoom: 11, attributionControl: { compact: true } });
       mapRef.current = map;
 
       // "Where am I?" — off by default; tapping it triggers the browser's own

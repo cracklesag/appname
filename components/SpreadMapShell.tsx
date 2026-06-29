@@ -40,9 +40,9 @@ function buildSatelliteStyle(mapboxToken: string | null): StyleSpecification {
     : {
         sat: {
           type: 'raster',
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`,
           tileSize: 256,
-          attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+          attribution: '© MapTiler © OpenStreetMap contributors',
         },
       };
   return { version: 8, sources, layers: [{ id: 'sat', type: 'raster', source: 'sat' }] } as unknown as StyleSpecification;
