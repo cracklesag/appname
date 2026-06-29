@@ -79,7 +79,7 @@ export function TopicMap({
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: buildSatelliteStyle(token),
-        maxZoom: 18,
+        maxZoom: 17,
         center: [-1.6, 53.0],
         zoom: 5,
         attributionControl: { compact: true },

@@ -92,7 +92,7 @@ function JobFieldsSubMap({
       const maplibregl = (await import('maplibre-gl')).default;
       if (cancelled || !ref.current || mapRef.current || feats.length === 0) return;
 
-      const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), maxZoom: 18, center: [-2.7, 54.0], zoom: 11, attributionControl: false });
+      const map = new maplibregl.Map({ container: ref.current, style: satelliteStyle(), maxZoom: 17, center: [-2.7, 54.0], zoom: 11, attributionControl: false });
       mapRef.current = map;
 
       // "Where am I?" — off by default; tapping it triggers the browser's own

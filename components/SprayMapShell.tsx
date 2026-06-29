@@ -115,7 +115,7 @@ export function SprayMapShell({
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: buildSatelliteStyle(mapboxToken),
-        maxZoom: 18,
+        maxZoom: 17,
         center: [-2.5, 54],
         zoom: 12,
       });
