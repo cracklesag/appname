@@ -3374,19 +3374,27 @@ export async function createJobsFromPlan(formData: FormData) {
   items = (Array.isArray(items) ? items : []).filter(
     (i) => i && typeof i.field_id === 'string' && Number.isFinite(i.product_id) && Number.isFinite(i.rate_kg_ha) && i.rate_kg_ha > 0,
   );
-  if (items.length === 0) throw new Error('No granular ferts to turn into a job');
 
-  // Enrich fields (name / boundary / area) and product names from the DB so the
+  // Optional: manure/slurry items. Rate is the native VOLUME rate (e.g. m3/ha or
+  // gal/ac), not kg/ha, so these become 'slurry'/'manure' sheets, not 'fertiliser'.
+  let organicItems: { field_id: string; product_id: number; rate_value: number; rate_unit: string }[] = [];
+  try { organicItems = JSON.parse(String(formData.get('organicItems') ?? '[]')); } catch { organicItems = []; }
+  organicItems = (Array.isArray(organicItems) ? organicItems : []).filter(
+    (i) => i && typeof i.field_id === 'string' && Number.isFinite(i.product_id) && Number.isFinite(i.rate_value) && i.rate_value > 0 && typeof i.rate_unit === 'string',
+  );
+  if (items.length === 0 && organicItems.length === 0) throw new Error('Nothing to turn into a job');
+
+  // Enrich fields (name / boundary / area) and products from the DB so the
   // created job sheets carry map polygons and readable titles.
-  const fieldIds = [...new Set(items.map((i) => i.field_id))];
+  const fieldIds = [...new Set([...items.map((i) => i.field_id), ...organicItems.map((i) => i.field_id)])];
   const { data: fieldRows } = await supabase
     .from('fields').select('id, name, boundary, ha').in('id', fieldIds);
   const fieldById = new Map((fieldRows ?? []).map((f) => [f.id as string, f]));
 
-  const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productIds = [...new Set([...items.map((i) => i.product_id), ...organicItems.map((i) => i.product_id)])];
   const { data: prodRows } = await supabase
-    .from('products').select('id, name').in('id', productIds);
-  const prodById = new Map((prodRows ?? []).map((p) => [p.id as number, p.name as string]));
+    .from('products').select('id, name, type').in('id', productIds);
+  const prodById = new Map((prodRows ?? []).map((p) => [p.id as number, { name: p.name as string, type: p.type as string }]));
 
   const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
   const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? null;
@@ -3400,7 +3408,7 @@ export async function createJobsFromPlan(formData: FormData) {
   }
 
   for (const [productId, rows] of groups.entries()) {
-    const pName = prodById.get(productId) ?? 'Fertiliser';
+    const pName = prodById.get(productId)?.name ?? 'Fertiliser';
     const rates = [...new Set(rows.map((r) => r.rate))];
     const uniform = rates.length === 1 ? rates[0] : null;
     const { data: job, error } = await supabase.from('jobs').insert({
@@ -3433,6 +3441,55 @@ export async function createJobsFromPlan(formData: FormData) {
         area_ha: typeof f?.ha === 'number' ? f.ha : null,
         planned_rate_value: r.rate,
         planned_rate_unit: 'kg/ha',
+        sort_order: i,
+      };
+    });
+    await supabase.from('job_fields').insert(fieldsInsert);
+  }
+
+  // Manure / slurry sheets — one per product, rate in its native volume unit.
+  const orgGroups = new Map<number, { fieldId: string; rate: number; unit: string }[]>();
+  for (const it of organicItems) {
+    const arr = orgGroups.get(it.product_id) ?? [];
+    if (!arr.some((r) => r.fieldId === it.field_id)) arr.push({ fieldId: it.field_id, rate: it.rate_value, unit: it.rate_unit });
+    orgGroups.set(it.product_id, arr);
+  }
+  for (const [productId, rows] of orgGroups.entries()) {
+    const prod = prodById.get(productId);
+    const pName = prod?.name ?? 'Manure';
+    const jobType = prod?.type === 'solid_manure' ? 'manure' : 'slurry';
+    const unit = rows[0]?.unit ?? '';
+    const rates = [...new Set(rows.map((r) => r.rate))];
+    const uniform = rates.length === 1 ? rates[0] : null;
+    const { data: job, error } = await supabase.from('jobs').insert({
+      user_id: ctx.ownerId,
+      created_by: ctx.userId,
+      farm_name: farmName,
+      title: uniform != null ? `Spread ${pName} @ ${uniform} ${unit}` : `Spread ${pName}`,
+      job_type: jobType,
+      status: 'sent',
+      product_id: productId,
+      rate_value: uniform,
+      rate_unit: unit,
+      water_l_per_ha: null,
+      spray_spec: null,
+      instruction: null,
+      notes: 'Created from the fert plan.',
+      due_date: null,
+      assignee_user_id: null,
+      contractor_label: null,
+    }).select('id').single();
+    if (error || !job) continue;
+    const fieldsInsert = rows.map((r, i) => {
+      const f = fieldById.get(r.fieldId);
+      return {
+        job_id: job.id as string,
+        field_id: r.fieldId,
+        field_name: (f?.name as string) ?? 'Field',
+        boundary: f?.boundary ?? null,
+        area_ha: typeof f?.ha === 'number' ? f.ha : null,
+        planned_rate_value: r.rate,
+        planned_rate_unit: r.unit,
         sort_order: i,
       };
     });
@@ -4725,7 +4782,7 @@ export async function forkCrop(formData: FormData) {
     .from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
   const farmName = ((settingsRow?.data as { farmName?: string } | null)?.farmName ?? '').trim();
   const baseLabel = String(r.label);
-  const newLabel = farmName ? `${farmName} ${baseLabel}` : `${baseLabel} (copy)`;
+  const newLabel = farmName ? `${farmName} ${baseLabel}` : `Custom ${baseLabel}`;
 
   const { data: inserted, error } = await supabase.from('crops').insert({
     user_id: ctx.ownerId,

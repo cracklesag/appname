@@ -352,6 +352,13 @@ export function PlanShell({
     }
     return [...m.entries()].map(([name, e]) => ({ name, kg: e.kg, fields: e.fields.size })).sort((a, b) => b.kg - a.kg);
   }, [orderedShown]);
+  const organicLineItems = useMemo(
+    () => orderedShown.flatMap(({ c }) =>
+      c.organicId !== '' && c.slurryTotal > 0 && (parseFloat(c.rateStr) || 0) > 0
+        ? [{ field_id: c.row.id, product_id: Number(c.organicId), rate_value: parseFloat(c.rateStr), rate_unit: c.organicUnit }]
+        : []),
+    [orderedShown],
+  );
 
   // Group profiles, for soft warnings (too-early / over-cap / NVZ). A field
   // reads its current group's profile live, so moving a field between groups
@@ -424,6 +431,8 @@ export function PlanShell({
     }
     return [...m.values()].sort((a, b) => b.volume - a.volume);
   }, [computed, excludedFieldIds]);
+
+  const totalSheetCount = jobGroupCount + manureSummary.length;
 
   const anyUngrouped = rows.some((r) => !r.groupId);
   const chips = [
@@ -1189,10 +1198,11 @@ export function PlanShell({
       {reviewMode && orderedShown.length > 0 && (
         <form action={createJobsFromPlan} style={{ marginTop: 14 }}>
           <input type="hidden" name="items" value={JSON.stringify(jobLineItems)} />
-          {jobSheetSummary.length > 0 && (
+          <input type="hidden" name="organicItems" value={JSON.stringify(organicLineItems)} />
+          {(jobSheetSummary.length > 0 || manureSummary.length > 0) && (
             <div style={{ background: 'var(--forest-dark)', borderRadius: 12, padding: '13px 14px', marginBottom: 10, color: 'var(--brand-cream, #EFE7D6)' }}>
               <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, opacity: 0.8, marginBottom: 9 }}>
-                Creates {jobSheetSummary.length} job sheet{jobSheetSummary.length === 1 ? '' : 's'} — one per product
+                Creates {totalSheetCount} job sheet{totalSheetCount === 1 ? '' : 's'} — one per product
               </div>
               {jobSheetSummary.map((sh, i) => (
                 <div key={sh.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.12)' }}>
@@ -1203,19 +1213,28 @@ export function PlanShell({
                   <span className="nutrient-num" style={{ fontSize: 14.5, fontWeight: 600 }}>{fmt(Math.round(sh.kg))} kg<span style={{ fontSize: 10.5, opacity: 0.7 }}> · {(sh.kg / 1000).toFixed(2)} t</span></span>
                 </div>
               ))}
+              {manureSummary.map((mn, i) => (
+                <div key={`m-${mn.name}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderTop: (jobSheetSummary.length === 0 && i === 0) ? 'none' : '1px solid rgba(255,255,255,0.12)' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{mn.name}</div>
+                    <div style={{ fontSize: 10.5, opacity: 0.75 }}>{mn.fields} field{mn.fields === 1 ? '' : 's'} · spread sheet</div>
+                  </div>
+                  <span className="nutrient-num" style={{ fontSize: 14.5, fontWeight: 600 }}>{fmt(Math.round(mn.volume))} {mn.unit}</span>
+                </div>
+              ))}
             </div>
           )}
           <button
             type="submit"
-            disabled={jobLineItems.length === 0}
-            style={{ width: '100%', background: jobLineItems.length === 0 ? 'var(--line)' : 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: jobLineItems.length === 0 ? 'default' : 'pointer' }}
+            disabled={jobLineItems.length === 0 && organicLineItems.length === 0}
+            style={{ width: '100%', background: (jobLineItems.length === 0 && organicLineItems.length === 0) ? 'var(--line)' : 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: (jobLineItems.length === 0 && organicLineItems.length === 0) ? 'default' : 'pointer' }}
           >
-            Create {jobGroupCount} job sheet{jobGroupCount === 1 ? '' : 's'} →
+            Create {totalSheetCount} job sheet{totalSheetCount === 1 ? '' : 's'} →
           </button>
           <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 7, lineHeight: 1.4 }}>
-            {jobLineItems.length === 0
-              ? 'No granular ferts in the selected fields — slurry alone covers them.'
-              : `One sheet per product, each field's rate shown on its line. Slurry isn’t included — log it as you spread.`}
+            {jobLineItems.length === 0 && organicLineItems.length === 0
+              ? 'Nothing to spread in the selected fields yet.'
+              : `One sheet per product — granular and manure — each field's rate on its line.`}
           </div>
         </form>
       )}
