@@ -137,7 +137,7 @@ function buildSatelliteStyle(mapboxToken: string | null): StyleSpecification {
           tiles: [
             `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mapboxToken}`,
           ],
-          tileSize: 256,
+          tileSize: 512,
           attribution: "© Mapbox © Maxar",
         },
       }
@@ -305,6 +305,7 @@ export default function FarmMapShell({ fields, mapSettings, mapboxToken, blockNa
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: buildSatelliteStyle(mapboxToken),
+        maxZoom: 18,
         center: saved?.center ?? UK_DEFAULT.center,
         zoom: saved?.zoom ?? UK_DEFAULT.zoom,
         // attribution control is shown by default — required to credit the imagery source

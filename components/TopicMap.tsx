@@ -23,7 +23,7 @@ const MODE_LABEL: Record<ColourMode, string> = {
 
 function buildSatelliteStyle(token: string | null): StyleSpecification {
   const sources: any = token
-    ? { sat: { type: "raster", tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${token}`], tileSize: 256, attribution: "© Mapbox © Maxar" } }
+    ? { sat: { type: "raster", tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${token}`], tileSize: 512, attribution: "© Mapbox © Maxar" } }
     : { sat: { type: "raster", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize: 256, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" } };
   return { version: 8, sources, layers: [{ id: "sat", type: "raster", source: "sat" }] } as unknown as StyleSpecification;
 }
@@ -79,6 +79,7 @@ export function TopicMap({
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: buildSatelliteStyle(token),
+        maxZoom: 18,
         center: [-1.6, 53.0],
         zoom: 5,
         attributionControl: { compact: true },

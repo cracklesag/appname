@@ -33,7 +33,7 @@ function buildSatelliteStyle(mapboxToken: string | null): StyleSpecification {
         sat: {
           type: 'raster',
           tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mapboxToken}`],
-          tileSize: 256,
+          tileSize: 512,
           attribution: '© Mapbox © Maxar',
         },
       }
@@ -291,6 +291,7 @@ function ProductMapPage({
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: buildSatelliteStyle(mapboxToken),
+        maxZoom: 18,
         center: [-2.5, 54],
         zoom: 12,
         // Let the WebGL canvas be captured when screenshotting/printing.
