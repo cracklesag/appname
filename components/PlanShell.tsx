@@ -132,6 +132,27 @@ function StatusBar({
   );
 }
 
+/**
+ * Compact proof bar for the review: green = covered (soil + slurry), blue =
+ * granular, capped at the RB209 target. Tick when it lands, – short, ! over.
+ */
+function ProofChip({ label, st }: { label: string; st: NutStat }) {
+  const { target, covered, supply, over, short } = st;
+  const greenW = target > 0 ? (Math.min(covered, target) / target) * 100 : 0;
+  const blueW = target > 0 ? (Math.max(0, Math.min(supply, target) - covered) / target) * 100 : 0;
+  const color = over > 0.5 ? CLR.over : short > 0.5 ? CLR.need : CLR.covered;
+  const mark = over > 0.5 ? '!' : short > 0.5 ? '\u2013' : '\u2713';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color }}>
+      <span style={{ width: 42, height: 7, borderRadius: 4, background: 'var(--line-soft, #e7e2d6)', position: 'relative', overflow: 'hidden' }}>
+        <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.min(100, greenW)}%`, background: CLR.covered }} />
+        <span style={{ position: 'absolute', left: `${Math.min(100, greenW)}%`, top: 0, bottom: 0, width: `${Math.min(Math.max(0, 100 - greenW), blueW)}%`, background: CLR.need }} />
+      </span>
+      {label} {mark}
+    </span>
+  );
+}
+
 // Soil targets for the heat bars — RB209 index 2 / pH 6.0 for grassland.
 const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
 
@@ -194,6 +215,7 @@ export function PlanShell({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const reviewMode = step === 3;
+  const [reviewEditIds, setReviewEditIds] = useState<Set<string>>(new Set());
 
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
@@ -649,6 +671,110 @@ export function PlanShell({
         const atTarget = c.nothingGranular && c.slurryTotal === 0
           && c.pAfter === 0 && c.kAfter === 0 && row.nToApply === 0
           && !c.pHeld && !c.kHeld;
+
+        if (step === 3) {
+          const editing = reviewEditIds.has(row.id);
+          const volUnit = c.organicUnit.replace(/\/(ac|ha)$/, '');
+          const slurryVol = c.slurryTotal > 0 ? (parseFloat(c.rateStr) || 0) * row.areaValue : 0;
+          const proof = [
+            { l: 'N', st: nutStatus(c.nBands) },
+            { l: 'P', st: nutStatus(c.pBands, c.pHeld) },
+            { l: 'K', st: nutStatus(c.kBands, c.kHeld) },
+          ];
+          return (
+            <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{row.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{fmt(row.areaValue, 1)} {row.areaUnit} · {cutLabel}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewEditIds((prev) => { const nx = new Set(prev); if (nx.has(row.id)) nx.delete(row.id); else nx.add(row.id); return nx; })}
+                  style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, borderRadius: 7, padding: '6px 11px', cursor: 'pointer', background: editing ? 'var(--forest)' : 'var(--card)', color: editing ? 'var(--paper)' : 'var(--forest-dark)', border: editing ? 'none' : '1px solid var(--line)' }}
+                >
+                  {editing ? 'Done' : '✎ Edit'}
+                </button>
+              </div>
+
+              {!editing ? (
+                <div style={{ marginTop: 9 }}>
+                  {c.planProducts.map((pp, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0', fontSize: 12.5 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ink)', flex: 1, minWidth: 0 }}>{pp.productName}</span>
+                      <span style={{ color: 'var(--muted)' }}>{dispRate(pp.rateKgPerHa)} {rateUnit}</span>
+                      <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(pp.totalKg)} kg</span>
+                    </div>
+                  ))}
+                  {c.slurryTotal > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0', fontSize: 12.5 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--forest-dark)', flex: 1, minWidth: 0 }}>{c.organicName}</span>
+                      <span style={{ color: 'var(--muted)' }}>{c.rateStr} {c.organicUnit}</span>
+                      <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(Math.round(slurryVol))} {volUnit}</span>
+                    </div>
+                  )}
+                  {c.planProducts.length === 0 && c.slurryTotal === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nothing to apply — at target.</div>
+                  )}
+                  {(c.planProducts.length > 0 || c.slurryTotal > 0) && (
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>Supplies N {disp(c.supplyN)} · P {disp(c.supplyP)} · K {disp(c.supplyK)} {nUnit}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+                    {proof.map(({ l, st }) => <ProofChip key={l} label={l} st={st} />)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 10 }}>
+                  {organics.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Slurry / manure</div>
+                      {!slurryOff ? (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <select className="select" value={c.organicId} onChange={(e) => setOverride(row.id, { productId: e.target.value === '' ? '' : Number(e.target.value) })} style={{ flex: 1, minWidth: 0 }}>
+                            <option value="">None</option>
+                            {organics.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                          <input type="number" inputMode="decimal" className="input" placeholder="rate" value={c.rateStr} onChange={(e) => setOverride(row.id, { rate: e.target.value })} style={{ width: 80, textAlign: 'right' }} />
+                          <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.organicUnit}</span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Slurry off for this field.</div>
+                      )}
+                      <button type="button" onClick={() => setSlurryOffFieldIds((prev) => toggleIn(prev, row.id))} style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700, color: slurryOff ? 'var(--forest)' : 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{slurryOff ? 'Turn slurry on' : 'Turn slurry off'}</button>
+                    </div>
+                  )}
+                  {granular.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Granular</div>
+                      {!hasManualList ? (
+                        <button type="button" onClick={() => seedGranularPlan(row.id, c.planProducts)} style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '7px 11px', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)' }}>Change ferts</button>
+                      ) : (
+                        <>
+                          {(granularPlans[row.id] ?? []).map((entry, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                              <select className="select" value={entry.productId} onChange={(e) => setGranularPlanEntry(row.id, i, { productId: e.target.value === '' ? '' : Number(e.target.value) })} style={{ flex: 1, minWidth: 0 }}>
+                                <option value="">Choose…</option>
+                                {granular.map((gp) => <option key={gp.id} value={gp.id}>{gp.name}</option>)}
+                              </select>
+                              <input type="number" inputMode="decimal" className="input" placeholder="rate" value={entry.rate} onChange={(e) => setGranularPlanEntry(row.id, i, { rate: e.target.value })} style={{ width: 70, textAlign: 'right' }} />
+                              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{nUnit}</span>
+                              <button type="button" onClick={() => removeGranularFert(row.id, i)} aria-label="Remove fert" style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}><X size={16} /></button>
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <button type="button" onClick={() => addGranularFert(row.id)} style={{ fontSize: 12, fontWeight: 700, color: 'var(--forest-dark)', background: 'var(--forest-soft)', border: 'none', borderRadius: 7, padding: '7px 11px', cursor: 'pointer' }}>+ Add fert</button>
+                            <button type="button" onClick={() => clearGranularPlan(row.id)} style={{ fontSize: 12, color: 'var(--forest)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 700 }}>Reset to auto</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => setExcludedFieldIds((prev) => toggleIn(prev, row.id))} style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '8px 11px', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)' }}>Take off this round</button>
+                </div>
+              )}
+            </div>
+          );
+        }
 
         return (
           <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8, opacity: excluded ? 0.5 : 1 }}>
