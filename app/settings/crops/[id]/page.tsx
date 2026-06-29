@@ -36,11 +36,11 @@ export default async function CropEditPage({ params }: { params: { id: string } 
           <div style={{ background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 8, padding: 13 }}>
             <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
               This is a seeded crop, so its figures are read-only. To tune the yield, offtake, nitrogen target or pH for
-              your ground, make your own editable duplicate.
+              your ground, make your own editable custom version.
             </div>
             <form action={forkCrop} style={{ marginTop: 10 }}>
               <input type="hidden" name="crop_id" value={crop.id} />
-              <button type="submit" className="btn-primary" style={{ width: '100%' }}>Duplicate to an editable crop</button>
+              <button type="submit" className="btn-primary" style={{ width: '100%' }}>Make an editable custom version</button>
             </form>
           </div>
         ) : (
@@ -88,7 +88,7 @@ export default async function CropEditPage({ params }: { params: { id: string } 
               </summary>
               <div style={{ paddingTop: 2 }}>
                 <p style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, margin: '2px 0 6px' }}>
-                  Offtake, micronutrients and provenance. The figures carried from the crop you duplicated are sensible
+                  Offtake, micronutrients and provenance. The figures carried from the crop you based this on are sensible
                   defaults — only change them if you have numbers for your ground.
                 </p>
 
@@ -159,7 +159,7 @@ export default async function CropEditPage({ params }: { params: { id: string } 
                 <input name="summary" defaultValue={p.summary} style={inp} />
 
                 <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14, background: 'var(--paper-deep, #f4efe2)', borderRadius: 6, padding: '8px 10px' }}>
-                  The nitrogen stage timings and micronutrient notes are carried from the crop you duplicated and aren&apos;t
+                  The nitrogen stage timings and micronutrient notes are carried from the crop you based this on and aren&apos;t
                   edited here — the figures above drive the plan&apos;s rates.
                 </div>
               </div>

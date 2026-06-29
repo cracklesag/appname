@@ -439,6 +439,17 @@ export function displayBagAmount(kgPerHa: number, unit: Settings['bagFertUnit'])
   }
 }
 
+/** Inverse of displayBagAmount: a rate the user typed in their bag unit → kg/ha. */
+export function bagAmountToKgPerHa(value: number, unit: Settings['bagFertUnit']): number {
+  switch (unit) {
+    case 'kg/ac':    return value * KG_HA_PER_KG_AC;
+    case 'lb/ac':    return value * KG_HA_PER_LB_AC;
+    case 'units/ac': return value * KG_HA_PER_UNIT_AC;
+    case 'kg/ha':
+    default:         return value;
+  }
+}
+
 export function displayRate(app: Application, settings: Settings, productType: ProductType): { value: number; unit: string } {
   if (productType === 'bag_fert') {
     // Liquid fert is dosed and displayed in litres — show the stored litre

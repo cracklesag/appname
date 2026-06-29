@@ -583,7 +583,7 @@ export interface CropRow {
 export function cropProfileFromRow(r: CropRow): CropProfile {
   return {
     key: r.seed_key ?? r.id,
-    label: r.label,
+    label: String(r.label).replace(/\s*\(copy\)\s*$/i, ''),
     category: r.category,
     yieldDefault: Number(r.yield_default),
     yieldUnit: r.yield_unit,

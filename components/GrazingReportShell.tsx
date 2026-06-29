@@ -235,6 +235,7 @@ export function GrazingReportShell({
   // doesn't count as "missing".)
   const [grazeGroupId, setGrazeGroupId] = useState<string>('');
   const [showOthers, setShowOthers] = useState(false);
+  const [showGrazeSetup, setShowGrazeSetup] = useState(false);
   const nonGrazingByGroup = useMemo(() => {
     const out: { id: string; name: string; count: number; sample: string[] }[] = [];
     for (const g of groups) {
@@ -277,14 +278,23 @@ export function GrazingReportShell({
 
   // Bulk "set a whole group to grazing" helper — shown when a group has fields
   // that aren't set to grazing. Posts to the server action via a form.
-  const grazeHelper = nonGrazingByGroup.length === 0 ? null : (
+  const grazeHelper = nonGrazingByGroup.length === 0 ? null : !showGrazeSetup ? (
+    <button
+      type="button"
+      onClick={() => setShowGrazeSetup(true)}
+      className="no-print"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: '2px 2px', marginBottom: 14, fontSize: 12, fontWeight: 600, color: 'var(--muted)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+    >
+      A block not on grazing? Set a whole block &rarr;
+    </button>
+  ) : (
     <form action={setGroupToGrazing} className="card no-print" style={{ padding: 13, marginBottom: 14, background: 'var(--card)' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
-        Grazing block not showing?
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Set a block to grazing</div>
+        <button type="button" onClick={() => setShowGrazeSetup(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 0 }}>&times;</button>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 10 }}>
-        A field only appears here when its cut plan is set to grazing — grouping it isn&apos;t enough.
-        Set a whole group to grazing in one go:
+        A field only appears here when its cut plan is set to grazing. Set a whole block in one go:
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select

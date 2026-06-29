@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { ClipboardList } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { GrazingReportShell } from '@/components/GrazingReportShell';
 import {
@@ -81,6 +83,14 @@ export default async function GrazingReportPage({
         typeValue="all"
         agreementValue={agreementFilter}
       />
+      <div style={{ padding: '12px 16px 0' }}>
+        <Link
+          href="/reports/grazing/job?from=%2Freports%2Fgrazing"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'var(--forest)', color: 'var(--paper)', borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
+        >
+          <ClipboardList size={16} /> Create top-up job sheet
+        </Link>
+      </div>
       <GrazingReportShell
         fields={visibleFields}
         applications={applications}
