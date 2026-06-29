@@ -220,6 +220,7 @@ export function PlanShell({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const reviewMode = step === 3;
   const [reviewEditIds, setReviewEditIds] = useState<Set<string>>(new Set());
+  const [reviewExpandIds, setReviewExpandIds] = useState<Set<string>>(new Set());
   const [manureView, setManureView] = useState<'auto' | 'avail' | 'total'>('auto');
 
   // bag products switched off (never recommended), fields dropped from the
@@ -714,9 +715,10 @@ export function PlanShell({
         const hasManualList = !!granularPlans[row.id]?.length;
         const excluded = excludedFieldIds.includes(row.id);
         const slurryOff = slurryOffFieldIds.includes(row.id);
-        const cutLabel = row.cutType === 'grazing' ? 'grazing'
-          : row.cutType === 'bales' ? `cut ${row.cutNumber} (bales)`
-          : `cut ${row.cutNumber}`;
+        const cutLabel = maintenanceSet.has(row.id) ? 'Maintenance'
+          : row.cutType === 'grazing' ? 'Grazing'
+          : row.cutType === 'bales' ? `Building to cut ${row.cutNumber} (bales)`
+          : `Building to cut ${row.cutNumber}`;
         // At target = nothing left to plan once slurry + the minimum-rate hold
         // are accounted for, and no slurry being added either.
         const atTarget = c.nothingGranular && c.slurryTotal === 0
@@ -725,6 +727,7 @@ export function PlanShell({
 
         if (step === 3) {
           const editing = reviewEditIds.has(row.id);
+          const expandedReview = reviewExpandIds.has(row.id);
           const volUnit = c.organicUnit.replace(/\/(ac|ha)$/, '');
           const slurryVol = c.slurryTotal > 0 ? (parseFloat(c.rateStr) || 0) * row.areaValue : 0;
           const proof = [
@@ -735,8 +738,14 @@ export function PlanShell({
           return (
             <div key={row.id} className="card" style={{ padding: 13, marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{row.name}</div>
+                <div
+                  onClick={() => setReviewExpandIds((prev) => { const nx = new Set(prev); if (nx.has(row.id)) nx.delete(row.id); else nx.add(row.id); return nx; })}
+                  style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
+                >
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 9, color: 'var(--muted)', display: 'inline-block', transform: expandedReview ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+                    {row.name}
+                  </div>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{fmt(row.areaValue, 1)} {row.areaUnit} · {cutLabel}</div>
                 </div>
                 <button
@@ -777,9 +786,17 @@ export function PlanShell({
                   {(c.planProducts.length > 0 || c.slurryTotal > 0) && (
                     <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>Supplies N {disp(c.supplyN)} · P {disp(c.supplyP)} · K {disp(c.supplyK)} {nUnit}</div>
                   )}
-                  <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-                    {proof.map(({ l, st }) => <ProofChip key={l} label={l} st={st} />)}
-                  </div>
+                  {!expandedReview ? (
+                    <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+                      {proof.map(({ l, st }) => <ProofChip key={l} label={l} st={st} />)}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 10 }}>
+                      <SourceBar label="N"    bands={c.nBands} unit={nUnit} disp={disp} showFigures />
+                      <SourceBar label="P₂O₅" bands={c.pBands} unit={nUnit} disp={disp} showFigures />
+                      <SourceBar label="K₂O"  bands={c.kBands} unit={nUnit} disp={disp} showFigures />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ marginTop: 10 }}>
