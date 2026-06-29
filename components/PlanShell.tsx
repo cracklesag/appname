@@ -159,7 +159,7 @@ const SOIL_TARGET = { ph: 6.0, pIdx: 2, kIdx: 2 };
 export function PlanShell({
   rows, groups, initialGroup, unitSystem, bagFertUnit, products, slurryUnit,
   minSpreadP2O5KgPerHa, minSpreadK2OKgPerHa,
-  typeOptions, agreementOptions, typeValue, agreementValue, topicFields,
+  typeOptions, agreementOptions, typeValue, agreementValue, topicFields, maintenanceFieldIds,
 }: {
   rows: FertPlanRow[];
   groups: Group[];
@@ -175,6 +175,7 @@ export function PlanShell({
   typeValue: string;
   agreementValue: string;
   topicFields: ColourField[];
+  maintenanceFieldIds?: string[];
 }) {
   // groupFilter / view / sortMode are derived from the URL (see below) so they
   // survive a round-trip to a field and back.
@@ -200,6 +201,9 @@ export function PlanShell({
     () => products.filter((p) => p.type === 'bag_fert'),
     [products],
   );
+  // Field ids on a 'maintenance' allocation type — these default the manure-N
+  // display to TOTAL muck content rather than first-crop availability.
+  const maintenanceSet = useMemo(() => new Set(maintenanceFieldIds ?? []), [maintenanceFieldIds]);
 
   // Planning state: a default organic + default rate applied to all fields,
   // with per-field overrides. Empty = no organic planned.
@@ -216,7 +220,7 @@ export function PlanShell({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const reviewMode = step === 3;
   const [reviewEditIds, setReviewEditIds] = useState<Set<string>>(new Set());
-  const [manureView, setManureView] = useState<'avail' | 'total'>('avail');
+  const [manureView, setManureView] = useState<'auto' | 'avail' | 'total'>('auto');
 
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
@@ -558,6 +562,7 @@ export function PlanShell({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>Manure N shown as</span>
           <div style={{ display: 'inline-flex', border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden' }}>
+            <button type="button" onClick={() => setManureView('auto')} style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 11px', border: 'none', borderRight: '1px solid var(--line)', cursor: 'pointer', background: manureView === 'auto' ? 'var(--forest)' : 'var(--card)', color: manureView === 'auto' ? 'var(--paper)' : 'var(--ink-soft)' }}>Auto</button>
             <button type="button" onClick={() => setManureView('avail')} style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 11px', border: 'none', cursor: 'pointer', background: manureView === 'avail' ? 'var(--forest)' : 'var(--card)', color: manureView === 'avail' ? 'var(--paper)' : 'var(--ink-soft)' }}>To next crop</button>
             <button type="button" onClick={() => setManureView('total')} style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 11px', border: 'none', borderLeft: '1px solid var(--line)', cursor: 'pointer', background: manureView === 'total' ? 'var(--forest)' : 'var(--card)', color: manureView === 'total' ? 'var(--paper)' : 'var(--ink-soft)' }}>Total in muck</button>
           </div>
@@ -760,7 +765,7 @@ export function PlanShell({
                       <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(Math.round(slurryVol))} {volUnit}</span>
                     </div>
                     <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '1px 0 2px', lineHeight: 1.4 }}>
-                      {manureView === 'total'
+                      {(manureView === 'total' || (manureView === 'auto' && maintenanceSet.has(c.row.id)))
                         ? <>holds N {disp(c.slurryNTotal)} · P {disp(c.slurryP)} · K {disp(c.slurryK)} {nUnit} total{c.slurryNTotal > c.slurryNAvail ? <span style={{ fontStyle: 'italic' }}> · only ~{disp(c.slurryNAvail)} N to this crop, rest releases later</span> : null}</>
                         : <>supplies N {disp(c.slurryNAvail)} · P {disp(c.slurryP)} · K {disp(c.slurryK)} {nUnit} to the next crop</>}
                     </div>

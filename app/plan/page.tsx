@@ -72,6 +72,15 @@ export default async function PlanPage({
       centroid_lat: f.centroid_lat ?? null, centroid_lng: f.centroid_lng ?? null,
     }));
 
+  // Fields on a maintenance allocation type default to showing TOTAL muck N
+  // (there you care about full P/K + N loading, not just first-crop availability).
+  const maintenanceTypeIds = new Set(
+    allocationTypes.filter((t) => t.kind === 'maintenance').map((t) => t.id),
+  );
+  const maintenanceFieldIds = fields
+    .filter((f) => f.allocation_type_id && maintenanceTypeIds.has(f.allocation_type_id))
+    .map((f) => f.id);
+
   const isOrganic = (p: Product) => p.type === 'slurry' || p.type === 'solid_manure';
   const planProducts = products.filter(
     (p) => p.type === 'bag_fert' || isOrganic(p),
@@ -110,6 +119,7 @@ export default async function PlanPage({
         typeValue={typeFilter}
         agreementValue={agreementFilter}
         topicFields={planTopicFields}
+        maintenanceFieldIds={maintenanceFieldIds}
       />
     </div>
   );
