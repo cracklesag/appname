@@ -192,7 +192,8 @@ export function PlanShell({
   const [overrides, setOverrides] = useState<Record<string, { productId: number | ''; rate: string }>>({});
   const [granularPlans, setGranularPlans] = useState<Record<string, { productId: number | ''; rate: string }[]>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [reviewMode, setReviewMode] = useState(false);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const reviewMode = step === 3;
 
   // bag products switched off (never recommended), fields dropped from the
   // spread lists, and fields where intended slurry is switched off.
@@ -445,17 +446,22 @@ export function PlanShell({
 
   return (
     <div style={{ padding: '14px 16px' }}>
-      {/* Step rail — Fields -> Review */}
+      {/* Step rail — Select -> Manures -> Fertiliser */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
-        <button type="button" onClick={() => setReviewMode(false)} style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-          <span style={{ width: 21, height: 21, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: reviewMode ? 'var(--forest-soft)' : 'var(--forest)', color: reviewMode ? 'var(--forest)' : '#fff', flexShrink: 0 }}>{reviewMode ? '✓' : '1'}</span>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: reviewMode ? 'var(--muted)' : 'var(--ink-soft)' }}>Fields</span>
-          <span style={{ flex: 1, height: 2, background: reviewMode ? 'var(--forest)' : 'var(--line-soft)', borderRadius: 2, minWidth: 10 }} />
+        <button type="button" onClick={() => setStep(1)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <span style={{ width: 21, height: 21, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: step === 1 ? 'var(--forest)' : 'var(--forest-soft)', color: step === 1 ? '#fff' : 'var(--forest)', flexShrink: 0 }}>{step > 1 ? '✓' : '1'}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: step === 1 ? 'var(--ink-soft)' : 'var(--muted)' }}>Select</span>
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ width: 21, height: 21, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: reviewMode ? 'var(--forest)' : 'var(--line-soft)', color: reviewMode ? '#fff' : 'var(--muted)', flexShrink: 0 }}>2</span>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: reviewMode ? 'var(--ink-soft)' : 'var(--muted)' }}>Review</span>
-        </div>
+        <span style={{ flex: 1, height: 2, background: step > 1 ? 'var(--forest)' : 'var(--line-soft)', borderRadius: 2, minWidth: 8 }} />
+        <button type="button" onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <span style={{ width: 21, height: 21, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: step === 2 ? 'var(--forest)' : step > 2 ? 'var(--forest-soft)' : 'var(--line-soft)', color: step === 2 ? '#fff' : step > 2 ? 'var(--forest)' : 'var(--muted)', flexShrink: 0 }}>{step > 2 ? '✓' : '2'}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: step === 2 ? 'var(--ink-soft)' : 'var(--muted)' }}>Manures</span>
+        </button>
+        <span style={{ flex: 1, height: 2, background: step > 2 ? 'var(--forest)' : 'var(--line-soft)', borderRadius: 2, minWidth: 8 }} />
+        <button type="button" onClick={() => setStep(3)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <span style={{ width: 21, height: 21, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, background: step === 3 ? 'var(--forest)' : 'var(--line-soft)', color: step === 3 ? '#fff' : 'var(--muted)', flexShrink: 0 }}>3</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: step === 3 ? 'var(--ink-soft)' : 'var(--muted)' }}>Fertiliser</span>
+        </button>
       </div>
 
       {reviewMode && (productTotals.length > 0 || organicTotals.length > 0) && (
@@ -486,63 +492,27 @@ export function PlanShell({
         </div>
       )}
 
-      {!reviewMode && (
+      {step === 3 && granular.length > 0 && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Fertiliser sources in use · {fertOnCount} of {granular.length} on</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {granular.map((pr) => {
+              const on = !excludedProductIds.includes(pr.id);
+              return (
+                <button key={pr.id} type="button" onClick={() => setExcludedProductIds((prev) => toggleIn(prev, pr.id))} style={{ background: on ? 'var(--forest)' : 'var(--card)', color: on ? 'var(--paper)' : 'var(--muted)', border: on ? 'none' : '1px solid var(--line)', borderRadius: 20, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: on ? 'none' : 'line-through' }}>{pr.name}</button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 9, lineHeight: 1.45 }}>Switch off anything you&apos;re not spreading this round. <Link href="/products?return=/plan" style={{ color: 'var(--forest)', fontWeight: 600, textDecoration: 'none' }}>Add more</Link></div>
+        </div>
+      )}
+
+      {step === 1 && (
       <>
       <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
-        Plan the slurry or digestate you intend to spread, and the granular fertiliser
-        updates to cover only what&apos;s left of each field&apos;s P &amp; K shortfall.
+        Pick the fields you want to work on this round. You&apos;ll choose manures, then
+        fertiliser, on the next steps.
       </p>
-
-      {/* Setup — slurry intention + ferts in use (collapses to one line) */}
-      {(organics.length > 0 || granular.length > 0) && (
-      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-        <button type="button" onClick={() => setShowSetup((v) => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)' }}>Setup</div>
-            <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 600, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {defOrganic ? defOrganic.name : 'No slurry planned'}
-              <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
-                {defOrganic && defaultRate ? ` · ${defaultRate} ${organicRateUnit}` : ''}
-                {granular.length > 0 ? ` · ${fertOnCount} of ${granular.length} ferts on` : ''}
-              </span>
-            </div>
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--forest)', whiteSpace: 'nowrap' }}>{showSetup ? 'Done ▾' : 'Edit ›'}</span>
-        </button>
-        {showSetup && (
-          <>
-            {organics.length > 0 && (
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
-                <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Intended slurry / digestate — all fields</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <select className="select" value={defaultOrganicId} onChange={(e) => setDefaultOrganicId(e.target.value === '' ? '' : Number(e.target.value))} style={{ flex: 1, minWidth: 0 }}>
-                    <option value="">None</option>
-                    {organics.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                  </select>
-                  <input type="number" inputMode="decimal" className="input" placeholder="rate" value={defaultRate} onChange={(e) => setDefaultRate(e.target.value)} style={{ width: 84, textAlign: 'right' }} />
-                  <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{organicRateUnit}</span>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 7, lineHeight: 1.4 }}>Applied to every field below. Open a field to set a different rate just for it.</div>
-              </div>
-            )}
-            {granular.length > 0 && (
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
-                <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Fertiliser sources in use · {fertOnCount} of {granular.length} on</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                  {granular.map((pr) => {
-                    const on = !excludedProductIds.includes(pr.id);
-                    return (
-                      <button key={pr.id} type="button" onClick={() => setExcludedProductIds((prev) => toggleIn(prev, pr.id))} style={{ background: on ? 'var(--forest)' : 'var(--card)', color: on ? 'var(--paper)' : 'var(--muted)', border: on ? 'none' : '1px solid var(--line)', borderRadius: 20, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: on ? 'none' : 'line-through' }}>{pr.name}</button>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 9, lineHeight: 1.45 }}>Switch off anything you&apos;re not spreading this round — a field short of it just stays short, and it won&apos;t appear on the spread list. <Link href="/products?return=/plan" style={{ color: 'var(--forest)', fontWeight: 600, textDecoration: 'none' }}>Add more</Link></div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      )}
 
       {/* Scope — block chips + land filters (type / agreement) in one place */}
       {(groups.length > 0 || typeOptions.length >= 2 || agreementOptions.length >= 2) && (
@@ -611,9 +581,37 @@ export function PlanShell({
       </>
       )}
 
+      {step === 2 && (
+        <>
+        <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5, marginTop: 0, marginBottom: 14 }}>
+          Choose the slurry, digestate or FYM to spread and the rate. You can vary it per field on the next step.
+        </p>
+        {organics.length > 0 ? (
+          <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Manure / slurry — all selected fields</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select className="select" value={defaultOrganicId} onChange={(e) => setDefaultOrganicId(e.target.value === '' ? '' : Number(e.target.value))} style={{ flex: 1, minWidth: 0 }}>
+                <option value="">None</option>
+                {organics.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <input type="number" inputMode="decimal" className="input" placeholder="rate" value={defaultRate} onChange={(e) => setDefaultRate(e.target.value)} style={{ width: 84, textAlign: 'right' }} />
+              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{organicRateUnit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 7, lineHeight: 1.4 }}>Applied to every selected field. Total volumes and per-field rates come next.</div>
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>No slurry or FYM in your products yet — add one to plan manure, or carry on to fertiliser.</div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <button type="button" onClick={() => setStep(1)} style={{ flex: '0 0 auto', background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '13px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>← Back</button>
+          <button type="button" onClick={() => setStep(3)} style={{ flex: 1, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Next: fertiliser →</button>
+        </div>
+        </>
+      )}
+
       {/* Master select + expand controls. "All off" clears every field (any
           group), so you can switch on just the ones you want to spread. */}
-      {!reviewMode && computed.length > 0 && (
+      {step === 1 && computed.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" onClick={() => setExcludedFieldIds([])} style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', background: 'var(--card)', border: '1px solid var(--line)', padding: '6px 11px', borderRadius: 7, cursor: 'pointer' }}>All on</button>
@@ -636,7 +634,7 @@ export function PlanShell({
         </div>
       )}
 
-      {cardsToShow.map(({ c, sev }) => {
+      {step !== 2 && cardsToShow.map(({ c, sev }) => {
         const row = c.row;
         const isOpen = reviewMode || !!expanded[row.id];
         const hasOverride = !!overrides[row.id];
@@ -1052,9 +1050,9 @@ export function PlanShell({
         </form>
       )}
 
-      {!reviewMode && onCount > 0 && (
-        <button type="button" onClick={() => setReviewMode(true)} style={{ width: '100%', marginTop: 14, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-          Review {onCount} selected →
+      {step === 1 && onCount > 0 && (
+        <button type="button" onClick={() => setStep(2)} style={{ width: '100%', marginTop: 14, background: 'var(--forest)', color: 'var(--paper)', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          Next: manures · {onCount} field{onCount === 1 ? '' : 's'} →
         </button>
       )}
 
