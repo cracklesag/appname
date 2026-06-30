@@ -347,7 +347,7 @@ export function planField(
     organicUnit: unit,
     slurryN, slurryP, slurryK,
     slurryNAvail, slurryNTotal,
-    slurryTotal: (!slurryOff && organic && rate > 0) ? Math.round(rate * row.ha) : 0,
+    slurryTotal: (!slurryOff && organic && rate > 0) ? Math.round(rate * row.areaValue) : 0,
     pAfter, kAfter, nAfter,
     pHeld, kHeld,
     planProducts,

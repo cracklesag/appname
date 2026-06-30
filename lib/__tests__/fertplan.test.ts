@@ -208,6 +208,16 @@ describe('planField', () => {
     expect(planned.slurryTotal).toBe(2500 * 4);
   });
 
+  it('manure/slurry whole-field total uses field area in the user unit (acres), not hectares', () => {
+    // A 4 ha field is ~10 ac. The whole-field total must be rate × 10 (acres),
+    // not rate × 4 (hectares) — the t/ac × ha mix-up Richard caught on Cattle FYM.
+    const planned = planField(
+      makeRow({ areaValue: 10, areaUnit: 'ac', ha: 4 }),
+      state({}), [slurry], [npk], planSettings,
+    );
+    expect(planned.slurryTotal).toBe(2500 * 10);
+  });
+
   it('slurry switched off for the field contributes nothing', () => {
     const planned = planField(makeRow({}), state({ slurryOffFieldIds: ['f1'] }), [slurry], [npk], planSettings);
     expect(planned.slurryN).toBe(0);
