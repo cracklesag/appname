@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Map as MapIcon, X } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { fmt, nutrientPerArea, nutrientUnitLabel, displayNutrient, nutrientLabel, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
+import { fmt, nutrientPerArea, nutrientUnitLabel, rateToKgHa, displayNutrient, nutrientLabel, groupProfileWarnings, todayMd, GroupWarning } from '@/lib/rules';
 import { FertPlanRow, PlanState, planField } from '@/lib/fertplan';
 import { createJobsFromPlan } from '@/lib/actions';
 import { SoilHeatBar } from '@/components/SoilHeatBar';
@@ -728,6 +728,7 @@ export function PlanShell({
         if (step === 3) {
           const editing = reviewEditIds.has(row.id);
           const expandedReview = reviewExpandIds.has(row.id);
+          const isEdited = hasManualList && Math.abs((c.granN ?? 0) - (c.autoGranN ?? 0)) >= 2;
           const volUnit = c.organicUnit.replace(/\/(ac|ha)$/, '');
           const slurryVol = c.slurryTotal > 0 ? (parseFloat(c.rateStr) || 0) * row.areaValue : 0;
           const proof = [
@@ -759,6 +760,11 @@ export function PlanShell({
 
               {!editing ? (
                 <div style={{ marginTop: 9 }}>
+                  {isEdited && (
+                    <button type="button" onClick={() => clearGranularPlan(row.id)} style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 9, fontSize: 11.5, fontWeight: 600, lineHeight: 1.4, background: '#F7E9C6', color: '#6E4B12', border: '1px solid #E3C77F', borderRadius: 8, padding: '7px 10px', cursor: 'pointer' }}>
+                      ✎ Manually edited — auto suggests N {disp(c.autoGranN)} {nUnit}. Tap to reset to auto.
+                    </button>
+                  )}
                   {c.planProducts.map((pp, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0', fontSize: 12.5 }}>
                       <span style={{ fontWeight: 600, color: 'var(--ink)', flex: 1, minWidth: 0 }}>{pp.productName}</span>
@@ -831,8 +837,8 @@ export function PlanShell({
                                 <option value="">Choose…</option>
                                 {granular.map((gp) => <option key={gp.id} value={gp.id}>{gp.name}</option>)}
                               </select>
-                              <input type="number" inputMode="decimal" className="input" placeholder="rate" value={entry.rate} onChange={(e) => setGranularPlanEntry(row.id, i, { rate: e.target.value })} style={{ width: 70, textAlign: 'right' }} />
-                              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{nUnit}</span>
+                              <input type="number" inputMode="decimal" className="input" placeholder="rate" value={entry.rate === '' ? '' : String(dispRate(parseFloat(entry.rate) || 0))} onChange={(e) => setGranularPlanEntry(row.id, i, { rate: e.target.value === '' ? '' : String(Math.round(rateToKgHa(parseFloat(e.target.value) || 0, sys))) })} style={{ width: 70, textAlign: 'right' }} />
+                              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{rateUnit}</span>
                               <button type="button" onClick={() => removeGranularFert(row.id, i)} aria-label="Remove fert" style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4, display: 'inline-flex' }}><X size={16} /></button>
                             </div>
                           ))}

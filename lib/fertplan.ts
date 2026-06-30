@@ -212,6 +212,8 @@ export interface PlannedField {
   planNote: string;
   supplyN: number; supplyP: number; supplyK: number;
   nothingGranular: boolean;
+  granN: number;
+  autoGranN: number;
   pBands: { carry: number; slurry: number; granular: number; need: number };
   kBands: { carry: number; slurry: number; granular: number; need: number };
   /** N bar source split. No carryover for N (pre-cut N isn't credited forward). */
@@ -303,6 +305,10 @@ export function planField(
 
   // Apply product on/off: excluded bag products can't be chosen by the planner.
   const granular = granularAll.filter((p) => !state.excludedProductIds.includes(p.id));
+  // Live auto plan — always computed so the UI can flag a manual override that no
+  // longer matches what auto would recommend now.
+  const autoPlan = planFieldFertiliser(pAfter, kAfter, granular, nAfter);
+  const autoGranN = autoPlan ? Math.round(autoPlan.products.reduce((s, pp) => s + (pp.deliversN || 0), 0)) : 0;
   const plan = useManual
     ? {
         products: manualEntries.map(({ prod, rate }) => ({
@@ -318,7 +324,7 @@ export function planField(
         k2oBalance: 0,
         note: 'Manual — set by you.',
       }
-    : planFieldFertiliser(pAfter, kAfter, granular, nAfter);
+    : autoPlan;
 
   let granN = 0, granP = 0, granK = 0;
   const planProducts = plan
@@ -350,6 +356,8 @@ export function planField(
     supplyP: row.appliedP + slurryP + Math.round(granP),
     supplyK: row.appliedK + slurryK + Math.round(granK),
     nothingGranular: planProducts.length === 0,
+    granN: Math.round(granN),
+    autoGranN,
     pBands: {
       carry: row.carryP,
       slurry: row.loggedOrganicP + slurryP,

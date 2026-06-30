@@ -384,6 +384,12 @@ export function nutrientPerArea(kgPerHa: number, system: Settings['unitSystem'])
   return system === 'acres' ? kgPerHa / KG_HA_PER_KG_AC : kgPerHa;
 }
 
+// Inverse of nutrientPerArea: a product rate the user typed in their unit (kg/ac
+// for an acres farm) back to the kg/ha we store and calculate in.
+export function rateToKgHa(rate: number, system: Settings['unitSystem']): number {
+  return system === 'acres' ? rate * KG_HA_PER_KG_AC : rate;
+}
+
 /** The unit label for a nutrient figure given the user's system. */
 export function nutrientUnitLabel(system: Settings['unitSystem']): string {
   return system === 'acres' ? 'kg/ac' : 'kg/ha';
