@@ -21,9 +21,18 @@ const STATUS_LABEL: Record<Exclude<FStatus, 'pending'>, string> = { done: 'done'
 const HA_TO_AC = 2.47105;
 
 function satelliteStyle(): StyleSpecification {
+  const mtKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const mbToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  // MapTiler (auto-capped) when its key is set; otherwise fall back to the same
+  // Mapbox token the in-app maps use, so this shared card is never blank.
+  const sat = mtKey
+    ? { type: 'raster', url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${mtKey}`, tileSize: 256, attribution: '© MapTiler © OpenStreetMap contributors' }
+    : mbToken
+    ? { type: 'raster', tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mbToken}`], tileSize: 512, attribution: '© Mapbox © Maxar' }
+    : { type: 'raster', url: 'https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=', tileSize: 256, attribution: '© MapTiler © OpenStreetMap contributors' };
   return {
     version: 8,
-    sources: { sat: { type: 'raster', url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`, tileSize: 256, attribution: '© MapTiler © OpenStreetMap contributors' } },
+    sources: { sat },
     layers: [{ id: 'sat', type: 'raster', source: 'sat' }],
   } as unknown as StyleSpecification;
 }
