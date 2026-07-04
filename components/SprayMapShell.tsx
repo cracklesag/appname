@@ -35,8 +35,8 @@ function buildSatelliteStyle(mapboxToken: string | null): StyleSpecification {
     : {
         sat: {
           type: 'raster',
-          url: `https://api.maptiler.com/tiles/satellite-v4/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`,
-          tileSize: 256,
+          url: `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''}`,
+          tileSize: 512,
           attribution: '© MapTiler © OpenStreetMap contributors',
         },
       };
