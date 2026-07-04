@@ -101,7 +101,7 @@ export function SpreadListShell({
 
   const isSlurry = mode === 'slurry';
   const accent = isSlurry ? SLURRY : FOREST;
-  const title = isSlurry ? 'Slurry spread list' : 'Granular spread list';
+  const title = isSlurry ? 'Manure spread list' : 'Granular spread list';
   const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
@@ -113,7 +113,7 @@ export function SpreadListShell({
         </Link>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 3px' }}>{title}</h1>
         <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', margin: 0 }}>
-          {groupName ? `${groupName} · ` : ''}{isSlurry ? 'Intended slurry / digestate by field' : 'Granular fertiliser by field'} · {dateStr}
+          {groupName ? `${groupName} · ` : ''}{isSlurry ? 'Intended manure by field' : 'Granular fertiliser by field'} · {dateStr}
         </p>
       </div>
 
@@ -138,12 +138,12 @@ export function SpreadListShell({
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', padding: 20 }}>Loading…</div>
         ) : isSlurry ? (
           slurryFields.length === 0 ? (
-            <EmptyState text="No slurry planned. Set an intended slurry rate on the fertiliser plan, then compile this list." />
+            <EmptyState text="No manure planned. Set an intended manure rate on the plan, then compile this list." />
           ) : (
             <>
               {/* Slurry totals by product */}
               <div className="card" style={{ padding: 13, marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>Total slurry to spread</div>
+                <div style={{ fontSize: 11, color: MUTED, textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>Total manure to spread</div>
                 {slurryByProduct.map(([key, v]) => {
                   const [name, unit] = key.split('|');
                   return (

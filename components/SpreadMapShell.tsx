@@ -217,7 +217,7 @@ export function SpreadMapShell({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>
-              {isSlurry ? 'Slurry' : 'Granular'} map sheets
+              {isSlurry ? 'Manure' : 'Granular'} map sheets
             </h1>
             <p style={{ fontSize: 12, color: 'rgba(239,231,214,0.75)', margin: '2px 0 0' }}>
               One page per product · fields shaded by rate
@@ -380,7 +380,7 @@ function ProductMapPage({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-            {isSlurry ? 'Slurry spread' : 'Granular spread'}
+            {isSlurry ? 'Manure spread' : 'Granular spread'}
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink)' }}>{sheet.productName}</div>
         </div>

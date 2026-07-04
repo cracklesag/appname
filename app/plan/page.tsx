@@ -101,7 +101,7 @@ export default async function PlanPage({
         </div>
         <div style={{ marginTop: 12 }}>
           <div style={{ fontFamily: '"Fraunces", serif', fontSize: 21, fontWeight: 600, color: 'var(--brand-cream)' }}>Plan</div>
-          <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>Slurry first, then granular</div>
+          <div style={{ fontSize: 12, color: 'rgba(239,231,214,0.7)', marginTop: 1 }}>Manure first, then fertiliser top-ups</div>
         </div>
       </div>
       <PlanShell

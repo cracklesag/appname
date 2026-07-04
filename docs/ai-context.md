@@ -153,11 +153,11 @@ RB209 phosphate/potash still to apply this season per field, after deducting wha
 
 ### Fertiliser plan (`/reports/fert-plan`)
 
-Works the recommendation backwards. For each field it shows the need vs supply (carryover from earlier organic applications + logged organic + logged granular), then plans the **granular** product and rate to meet the residual P/K (and N). The user can set a **default organic product + rate** (or per-field overrides) to represent intended slurry/muck, switch individual bag-fert **products off**, switch **slurry off** per field, and the plan applies a **minimum-spread-rate hold** (a residual below the threshold is held and carried forward rather than recommended as an un-spreadable dribble). The planner prefers a single compound when its P:K ratio matches; otherwise straight P and K sources plus an N top-up. The plan's on/off and override choices persist in the browser and feed the spread lists and spread map.
+Works the recommendation backwards. For each field it shows the need vs supply (carryover from earlier organic applications + logged organic + logged granular), then plans the **granular** product and rate to meet the residual P/K (and N). The user can set a **default organic product + rate** (or per-field overrides) to represent intended manure, switch individual bag-fert **products off**, switch **manure off** per field, and the plan applies a **minimum-spread-rate hold** (a residual below the threshold is held and carried forward rather than recommended as an un-spreadable dribble). The planner prefers a single compound when its P:K ratio matches; otherwise straight P and K sources plus an N top-up. The plan's on/off and override choices persist in the browser and feed the spread lists and spread map.
 
 ### Spread list (`/reports/spread-list`) and Spread map (`/reports/spread-map`)
 
-Compiled from the fertiliser plan's choices. The **spread list** is a printable take-off list in **granular** or **slurry** mode — per-field products/rates plus order totals (kg and tonnes, or slurry volumes by product). The **spread map** shows the same fields on a satellite map coloured by rate band (**Light / Medium / Heavy**) per product. Switched-off fields and products don't appear.
+Compiled from the fertiliser plan's choices. The **spread list** is a printable take-off list in **granular** or **manure** mode — per-field products/rates plus order totals (kg and tonnes, or manure volumes by product). The **spread map** shows the same fields on a satellite map coloured by rate band (**Light / Medium / Heavy**) per product. Switched-off fields and products don't appear.
 
 ### Lime status (`/reports/lime`)
 

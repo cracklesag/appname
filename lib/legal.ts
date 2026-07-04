@@ -167,7 +167,7 @@ We use trusted providers to run the Service. They process data on our instructio
 - **Vercel** — application hosting and content delivery (servers may be outside the UK).
 - **Anthropic** — powers AI features, including the in-app assistant and automatic extraction of data from soil reports you upload. Relevant data (which may include the contents of uploaded reports and your queries) is sent to Anthropic's API. Data sent via the API is **not used to train AI models**.
 - **Payment provider** — a third-party processor handles subscription payments; we do not receive or store your full card details.
-- **Map providers (Mapbox / Esri)** — serve map imagery; your IP address and the map area you view are shared to deliver tiles.
+- **Map providers (Mapbox / MapTiler)** — serve map imagery; your IP address and the map area you view are shared to deliver tiles.
 
 We do not sell your personal data, and we do not use advertising or third-party tracking.
 

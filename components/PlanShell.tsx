@@ -70,7 +70,7 @@ function SourceBar({
       {showFigures && (
         <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap', fontSize: 10 }}>
           {bands.carry > 0 && <span style={{ background: '#F1EFE8', color: '#444441', padding: '1px 7px', borderRadius: 10 }}>carryover {disp(bands.carry)}</span>}
-          {bands.slurry > 0 && <span style={{ background: '#E1F5EE', color: '#085041', padding: '1px 7px', borderRadius: 10 }}>slurry {disp(bands.slurry)}</span>}
+          {bands.slurry > 0 && <span style={{ background: '#E1F5EE', color: '#085041', padding: '1px 7px', borderRadius: 10 }}>manure {disp(bands.slurry)}</span>}
           {bands.granular > 0 && <span style={{ background: '#E6F1FB', color: '#0C447C', padding: '1px 7px', borderRadius: 10 }}>granular {disp(bands.granular)}</span>}
           {over > 0.5 && <span style={{ background: '#FCEBEB', color: '#A32D2D', padding: '1px 7px', borderRadius: 10 }}>over {disp(over)}</span>}
         </div>
@@ -635,7 +635,7 @@ export function PlanShell({
       {/* P & K source legend */}
       {computed.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 10, fontSize: 11 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.covered }} /><span style={{ color: 'var(--muted)' }}>Covered (soil + slurry)</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.covered }} /><span style={{ color: 'var(--muted)' }}>Covered (soil + manure)</span></span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.need }} /><span style={{ color: 'var(--muted)' }}>To apply (granular)</span></span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CLR.over }} /><span style={{ color: 'var(--muted)' }}>Over</span></span>
         </div>
@@ -651,7 +651,7 @@ export function PlanShell({
         </p>
         {organics.length > 0 ? (
           <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Manure / slurry — all selected fields</div>
+            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>Manure — all selected fields</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select className="select" value={defaultOrganicId} onChange={(e) => setDefaultOrganicId(e.target.value === '' ? '' : Number(e.target.value))} style={{ flex: 1, minWidth: 0 }}>
                 <option value="">None</option>
@@ -663,7 +663,7 @@ export function PlanShell({
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 7, lineHeight: 1.4 }}>Applied to every selected field. Total volumes and per-field rates come next.</div>
           </div>
         ) : (
-          <div className="card" style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>No slurry or FYM in your products yet — add one to plan manure, or carry on to fertiliser.</div>
+          <div className="card" style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>No manure products yet — add one to plan manure, or carry on to fertiliser.</div>
         )}
         {manureSummary.length > 0 && (
           <div className="card" style={{ padding: 12, marginBottom: 12 }}>
@@ -808,7 +808,7 @@ export function PlanShell({
                 <div style={{ marginTop: 10 }}>
                   {organics.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Slurry / manure</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Manure</div>
                       {!slurryOff ? (
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <select className="select" value={c.organicId} onChange={(e) => setOverride(row.id, { productId: e.target.value === '' ? '' : Number(e.target.value) })} style={{ flex: 1, minWidth: 0 }}>
@@ -819,9 +819,9 @@ export function PlanShell({
                           <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.organicUnit}</span>
                         </div>
                       ) : (
-                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Slurry off for this field.</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Manure off for this field.</div>
                       )}
-                      <button type="button" onClick={() => setSlurryOffFieldIds((prev) => toggleIn(prev, row.id))} style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700, color: slurryOff ? 'var(--forest)' : 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{slurryOff ? 'Turn slurry on' : 'Turn slurry off'}</button>
+                      <button type="button" onClick={() => setSlurryOffFieldIds((prev) => toggleIn(prev, row.id))} style={{ marginTop: 7, fontSize: 11.5, fontWeight: 700, color: slurryOff ? 'var(--forest)' : 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{slurryOff ? 'Turn manure on' : 'Turn manure off'}</button>
                     </div>
                   )}
                   {granular.length > 0 && (
@@ -952,7 +952,7 @@ export function PlanShell({
                   <button
                     type="button"
                     onClick={() => setEditingSlurry((cur) => (cur === row.id ? null : row.id))}
-                    aria-label="Edit slurry volume"
+                    aria-label="Edit manure volume"
                     style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700, color: 'var(--forest-dark)', cursor: 'pointer' }}
                   >
                     <Pencil size={12} /> {editingSlurry === row.id ? 'Done' : 'Edit'}
@@ -1009,7 +1009,7 @@ export function PlanShell({
               </div>
             ) : !atTarget ? (
               <div style={{ fontSize: 12, color: 'var(--forest-dark)', marginTop: 9, fontWeight: 600 }}>
-                {c.slurryTotal > 0 ? 'Slurry covers it — no granular needed.' : 'No granular needed.'}
+                {c.slurryTotal > 0 ? 'Manure covers it — no granular needed.' : 'No granular needed.'}
               </div>
             ) : null)}
 
@@ -1096,7 +1096,7 @@ export function PlanShell({
                       border: slurryOff ? '1px solid var(--line)' : 'none',
                     }}
                   >
-                    {slurryOff ? 'Slurry off — turn on' : 'Slurry on — turn off'}
+                    {slurryOff ? 'Manure off — turn on' : 'Manure on — turn off'}
                   </button>
                 )}
               </div>
@@ -1106,7 +1106,7 @@ export function PlanShell({
             {isOpen && organics.length > 0 && !slurryOff && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
-                  Slurry for this field {hasOverride ? '(overriding the default)' : '(using the default)'}
+                  Manure for this field {hasOverride ? '(overriding the default)' : '(using the default)'}
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <select
@@ -1277,19 +1277,19 @@ export function PlanShell({
         <>
         <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 6 }}>
           <button type="button" onClick={() => openSpreadList('granular')} style={{ flex: 1, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Granular spread list</button>
-          <button type="button" onClick={() => openSpreadList('slurry')} style={{ flex: 1, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Slurry spread list</button>
+          <button type="button" onClick={() => openSpreadList('slurry')} style={{ flex: 1, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '11px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Manure spread list</button>
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <button type="button" onClick={() => openSpreadMap('granular')} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}><MapIcon size={14} /> Granular map</button>
-          <button type="button" onClick={() => openSpreadMap('slurry')} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}><MapIcon size={14} /> Slurry map</button>
+          <button type="button" onClick={() => openSpreadMap('slurry')} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--card)', color: 'var(--ink-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}><MapIcon size={14} /> Manure map</button>
         </div>
         </>
       )}
 
       <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 14 }}>
         Granular plans follow the P &amp; K recommendations in AHDB&apos;s published nutrient guidance, at each field&apos;s
-        soil index, after deducting what&apos;s already been applied this season and any slurry you
-        plan above. Slurry nutrient values use your product settings and assume splash-plate
+        soil index, after deducting what&apos;s already been applied this season and any manure you
+        plan above. Manure nutrient values use your product settings; slurries assume splash-plate
         application. The grey <strong>carryover</strong> band is an <em>estimate</em> of P &amp; K
         from earlier applications still becoming available (slurry fast, FYM over months) net of
         crop offtake — it is a model, not a published figure. Always sense-check rates and consult a
