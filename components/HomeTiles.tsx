@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
 
 /**
  * Tappable summary tiles for the home screen. Each tile shows a count; tapping
@@ -90,6 +90,13 @@ export function HomeTiles({
       {/* Expanded lists render below the tile row, inside the hero's dark area */}
       {open === 'n' && nNow.length > 0 && (
         <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.16)', borderRadius: 10, padding: 8 }}>
+          <Link
+            href={`/plan?preselect=${nNow.map((c) => c.fieldId).join(',')}&from=/`}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(239,231,214,0.92)', color: 'var(--forest-dark)', borderRadius: 7, padding: '10px 11px', marginBottom: 6, textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}
+          >
+            <ClipboardList size={14} /> Create job sheets · {nNow.length} field{nNow.length === 1 ? '' : 's'}
+            <ChevronRight size={13} />
+          </Link>
           {nNow.map((c) => (
             <Link
               key={c.fieldId}
@@ -108,6 +115,13 @@ export function HomeTiles({
       )}
       {open === 'grazing' && grazingDue.length > 0 && (
         <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.16)', borderRadius: 10, padding: 8 }}>
+          <Link
+            href={`/plan?preselect=${grazingDue.map((c) => c.fieldId).join(',')}&from=/`}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(239,231,214,0.92)', color: 'var(--forest-dark)', borderRadius: 7, padding: '10px 11px', marginBottom: 6, textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}
+          >
+            <ClipboardList size={14} /> Create job sheets · {grazingDue.length} field{grazingDue.length === 1 ? '' : 's'}
+            <ChevronRight size={13} />
+          </Link>
           {grazingDue.map((c) => (
             <Link
               key={c.fieldId}

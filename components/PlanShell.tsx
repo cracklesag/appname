@@ -272,6 +272,28 @@ export function PlanShell({
     setHydrated(true);
   }, []);
 
+  // Deep link: /plan?preselect=<id,id,...> pre-ticks exactly those fields and
+  // jumps straight to Manures (step 2). Used by the home-page After-cut N /
+  // Grazing dressing shortcuts. Declared after the hydrate above so the link's
+  // selection wins over any saved exclusions; the param is then stripped so a
+  // refresh or back-nav doesn't re-apply it over later manual changes.
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const pre = sp.get('preselect');
+      if (!pre) return;
+      const want = new Set(pre.split(',').filter(Boolean));
+      if (rows.some((r) => want.has(r.id))) {
+        setExcludedFieldIds(rows.filter((r) => !want.has(r.id)).map((r) => r.id));
+        setStep(2);
+      }
+      sp.delete('preselect');
+      const qs = sp.toString();
+      window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleIn = <T,>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
