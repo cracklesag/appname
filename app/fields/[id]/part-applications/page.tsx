@@ -10,11 +10,19 @@ import { displayRate, fmtDate } from '@/lib/rules';
 import {
   patchK2oPerHa, isReconciledPartial, KG_PER_HA_TO_KG_PER_AC, type HeatPatch,
 } from '@/lib/partials';
+import { reconcileFieldPartials } from '@/lib/actions';
 import type { FieldGeometry } from '@/lib/geo';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PartApplicationsPage({ params }: { params: { id: string } }) {
+  // Self-heal the reconciled_at stamps against CURRENT geometry + threshold
+  // before reading, so the banner (computed live, client-side) and the item
+  // badges / season metrics (read from the stamp) can never disagree — e.g.
+  // after the coverage threshold is changed in Settings. Idempotent, and a
+  // failure here must not block the read.
+  try { await reconcileFieldPartials(params.id); } catch { /* stamps stay as-is */ }
+
   const [field, applications, areas, products, settings] = await Promise.all([
     loadField(params.id),
     loadApplicationsForField(params.id),

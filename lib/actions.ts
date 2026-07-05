@@ -187,7 +187,7 @@ export async function saveApplication(formData: FormData) {
  * application. Reconciliation is field-level — all of the field's partials flip
  * together (per the spec). Does nothing if the field has no boundary.
  */
-async function reconcileFieldPartials(fieldId: string) {
+export async function reconcileFieldPartials(fieldId: string) {
   const supabase = createClient();
 
   const { data: partials } = await supabase
