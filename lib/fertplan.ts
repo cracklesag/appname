@@ -211,6 +211,8 @@ export interface PlannedField {
   planProducts: { productId: number; productName: string; rateKgPerHa: number; totalKg: number }[];
   planNote: string;
   supplyN: number; supplyP: number; supplyK: number;
+  /** What THIS PLAN adds (netted manure + granular) — excludes anything already applied or logged. */
+  addN: number; addP: number; addK: number;
   nothingGranular: boolean;
   granN: number;
   autoGranN: number;
@@ -355,6 +357,9 @@ export function planField(
     supplyN: row.appliedN + slurryN + Math.round(granN),
     supplyP: row.appliedP + slurryP + Math.round(granP),
     supplyK: row.appliedK + slurryK + Math.round(granK),
+    addN: slurryN + Math.round(granN),
+    addP: slurryP + Math.round(granP),
+    addK: slurryK + Math.round(granK),
     nothingGranular: planProducts.length === 0,
     granN: Math.round(granN),
     autoGranN,

@@ -812,7 +812,7 @@ export function PlanShell({
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nothing to apply — at target.</div>
                   )}
                   {(c.planProducts.length > 0 || c.slurryTotal > 0) && (
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>Supplies N {disp(c.supplyN)} · P {disp(c.supplyP)} · K {disp(c.supplyK)} {nUnit}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>This plan adds N {disp(c.addN)} · P {disp(c.addP)} · K {disp(c.addK)} {nUnit}</div>
                   )}
                   {!expandedReview ? (
                     <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>

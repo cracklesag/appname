@@ -243,6 +243,42 @@ describe('planField', () => {
     expect(planned.planNote).toContain('Manual');
   });
 
+  it('addN/addP/addK are plan-only: applied history is excluded, supply totals keep it', () => {
+    // 400 kg/ha of 25-5-5 adds N 100 / P 20 / K 20 from the plan alone; the
+    // 50/40/60 already applied this window must show in supply*, never add*.
+    const planned = planField(
+      makeRow({ nToApply: 0, p2o5ToApply: 0, k2oToApply: 0, appliedN: 50, appliedP: 40, appliedK: 60 }),
+      state({ defaultOrganicId: '', granularOverrides: { f1: { productId: npk.id, rate: '400' } } }),
+      [slurry], [npk], planSettings,
+    );
+    expect(planned.addN).toBe(100);
+    expect(planned.addP).toBe(20);
+    expect(planned.addK).toBe(20);
+    expect(planned.supplyN).toBe(150);
+    expect(planned.supplyP).toBe(60);
+    expect(planned.supplyK).toBe(80);
+  });
+
+  it('addN uses the NETTED manure figure: slurry already logged adds nothing again', () => {
+    // Deer Park row: intended slurry fully logged ⇒ its netted contribution is
+    // 0, so whatever remains in addN is granular only. With no history at all,
+    // add* and supply* coincide by construction.
+    const logged = planField(
+      makeRow({
+        loggedOrganicN: 28, loggedOrganicP: 28, loggedOrganicK: 112,
+        nToApply: 82, p2o5ToApply: 12, k2oToApply: 0,
+        appliedN: 28, appliedP: 28, appliedK: 112,
+      }),
+      state({}), [slurry], [npk], planSettings,
+    );
+    expect(logged.addN).toBe(logged.granN);
+
+    const fresh = planField(makeRow({}), state({}), [slurry], [npk], planSettings);
+    expect(fresh.addN).toBe(fresh.supplyN);
+    expect(fresh.addP).toBe(fresh.supplyP);
+    expect(fresh.addK).toBe(fresh.supplyK);
+  });
+
   it('excluded products never enter the auto plan', () => {
     const planned = planField(
       makeRow({ nToApply: 0, p2o5ToApply: 30, k2oToApply: 0 }),
