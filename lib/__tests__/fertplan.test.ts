@@ -59,7 +59,7 @@ function makeCut(over: Partial<Cut> & { cut_date: string; cut_number: number }):
   return {
     id: `c-${Math.random()}`, user_id: 'u1', created_by: null, field_id: 'f1',
     cut_type: 'silage', yield_class: 'average', next_action: 'another_cut_silage',
-    notes: null, created_at: '',
+    notes: null, n_dismissed_at: null, created_at: '',
     ...over,
   };
 }

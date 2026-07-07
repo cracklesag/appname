@@ -559,6 +559,34 @@ export async function updateCut(formData: FormData) {
   redirect(dest);
 }
 
+/** "I'm happy this cut ran short of N" — hide the After-cut N prompt for this
+ *  cut window. Window-scoped by design: the next logged cut is a new row with
+ *  a null stamp, so the prompt returns automatically. */
+export async function dismissAftercutN(cutId: string) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (!cutId) throw new Error('Missing cut id');
+  const { error } = await supabase.from('cuts')
+    .update({ n_dismissed_at: new Date().toISOString() })
+    .eq('id', cutId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/');
+}
+
+/** Undo for dismissAftercutN — the prompt comes straight back. */
+export async function undismissAftercutN(cutId: string) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) redirect('/login');
+  if (!cutId) throw new Error('Missing cut id');
+  const { error } = await supabase.from('cuts')
+    .update({ n_dismissed_at: null })
+    .eq('id', cutId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/');
+}
+
 export async function deleteCut(formData: FormData) {
   const supabase = createClient();
   const ctx = await getFarmContext();

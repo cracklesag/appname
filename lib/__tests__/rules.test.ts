@@ -15,6 +15,7 @@ import {
   effectiveProductOn, calcNutrients, getOfftakeForCut, sumNutrients,
   getFieldNRecommendation, getFieldPKRecommendation, planFieldFertiliser,
   nutrientPerArea, displayBagAmount, getSplitTarget, displayNutrient, nutrientLabel,
+  getComingUpForField,
 } from '@/lib/rules';
 import * as rb209 from '@/lib/rb209';
 import { DEFAULT_SETTINGS, type Field, type Product, type Application, type Cut, type Settings } from '@/lib/types';
@@ -457,7 +458,7 @@ describe('getFieldPKRecommendation', () => {
     const cut: Cut = {
       id: 'c1', user_id: 'user-1', created_by: null, field_id: f.id,
       cut_number: 1, cut_date: '2026-05-15', cut_type: 'silage', yield_class: 'average',
-      next_action: 'another_cut_silage', notes: null, created_at: '2026-05-15T10:00:00Z',
+      next_action: 'another_cut_silage', notes: null, n_dismissed_at: null, created_at: '2026-05-15T10:00:00Z',
     };
     const r = getFieldPKRecommendation(f, 2, [cut]);
     expect(r.cutType).toBe('silage');
@@ -604,5 +605,43 @@ describe('displayNutrient — fertiliser unit display', () => {
     const kgHaRatio = displayNutrient(84, 'kg/ha').value / displayNutrient(110, 'kg/ha').value;
     const unitsRatio = displayNutrient(84, 'units/ac').value / displayNutrient(110, 'units/ac').value;
     expect(unitsRatio).toBeCloseTo(kgHaRatio, 10);
+  });
+});
+
+// ---------------------------------------------------------------------
+// getComingUpForField — "happy it's short" dismissal (per cut window)
+// ---------------------------------------------------------------------
+
+describe('getComingUpForField — after-cut N dismissal', () => {
+  const makeCut = (over: Partial<Cut>): Cut => ({
+    id: 'c1', user_id: 'user-1', created_by: null, field_id: 'field-1',
+    cut_number: 2, cut_date: '2026-06-01', cut_type: 'silage',
+    yield_class: 'average', next_action: 'another_cut_silage', notes: null,
+    n_dismissed_at: null, created_at: '2026-06-01',
+    ...over,
+  });
+
+  it('a dismissed window raises no prompt; a fresh cut brings it back', () => {
+    const f = makeField({});
+    const now = new Date('2026-06-20');
+
+    const live = getComingUpForField(f, [makeCut({})], [], [], settings(), now);
+    expect(live).not.toBeNull();
+    expect(['n_due', 'n_overdue']).toContain(live!.kind);
+    expect(live!.cutId).toBe('c1');
+
+    const dismissed = getComingUpForField(
+      f, [makeCut({ n_dismissed_at: '2026-06-05T10:00:00Z' })], [], [], settings(), now,
+    );
+    expect(dismissed).toBeNull();
+
+    // Next cut = a new window with a null stamp: the prompt returns.
+    const nextWindow = getComingUpForField(
+      f,
+      [makeCut({ n_dismissed_at: '2026-06-05T10:00:00Z' }), makeCut({ id: 'c2', cut_number: 3, cut_date: '2026-06-15' })],
+      [], [], settings(), now,
+    );
+    expect(nextWindow).not.toBeNull();
+    expect(nextWindow!.cutId).toBe('c2');
   });
 });

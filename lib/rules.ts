@@ -1649,6 +1649,8 @@ export interface ComingUpItem {
   days: number;
   /** For grazing_due: days until the dressing is due (negative = overdue). */
   daysUntil?: number;
+  /** For n_due / n_overdue: the cut anchoring this window — dismissal target. */
+  cutId?: string;
 }
 
 function daysBetween(fromIso: string, to: Date): number {
@@ -1733,6 +1735,9 @@ export function getComingUpForField(
 
   // rhythm === 'after_cut': nitrogen-after-cut prompt. Needs a cut to anchor to.
   if (!lastCut) return null;
+  // The user has dismissed this window ("happy it ran short") — stay quiet
+  // until the NEXT cut opens a fresh window.
+  if (lastCut.n_dismissed_at != null) return null;
   const sinceCut = lastCut.cut_date;
   const daysSinceCut = daysBetween(sinceCut, now);
   // NOTE: whether the field is still OWED nitrogen is judged in kg by the
@@ -1746,6 +1751,7 @@ export function getComingUpForField(
     fieldName: field.name,
     kind: overdue ? 'n_overdue' : 'n_due',
     days: daysSinceCut,
+    cutId: lastCut.id,
   };
 }
 

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronUp, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronRight, ClipboardList, X } from 'lucide-react';
+import { dismissAftercutN, undismissAftercutN } from '@/lib/actions';
 
 /**
  * Tappable summary tiles for the home screen. Each tile shows a count; tapping
@@ -20,6 +22,8 @@ export type ComingUpEntry = {
   daysUntil?: number;
   /** e.g. "~46 units/ac N still to go" — only on n_due / n_overdue rows. */
   nLeft?: string;
+  /** The cut anchoring this N window — target for "happy it's short" dismissal. */
+  cutId?: string;
 };
 
 export function HomeTiles({
@@ -30,6 +34,35 @@ export function HomeTiles({
   grazingDue: ComingUpEntry[];
 }) {
   const [open, setOpen] = useState<'n' | 'grazing' | null>(null);
+  const router = useRouter();
+  // "Happy it's short" dismissal: keep the last dismissed row so Undo stays
+  // available even if the list empties.
+  const [undoN, setUndoN] = useState<{ cutId: string; name: string } | null>(null);
+  const [busyCutId, setBusyCutId] = useState<string | null>(null);
+
+  async function handleDismissN(cutId: string, name: string) {
+    if (busyCutId) return;
+    setBusyCutId(cutId);
+    try {
+      await dismissAftercutN(cutId);
+      setUndoN({ cutId, name });
+      router.refresh();
+    } finally {
+      setBusyCutId(null);
+    }
+  }
+
+  async function handleUndoN() {
+    if (!undoN || busyCutId) return;
+    setBusyCutId(undoN.cutId);
+    try {
+      await undismissAftercutN(undoN.cutId);
+      setUndoN(null);
+      router.refresh();
+    } finally {
+      setBusyCutId(null);
+    }
+  }
 
   return (
     <>
@@ -100,10 +133,10 @@ export function HomeTiles({
             <ChevronRight size={13} />
           </Link>
           {nNow.map((c) => (
+            <div key={c.fieldId} style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginBottom: 6 }}>
             <Link
-              key={c.fieldId}
               href={`/fields/${c.fieldId}/log?type=bag_fert&from=/`}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239,231,214,0.12)', borderRadius: 7, padding: '9px 11px', marginBottom: 6, textDecoration: 'none' }}
+              style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239,231,214,0.12)', borderRadius: 7, padding: '9px 11px', textDecoration: 'none' }}
             >
               <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--brand-cream)' }}>{c.fieldName}</span>
@@ -114,9 +147,32 @@ export function HomeTiles({
                 <ChevronRight size={13} />
               </span>
             </Link>
+            {c.cutId && (
+              <button
+                type="button"
+                onClick={() => handleDismissN(c.cutId!, c.fieldName)}
+                disabled={busyCutId != null}
+                aria-label={`Remove ${c.fieldName} — happy it's short this cut`}
+                title="Happy it's short — remove for this cut"
+                style={{ width: 34, borderRadius: 7, background: 'rgba(239,231,214,0.08)', border: 'none', color: 'rgba(239,231,214,0.55)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: busyCutId === c.cutId ? 0.4 : 1 }}
+              >
+                <X size={13} />
+              </button>
+            )}
+            </div>
           ))}
           <div style={{ height: 0 }} />
         </div>
+      )}
+      {open === 'n' && undoN && (
+        <button
+          type="button"
+          onClick={handleUndoN}
+          disabled={busyCutId != null}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', marginTop: 8, background: 'transparent', border: '1px dashed rgba(239,231,214,0.35)', borderRadius: 7, padding: '8px 11px', color: 'rgba(239,231,214,0.75)', fontSize: 11.5, cursor: 'pointer' }}
+        >
+          Marked {undoN.name} as fine for this cut · Undo
+        </button>
       )}
       {open === 'grazing' && grazingDue.length > 0 && (
         <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.16)', borderRadius: 10, padding: 8 }}>

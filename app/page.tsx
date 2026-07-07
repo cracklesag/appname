@@ -84,6 +84,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
       const d = left != null ? displayNutrient(left, settings.bagFertUnit) : null;
       return {
         fieldId: c.fieldId, fieldName: c.fieldName, kind: c.kind, days: c.days,
+        cutId: c.cutId,
         nLeft: d ? `~${Math.round(d.value)} ${d.unit} N still to go` : undefined,
       };
     });

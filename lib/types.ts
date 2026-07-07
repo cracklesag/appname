@@ -333,6 +333,9 @@ export interface Cut {
    *  legacy rows; resolver falls back to planned_cuts when null. */
   next_action: NextAction | null;
   notes: string | null;
+  /** Set when the user dismisses the After-cut N prompt for this cut window
+   *  ("happy it ran short"). Null = prompt behaves normally. */
+  n_dismissed_at: string | null;
   created_at: string;
 }
 
