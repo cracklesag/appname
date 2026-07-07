@@ -13,7 +13,7 @@
 // The clock is pinned to 12 Jun 2026 so release-month maths is deterministic.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildFertPlanRows, planField, type FertPlanRow, type PlanState } from '@/lib/fertplan';
+import { buildFertPlanRows, planField, aftercutNStillDue, type FertPlanRow, type PlanState } from '@/lib/fertplan';
 import { DEFAULT_SETTINGS, type Field, type Product, type Application, type Cut, type Settings } from '@/lib/types';
 
 // ---------------------------------------------------------------------
@@ -277,6 +277,13 @@ describe('planField', () => {
     expect(fresh.addN).toBe(fresh.supplyN);
     expect(fresh.addP).toBe(fresh.supplyP);
     expect(fresh.addK).toBe(fresh.supplyK);
+  });
+
+  it('aftercutNStillDue keeps a part-fed field listed and drops a satisfied one', () => {
+    expect(aftercutNStillDue(makeRow({ nToApply: 40 }))).toBe(true);  // part-fed: still owed
+    expect(aftercutNStillDue(makeRow({ nToApply: 8 }))).toBe(false);  // under the ~8 units/ac floor
+    expect(aftercutNStillDue(makeRow({ nToApply: 0 }))).toBe(false);  // met in full
+    expect(aftercutNStillDue(undefined)).toBe(true);                  // no engine row: keep the timing prompt
   });
 
   it('excluded products never enter the auto plan', () => {

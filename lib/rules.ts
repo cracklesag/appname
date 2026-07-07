@@ -1658,41 +1658,14 @@ function daysBetween(fromIso: string, to: Date): number {
 }
 
 /**
- * Has nitrogen been applied to this field since the given date? Checks
- * applications whose product carries N (bag fert, slurry, manure). Lime and
- * zero-N products don't count.
- */
-function nitrogenAppliedSince(
-  fieldId: string,
-  sinceIso: string,
-  applications: Application[],
-  products: Product[],
-): boolean {
-  const byId = new Map(products.map((p) => [p.id, p]));
-  return applications.some((a) => {
-    if (a.field_id !== fieldId) return false;
-    if (a.date_applied < sinceIso) return false;
-    // A part-field application doesn't satisfy the whole field — the un-sprayed
-    // part still needs N — so a pending (unreconciled) partial must not suppress
-    // the "needs nitrogen" prompt. Once a partial reconciles to full coverage it
-    // counts like any whole-field application.
-    if (a.coverage === 'partial' && a.reconciled_at == null) return false;
-    const p = byId.get(a.product_id);
-    if (!p) return false;
-    const ep = effectiveProductOn(p, a.date_applied);
-    const n =
-      (ep.n_pct ?? 0) || (ep.n_kg_per_m3 ?? 0) || (ep.n_kg_per_t ?? 0);
-    return n > 0;
-  });
-}
-
-/**
  * Compute the "Coming up" item for one field, or null if nothing's due.
  *
  * Logic:
- *  - If the field's most recent cut (this season) has had NO nitrogen applied
- *    since the cut date, it's a nitrogen prompt: 'n_due' until
- *    nOverdueAfterCutDays, then 'n_overdue'. Only applies to fields whose
+ *  - A recent cut raises a nitrogen prompt on timing alone: 'n_due' until
+ *    nOverdueAfterCutDays, then 'n_overdue'. Whether the field is still OWED
+ *    N (vs already satisfied by slurry/manure/fert since the cut) is decided
+ *    by the caller in kg against the plan engine — see
+ *    fertplan.aftercutNStillDue. Only applies to fields whose
  *    most recent cut expects regrowth (i.e. another cut or grazing follows —
  *    not a field that's been put to maintenance/finished). We surface it for
  *    any recent cut; the user can dismiss by logging the N.
@@ -1762,8 +1735,10 @@ export function getComingUpForField(
   if (!lastCut) return null;
   const sinceCut = lastCut.cut_date;
   const daysSinceCut = daysBetween(sinceCut, now);
-  // Skip if (whole-field) N already applied since the cut.
-  if (nitrogenAppliedSince(field.id, sinceCut, applications, products)) return null;
+  // NOTE: whether the field is still OWED nitrogen is judged in kg by the
+  // caller against the plan engine's nToApply for this cut window (see
+  // app/page.tsx + fertplan.aftercutNStillDue) — a light slurry pass no longer
+  // clears the prompt on its own.
   if (daysSinceCut < timing.nDueAfterCutDays) return null;
   const overdue = daysSinceCut >= timing.nOverdueAfterCutDays;
   return {

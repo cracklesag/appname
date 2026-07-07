@@ -8,11 +8,14 @@ import {
   loadFields,
   loadAllApplications,
   loadAllCuts,
+  loadGrassSystems,
   loadSettings, loadAllocationTypes, countJobsAwaitingApproval } from '@/lib/data';
 import {
   getComingUpForField,
   getSeasonLabel,
+  displayNutrient,
 } from '@/lib/rules';
+import { buildFertPlanRows, aftercutNStillDue } from '@/lib/fertplan';
 import { getFarmContext } from '@/lib/farm';
 import { loadMapSettings } from '@/lib/map-data';
 import { SetupChecklist } from '@/components/SetupChecklist';
@@ -25,12 +28,13 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   if (settings.accountType === 'contractor') redirect('/jobs');
   const jobsAwaiting = await countJobsAwaitingApproval();
 
-  const [fields, products, applications, cuts, allocationTypes] = await Promise.all([
+  const [fields, products, applications, cuts, allocationTypes, grassSystems] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllocationTypes(),
+    loadGrassSystems(),
   ]);
 
   const farmCtx = await getFarmContext();
@@ -59,14 +63,30 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
     })
     .filter((x): x is NonNullable<typeof x> => x != null);
 
+  // Engine pass — the SAME maths as /plan — so the After-cut N tile and the
+  // plan can never disagree about whether a field is still owed nitrogen.
+  const planRows = buildFertPlanRows(fields, applications, cuts, products, settings, [], grassSystems);
+  const rowByField = new Map(planRows.map((r) => [r.id, r]));
+
   const nNow: ComingUpEntry[] = comingUp
     .filter((c) => c.kind === 'n_due' || c.kind === 'n_overdue')
+    // Timing says a dressing is due — but the field only lists while the
+    // engine says N is still OWED this cut window. A light slurry pass no
+    // longer clears the prompt; it stays until slurry/manure/fert meets it.
+    .filter((c) => aftercutNStillDue(rowByField.get(c.fieldId)))
     .sort((a, b) => {
       const rank = (k: string) => (k === 'n_overdue' ? 0 : 1);
       if (rank(a.kind) !== rank(b.kind)) return rank(a.kind) - rank(b.kind);
       return b.days - a.days;
     })
-    .map((c) => ({ fieldId: c.fieldId, fieldName: c.fieldName, kind: c.kind, days: c.days }));
+    .map((c) => {
+      const left = rowByField.get(c.fieldId)?.nToApply;
+      const d = left != null ? displayNutrient(left, settings.bagFertUnit) : null;
+      return {
+        fieldId: c.fieldId, fieldName: c.fieldName, kind: c.kind, days: c.days,
+        nLeft: d ? `~${Math.round(d.value)} ${d.unit} N still to go` : undefined,
+      };
+    });
 
   const grazingDue: ComingUpEntry[] = comingUp
     .filter((c) => c.kind === 'grazing_due')

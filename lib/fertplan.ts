@@ -229,6 +229,19 @@ export interface PlannedField {
  * slurry is deducted (so slurry covering most of the need doesn't leave a
  * sub-threshold granular dribble).
  */
+/**
+ * Home-tile filter for the After-cut N list: is this field still owed enough
+ * nitrogen THIS CUT WINDOW to be worth sending a spreader out? Reads the same
+ * nToApply the Plan page shows, so the tile and /plan can never disagree.
+ * Anything under the floor (~8 units/ac) counts as satisfied — nobody spreads
+ * a single-figure residual. A field with no engine row (e.g. needs_setup)
+ * keeps the timing-only prompt, matching the old behaviour.
+ */
+export const AFTERCUT_N_SATISFIED_FLOOR_KG_HA = 10;
+export function aftercutNStillDue(row: FertPlanRow | undefined): boolean {
+  return row ? row.nToApply >= AFTERCUT_N_SATISFIED_FLOOR_KG_HA : true;
+}
+
 export function planField(
   row: FertPlanRow,
   state: PlanState,

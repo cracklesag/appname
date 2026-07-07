@@ -18,6 +18,8 @@ export type ComingUpEntry = {
   kind: 'n_due' | 'n_overdue' | 'grazing_due';
   days: number;
   daysUntil?: number;
+  /** e.g. "~46 units/ac N still to go" — only on n_due / n_overdue rows. */
+  nLeft?: string;
 };
 
 export function HomeTiles({
@@ -103,8 +105,11 @@ export function HomeTiles({
               href={`/fields/${c.fieldId}/log?type=bag_fert&from=/`}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239,231,214,0.12)', borderRadius: 7, padding: '9px 11px', marginBottom: 6, textDecoration: 'none' }}
             >
-              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--brand-cream)' }}>{c.fieldName}</span>
-              <span style={{ fontSize: 11, color: c.kind === 'n_overdue' ? '#FAC775' : 'rgba(239,231,214,0.7)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--brand-cream)' }}>{c.fieldName}</span>
+                {c.nLeft && <span style={{ fontSize: 10.5, color: 'rgba(239,231,214,0.65)' }}>{c.nLeft}</span>}
+              </span>
+              <span style={{ fontSize: 11, color: c.kind === 'n_overdue' ? '#FAC775' : 'rgba(239,231,214,0.7)', display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                 {c.kind === 'n_overdue' ? `overdue ${c.days}d` : (c.days === 0 ? 'cut today' : `cut ${c.days}d ago`)}
                 <ChevronRight size={13} />
               </span>
