@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { JobFieldsMap } from './JobFieldsMap';
 import { CheckCircle2, Clock } from 'lucide-react';
 import { saveJobCompletion, approveJob, reopenJob, declineJob } from '@/lib/actions';
+import { fmtDateShort } from '@/lib/rules';
 import { enqueue, isOfflineError } from '@/lib/offline/queue';
 
 type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
 interface WField {
   id: string; name: string; area: number | null;
   plannedRate: number | null; plannedUnit: string | null;
-  status: FStatus; actualRate: number | null;
+  status: FStatus; actualRate: number | null; loggedAt?: string | null;
   boundary: unknown | null;
 }
 interface Line extends WField { actualStr: string; }
@@ -81,13 +82,17 @@ export function JobWorkflow({
       </div>
     ) : null;
 
-  const completions = lines.map((l) => ({
+  // Already-logged rows are immutable — exclude them from the payload entirely
+  // (the server ignores them too, but this keeps the submission clean) and
+  // don't let them count toward "something is marked".
+  const editableLines = lines.filter((l) => l.loggedAt == null);
+  const completions = editableLines.map((l) => ({
     id: l.id,
     status: l.status,
     actual_rate: l.actualStr.trim() === '' ? null : Number(l.actualStr),
     note: null,
   }));
-  const anyMarked = lines.some((l) => l.status !== 'pending');
+  const anyMarked = editableLines.some((l) => l.status !== 'pending');
 
   const [queuedOffline, setQueuedOffline] = useState(false);
 
@@ -221,6 +226,21 @@ export function JobWorkflow({
       <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10 }}>Tick off each field as you go — in the list or on the map — then submit.</div>
       {mapBlock(true)}
       {lines.map((l) => (
+        l.loggedAt ? (
+          // Already logged in an earlier approval (before this reopen) — locked.
+          <div key={l.id} className="card" style={{ padding: 12, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.85 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{l.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                {l.area != null ? `${toUnit(l.area).toFixed(2)} ${areaUnit}` : ''}
+                {l.actualRate != null && hasRate ? ` · ${l.actualRate} ${l.plannedUnit ?? rateNoun ?? ''}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: 'var(--forest-dark)', whiteSpace: 'nowrap' }}>
+              <CheckCircle2 size={15} /> Logged{l.loggedAt ? ` ${fmtDateShort(l.loggedAt)}` : ''}
+            </div>
+          </div>
+        ) : (
         <div key={l.id} className="card" style={{ padding: 12, marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{l.name}</div>
@@ -242,6 +262,7 @@ export function JobWorkflow({
             </div>
           )}
         </div>
+        )
       ))}
       {queuedOffline && (
         <div style={{ margin: '4px 0 10px', padding: 12, background: '#fdf0dd', color: '#9a6320', fontSize: 13, borderRadius: 8, lineHeight: 1.45 }}>

@@ -3569,6 +3569,7 @@ interface JobRowForCommit {
 interface JobFieldRowForCommit {
   id: string; field_id: string | null; field_name: string; area_ha: number | null;
   planned_rate_value: number | null; status: string; actual_rate_value: number | null;
+  logged_at: string | null;
 }
 
 // Writes the records for an approved job. Idempotent-by-caller: only invoke on
@@ -3589,7 +3590,10 @@ async function commitJobRecords(
   const def = jobTypeDef(job.job_type);
   if (!def) return;
   const today = new Date().toISOString().slice(0, 10);
-  const done = fields.filter((f) => (f.status === 'done' || f.status === 'partial') && f.field_id);
+  // Only fields that are done AND not already logged (logged_at null). This is
+  // what makes re-approval after a reopen idempotent — already-logged fields
+  // are never written a second time.
+  const done = fields.filter((f) => (f.status === 'done' || f.status === 'partial') && f.field_id && f.logged_at == null);
 
   if (def.commitsTo === 'applications') {
     if (!job.product_id) return;
@@ -3655,6 +3659,15 @@ async function commitJobRecords(
     }
   }
   // 'none' (generic) writes nothing.
+
+  // Stamp every field we just logged so a later reopen + re-approve can't write
+  // it again. 'none'-type jobs commit no records, so nothing to stamp there.
+  if (def.commitsTo !== 'none' && done.length > 0) {
+    const stamp = new Date().toISOString();
+    await supabase.from('job_fields')
+      .update({ logged_at: stamp })
+      .in('id', done.map((f) => f.id));
+  }
 }
 
 async function loadJobForAction(supabase: ReturnType<typeof createClient>, id: string) {
@@ -3688,6 +3701,9 @@ export async function saveJobCompletion(formData: FormData) {
   const byId = new Map(fields.map((f) => [f.id, f]));
   for (const c of completions) {
     if (!byId.has(c.id) || !valid.has(c.status)) continue;
+    // A field already logged (from an earlier approval, before a reopen) is
+    // immutable — its record is written. Ignore any attempt to change it.
+    if (byId.get(c.id)!.logged_at != null) continue;
     const rate = c.actual_rate == null || !Number.isFinite(Number(c.actual_rate)) ? null : Number(c.actual_rate);
     await supabase.from('job_fields').update({
       status: c.status,

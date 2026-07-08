@@ -7,7 +7,7 @@ import { ShareLinkPanel } from '@/components/ShareLinkPanel';
 import { JobTimer } from '@/components/JobTimer';
 import { loadJob, loadSettings, loadAllProducts, loadFarmMembers } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
-import { deleteJob, forwardJob, duplicateJob } from '@/lib/actions';
+import { deleteJob, forwardJob, duplicateJob, reopenJob } from '@/lib/actions';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { fmtDate } from '@/lib/rules';
 import { bboxOfGeometry, centroidOfBbox, type FieldGeometry } from '@/lib/geo';
@@ -65,6 +65,7 @@ export default async function JobPage({ params }: { params: { id: string } }) {
     status: f.status,
     actualRate: f.actual_rate_value,
     boundary: f.boundary ?? null,
+    loggedAt: f.logged_at ?? null,
   }));
 
   return (
@@ -130,6 +131,16 @@ export default async function JobPage({ params }: { params: { id: string } }) {
           detailLine={instructionLine || null}
           declinedReason={job.declined_reason}
         />
+
+        {isAdmin && job.status === 'approved' && (
+          <form action={reopenJob} style={{ marginTop: 20 }}>
+            <input type="hidden" name="id" value={job.id} />
+            <button type="submit" className="btn-ghost" style={{ width: '100%' }}>Reopen to add more fields</button>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center', marginTop: 6 }}>
+              Fields already logged stay logged — you&apos;ll only tick off the ones still to do.
+            </div>
+          </form>
+        )}
 
         {isAdmin && (
           <form action={duplicateJob} style={{ marginTop: 20 }}>

@@ -703,6 +703,9 @@ export interface JobField {
   status: JobFieldStatus;
   actual_rate_value: number | null;
   completion_note: string | null;
+  /** When this field's record was written to the farm (application/spray/lime).
+   *  Null = not yet logged. Keeps re-approval idempotent after a reopen. */
+  logged_at: string | null;
   sort_order: number;
   created_at: string;
 }
