@@ -58,7 +58,7 @@ A new account first chooses what it is setting up: **a farm** or **a contractor*
 
 ## Fields
 
-A field has: name, area (acres or hectares per the unit system), **cut profile** (1–4 cuts this season), a **plan for each cut** (silage/bales/grazing per slot), **soil type**, a **grass system**, an optional **group**, soil indices (pH, P index, K index, Mg index), optional last-ploughed / last-reseeded dates, optional map boundary, and notes.
+A field has: name, area (acres or hectares per the unit system), **cut profile** (1–4 cuts this season), a **plan for each cut** (silage/bales/grazing per slot), an optional **grazing sward-yield band** (RB209 grazing N; when set it drives grazing-round N instead of the cut-profile proxy), **soil type**, a **grass system**, an optional **group**, soil indices (pH, P index, K index, Mg index), optional last-ploughed / last-reseeded dates, optional map boundary, and notes.
 
 Add at **Add field** (\`/fields/new\`, admin). The form captures name, area, group (create a new group inline), soil type, grass system, number of cuts, the per-cut plan, and notes. **Soil indices are not entered here** — they come from the soil-sample screen or a document import.
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Save } from 'lucide-react';
 import { CutType, Field } from '@/lib/types';
 import { CUT_TYPE_LABELS, getPlannedCuts } from '@/lib/rules';
+import { GRAZING_N_BY_YIELD } from '@/lib/rb209';
 import { savePlan } from '@/lib/actions';
 
 export function EditPlanForm({ field, returnTo }: { field: Field; returnTo?: string }) {
@@ -27,11 +28,18 @@ export function EditPlanForm({ field, returnTo }: { field: Field; returnTo?: str
   const setCutAt = (index: number, type: CutType) =>
     setPlannedCuts((prev) => prev.map((t, i) => (i === index ? type : t)));
 
+  // Grazing yield band (RB209). null = derive from cut count (legacy).
+  const [grazingBand, setGrazingBand] = useState<number | null>(
+    field.grazing_yield_band ?? null,
+  );
+  const hasGrazing = plannedCuts.includes('grazing');
+
   return (
     <form action={savePlan} style={{ paddingBottom: 100 }}>
       <input type="hidden" name="field_id" value={field.id} />
       {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
       <input type="hidden" name="cut_profile" value={cutProfile} />
+      <input type="hidden" name="grazing_yield_band" value={grazingBand ?? ''} />
       {plannedCuts.map((t, i) => (
         <input key={i} type="hidden" name={`cut_${i}`} value={t} />
       ))}
@@ -102,6 +110,52 @@ export function EditPlanForm({ field, returnTo }: { field: Field; returnTo?: str
             </div>
           ))}
         </div>
+
+        {hasGrazing && (
+          <div className="card" style={{ padding: 14, marginTop: 14 }}>
+            <div className="label" style={{ marginBottom: 4 }}>Grazing sward yield</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.45 }}>
+              Sets the RB209 season N for grazing rounds. Leave on “From cut count” to keep the old behaviour.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setGrazingBand(null)}
+                style={{
+                  padding: '10px 12px',
+                  border: `1px solid ${grazingBand === null ? 'var(--forest)' : 'var(--line)'}`,
+                  borderRadius: 4,
+                  background: grazingBand === null ? 'var(--forest-soft)' : 'var(--card)',
+                  color: grazingBand === null ? 'var(--forest-dark)' : 'var(--ink-soft)',
+                  fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                From cut count
+              </button>
+              {GRAZING_N_BY_YIELD.map((row, i) => {
+                const isActive = grazingBand === i;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setGrazingBand(i)}
+                    title={`${row.total} kg N/ha season`}
+                    style={{
+                      padding: '10px 12px',
+                      border: `1px solid ${isActive ? 'var(--forest)' : 'var(--line)'}`,
+                      borderRadius: 4,
+                      background: isActive ? 'var(--forest-soft)' : 'var(--card)',
+                      color: isActive ? 'var(--forest-dark)' : 'var(--ink-soft)',
+                      fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    {row.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ position: 'sticky', bottom: 0, padding: 16, background: 'linear-gradient(to top, var(--paper) 70%, transparent)', display: 'flex', gap: 10 }}>

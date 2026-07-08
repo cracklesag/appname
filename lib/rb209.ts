@@ -438,6 +438,13 @@ export function grazingNTotal(targetDmYield: number, sns: SNSStatus): number {
   return Math.max(0, row.total + SNS_TOTAL_N_ADJUST[sns]);
 }
 
+/** Season grazing N (kg/ha) straight from an explicit band index 0..6, SNS-adjusted.
+ *  Used when a field carries a grazing_yield_band (bypasses the cut_profile proxy). */
+export function grazingNByBand(bandIndex: number, sns: SNSStatus): number {
+  const i = Math.max(0, Math.min(GRAZING_N_BY_YIELD.length - 1, Math.round(bandIndex)));
+  return Math.max(0, GRAZING_N_BY_YIELD[i].total + SNS_TOTAL_N_ADJUST[sns]);
+}
+
 /** Hay N per cut by SNS (Table 3.10). */
 export function hayNForCut(sns: SNSStatus): number {
   return HAY_N_BY_SNS[sns];

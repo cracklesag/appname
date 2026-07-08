@@ -1305,11 +1305,14 @@ export function getFieldNRecommendation(
   let n = 0;
 
   if (cutType === 'grazing') {
-    // Spread the season grazing total across the rotations. Use cut_profile as
-    // a rough proxy for intensity → target DM yield band.
-    const targetYield = [5, 7, 9, 13][Math.max(0, Math.min(3, cutCount - 1))];
-    const seasonTotal = rb209.grazingNTotal(targetYield, sns);
-    // Per-application figure: divide across roughly cutCount+1 grazing rounds.
+    // Season grazing N total (kg/ha), then split across the grazing rounds.
+    // Prefer an explicit RB209 yield band set on the field; only when none is
+    // set do we fall back to the old cut_profile-as-intensity proxy — so
+    // existing fields don't move until a band is chosen.
+    const seasonTotal = field.grazing_yield_band != null
+      ? rb209.grazingNByBand(field.grazing_yield_band, sns)
+      : rb209.grazingNTotal([5, 7, 9, 13][Math.max(0, Math.min(3, cutCount - 1))], sns);
+    // Per-application figure: divide across the planned grazing rounds.
     n = Math.round(seasonTotal / Math.max(1, cutCount));
   } else {
     // silage / bales — use the editable per-cut N target (Settings → N target

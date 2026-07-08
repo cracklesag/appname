@@ -148,6 +148,7 @@ export function AddFieldForm({
       <input type="hidden" name="acres" value={acres} />
       <input type="hidden" name="ha" value={ha} />
       <input type="hidden" name="cut_profile" value={cutProfile} />
+      <input type="hidden" name="grazing_yield_band" value="" />
       <input type="hidden" name="group_id" value={groupId} />
       <input type="hidden" name="soil_type" value={soilType} />
       <input type="hidden" name="grass_system_id" value={grassSystemId} />

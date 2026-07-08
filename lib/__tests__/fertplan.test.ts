@@ -35,7 +35,7 @@ function makeProduct(over: Partial<Product>): Product {
 function makeField(over: Partial<Field>): Field {
   return {
     id: over.id ?? 'f1', user_id: 'u1', group_id: null, allocation_type_id: null, name: 'Deer Park',
-    acres: 10, ha: 4, cut_profile: 3, planned_cuts: ['silage', 'silage', 'silage'],
+    acres: 10, ha: 4, cut_profile: 3, grazing_yield_band: null, planned_cuts: ['silage', 'silage', 'silage'],
     ph: 6.2, p_idx: 2, k_idx: 2, mg_idx: null,
     boundary: null, centroid_lat: null, centroid_lng: null, area_ha_mapped: null,
     boundary_source: null, rpa_sheet_id: null, rpa_parcel_id: null, boundary_updated_at: null,

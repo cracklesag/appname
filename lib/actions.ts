@@ -708,9 +708,14 @@ export async function savePlan(formData: FormData) {
     plannedCuts.push((v ? String(v) : 'silage') as CutType);
   }
 
+  // Grazing yield band: '' / absent → null (legacy cut_profile-derived N).
+  const rawBand = String(formData.get('grazing_yield_band') ?? '').trim();
+  const grazingBand = rawBand === '' ? null : Math.max(0, Math.min(6, parseInt(rawBand, 10)));
+
   const { error } = await supabase.from('fields').update({
     cut_profile: cutProfile,
     planned_cuts: plannedCuts,
+    grazing_yield_band: grazingBand,
     updated_at: new Date().toISOString(),
   }).eq('id', fieldId);
   if (error) throw new Error(error.message);
@@ -940,6 +945,9 @@ export async function createField(formData: FormData) {
   }
   if (!cutProfile || cutProfile < 1 || cutProfile > 4) throw new Error('Cut profile must be 1–4');
 
+  const rawBand = String(formData.get('grazing_yield_band') ?? '').trim();
+  const grazingBand = rawBand === '' ? null : Math.max(0, Math.min(6, parseInt(rawBand, 10)));
+
   const { data, error } = await supabase.from('fields').insert({
     user_id: user.id,
     group_id: groupId,
@@ -948,6 +956,7 @@ export async function createField(formData: FormData) {
     ha,
     cut_profile: cutProfile,
     planned_cuts: plannedCuts,
+    grazing_yield_band: grazingBand,
     soil_type: soilType,
     grass_system_id: grassSystemId,
     sampled: false,

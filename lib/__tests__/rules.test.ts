@@ -53,6 +53,7 @@ function makeField(over: Partial<Field>): Field {
     acres: 10,
     ha: 4.05,
     cut_profile: 3,
+    grazing_yield_band: null,
     planned_cuts: ['silage', 'silage', 'silage'],
     ph: 6.2, p_idx: 2, k_idx: 2, mg_idx: null,
     boundary: null, centroid_lat: null, centroid_lng: null,
@@ -643,5 +644,43 @@ describe('getComingUpForField — after-cut N dismissal', () => {
     );
     expect(nextWindow).not.toBeNull();
     expect(nextWindow!.cutId).toBe('c2');
+  });
+});
+
+// ---------------------------------------------------------------------
+// Grazing N — explicit yield band vs cut_profile fallback
+// ---------------------------------------------------------------------
+
+describe('getFieldNRecommendation — grazing yield band', () => {
+  // A grazing field: single grazing 'cut' in the plan, cut_profile 1.
+  const grazingField = (over: Partial<Field>): Field => makeField({
+    cut_profile: 1,
+    planned_cuts: ['grazing'],
+    grazing_yield_band: null,
+    ...over,
+  });
+
+  it('with no band set, falls back to the cut_profile-derived figure (unchanged behaviour)', () => {
+    const legacy = getFieldNRecommendation(grazingField({}), 1, [], settings());
+    // cut_profile 1 → 5 t/ha band → 30 kg/ha season ÷ 1 round = 30 kg/ha.
+    expect(legacy.cutType).toBe('grazing');
+    expect(legacy.n).toBe(30);
+  });
+
+  it('an explicit high band lifts the recommendation off the low cut_profile proxy', () => {
+    // Band 5 = 10–13 t/ha = 230 kg/ha season (SNS moderate) ÷ 1 round.
+    const banded = getFieldNRecommendation(grazingField({ grazing_yield_band: 5 }), 1, [], settings());
+    expect(banded.n).toBe(230);
+    expect(banded.n).toBeGreaterThan(
+      getFieldNRecommendation(grazingField({}), 1, [], settings()).n,
+    );
+  });
+
+  it('band index maps to the RB209 season totals exactly', () => {
+    const totals = [30, 50, 80, 130, 180, 230, 270];
+    totals.forEach((expected, band) => {
+      const r = getFieldNRecommendation(grazingField({ grazing_yield_band: band }), 1, [], settings());
+      expect(r.n).toBe(expected); // cut_profile 1 ⇒ ÷1, so per-round == season
+    });
   });
 });

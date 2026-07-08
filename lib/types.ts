@@ -103,6 +103,9 @@ export interface Field {
   acres: number;
   ha: number;
   cut_profile: number;
+  /** Grazing-only RB209 yield band 0..6 (see GRAZING_N_BY_YIELD). Null = derive
+   *  from cut_profile (legacy behaviour). Ignored for silage/bales fields. */
+  grazing_yield_band: number | null;
   planned_cuts: CutType[];
   ph: number | null;
   p_idx: number | null;

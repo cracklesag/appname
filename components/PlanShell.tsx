@@ -788,10 +788,13 @@ export function PlanShell({
                     </button>
                   )}
                   {c.planProducts.map((pp, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0', fontSize: 12.5 }}>
-                      <span style={{ fontWeight: 600, color: 'var(--ink)', flex: 1, minWidth: 0 }}>{pp.productName}</span>
-                      <span style={{ color: 'var(--muted)' }}>{dispRate(pp.rateKgPerHa)} {rateUnit}</span>
-                      <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(pp.totalKg)} kg</span>
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '3px 0 0', fontSize: 12.5 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)', flex: 1, minWidth: 0 }}>{pp.productName}</span>
+                        <span style={{ color: 'var(--muted)' }}>{dispRate(pp.rateKgPerHa)} {rateUnit}</span>
+                        <span className="nutrient-num" style={{ minWidth: 58, textAlign: 'right' }}>{fmt(pp.totalKg)} kg</span>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '0 0 2px' }}>delivers N {disp(pp.deliversN)} {nUnit}</div>
                     </div>
                   ))}
                   {c.slurryTotal > 0 && (

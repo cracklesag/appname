@@ -208,7 +208,7 @@ export interface PlannedField {
   /** P/K shortfall held back because it's below the minimum spread rate
    *  (after intended slurry). Held nutrient isn't planned as granular. */
   pHeld: boolean; kHeld: boolean;
-  planProducts: { productId: number; productName: string; rateKgPerHa: number; totalKg: number }[];
+  planProducts: { productId: number; productName: string; rateKgPerHa: number; totalKg: number; deliversN: number }[];
   planNote: string;
   supplyN: number; supplyP: number; supplyK: number;
   /** What THIS PLAN adds (netted manure + granular) — excludes anything already applied or logged. */
@@ -350,6 +350,7 @@ export function planField(
           productName: pp.productName,
           rateKgPerHa: pp.rateKgPerHa,
           totalKg: Math.round(pp.rateKgPerHa * row.ha),
+          deliversN: Math.round(pp.deliversN),
         };
       })
     : [];
