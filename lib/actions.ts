@@ -3761,6 +3761,32 @@ export async function reopenJob(formData: FormData) {
 // it). Only valid from 'sent'; records an optional reason and notifies the
 // farm so they can re-assign. The column guard (20260618) permits the
 // status → 'declined' move for the assignee/delegate.
+/** Dismiss a computed home-page warning (admin acknowledges it). Farm-scoped:
+ *  hidden for all admins of the farm. Idempotent via the unique constraint. */
+export async function dismissNotification(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const warningId = String(formData.get('warning_id') ?? '').trim();
+  if (!warningId) throw new Error('Missing warning id');
+  const { error } = await supabase.from('dismissed_notifications')
+    .upsert({ owner_id: ctx.ownerId, warning_id: warningId, dismissed_by: ctx.userId },
+            { onConflict: 'owner_id,warning_id' });
+  if (error) throw new Error(error.message);
+  revalidatePath('/');
+}
+
+/** Undo a notification dismissal — the warning reappears if still live. */
+export async function restoreNotification(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const warningId = String(formData.get('warning_id') ?? '').trim();
+  if (!warningId) throw new Error('Missing warning id');
+  const { error } = await supabase.from('dismissed_notifications')
+    .delete().eq('owner_id', ctx.ownerId).eq('warning_id', warningId);
+  if (error) throw new Error(error.message);
+  revalidatePath('/');
+}
+
 /** Edit the completion date of a logged (approved) job. Moves the job's
  *  approved_at AND the date_applied of every application record this job wrote,
  *  so the job and the Activity feed always agree. Admin only. */

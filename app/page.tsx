@@ -16,9 +16,12 @@ import {
   displayNutrient,
 } from '@/lib/rules';
 import { buildFertPlanRows, aftercutNStillDue } from '@/lib/fertplan';
+import { computeDuplicateSlurryWarnings } from '@/lib/notifications';
 import { getFarmContext } from '@/lib/farm';
 import { loadMapSettings } from '@/lib/map-data';
+import { loadDismissedNotificationIds } from '@/lib/data';
 import { SetupChecklist } from '@/components/SetupChecklist';
+import { HomeNotifications } from '@/components/HomeNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +42,18 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
 
   const farmCtx = await getFarmContext();
   const isAdmin = farmCtx?.isAdmin ?? true;
+
+  // Admin-only home warnings, computed live from the applications already
+  // loaded (no extra query), minus anything an admin has dismissed. Never
+  // computed or shown for non-admins / contractors.
+  let warnings: Awaited<ReturnType<typeof computeDuplicateSlurryWarnings>> = [];
+  if (isAdmin) {
+    const dismissed = await loadDismissedNotificationIds();
+    const fieldNameById = new Map(fields.map((f) => [f.id, f.name]));
+    warnings = computeDuplicateSlurryWarnings(
+      applications, products, (id) => fieldNameById.get(id) ?? 'Field',
+    ).filter((w) => !dismissed.has(w.id));
+  }
 
   const mapSettings = await loadMapSettings();
   const fieldsWithSoil = fields.filter(
@@ -140,6 +155,7 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
       </div>
 
       <div style={{ padding: '14px 16px' }}>
+        {isAdmin && <HomeNotifications warnings={warnings} />}
         {showSetup && (
           <SetupChecklist
             onboarded={settings.onboarded}

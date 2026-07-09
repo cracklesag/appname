@@ -720,3 +720,14 @@ export const loadAllocationTypes = cache(async function loadAllocationTypesUncac
   if (error) throw error;
   return (data ?? []) as AllocationType[];
 })
+
+/** Warning ids the farm's admins have dismissed (see dismissed_notifications).
+ *  Computed warnings whose id is in this set are hidden. */
+export async function loadDismissedNotificationIds(): Promise<Set<string>> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('dismissed_notifications')
+    .select('warning_id');
+  if (error || !data) return new Set();
+  return new Set(data.map((r) => (r as { warning_id: string }).warning_id));
+}
