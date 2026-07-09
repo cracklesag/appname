@@ -9,7 +9,7 @@ import { fmtDate } from '@/lib/rules';
 
 export const dynamic = 'force-dynamic';
 
-const STATUS_LABEL: Record<string, string> = { draft: 'Draft', sent: 'Sent', submitted: 'Submitted', approved: 'Logged', archived: 'Archived' };
+const STATUS_LABEL: Record<string, string> = { draft: 'Draft', sent: 'Sent', submitted: 'Submitted', approved: 'Completed', archived: 'Archived' };
 const STATUS_COLOUR: Record<string, string> = { sent: 'var(--muted)', submitted: '#b06a37', approved: 'var(--forest-dark)', draft: 'var(--muted)', archived: 'var(--muted)' };
 
 export default async function JobsPage({ searchParams }: { searchParams: { from?: string; status?: string } }) {

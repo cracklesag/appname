@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { JobFieldsMap } from './JobFieldsMap';
 import { CheckCircle2, Clock } from 'lucide-react';
-import { saveJobCompletion, approveJob, reopenJob, declineJob } from '@/lib/actions';
+import { saveJobCompletion, approveJob, reopenJob, declineJob, updateJobCompletionDate } from '@/lib/actions';
 import { fmtDateShort } from '@/lib/rules';
 import { enqueue, isOfflineError } from '@/lib/offline/queue';
 
@@ -128,12 +128,32 @@ export function JobWorkflow({
 
   // ----- Approved: read-only summary -----
   if (status === 'approved') {
+    const doneCount = lines.filter((l) => l.status === 'done' || l.status === 'partial').length;
+    const total = lines.length;
+    const allDone = total > 0 && doneCount === total;
+    const headline = allDone ? 'Completed' : `Partially completed — ${doneCount} of ${total} fields`;
+    const completedDate = approvedAt ? approvedAt.slice(0, 10) : '';
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--forest-soft)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
           <CheckCircle2 size={18} style={{ color: 'var(--forest-dark)' }} />
-          <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>Logged{fmtDateStr ? ` on ${fmtDateStr}` : ''}. Records were written to the relevant fields.</div>
+          <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>
+            <span style={{ fontWeight: 700 }}>{headline}</span>{fmtDateStr ? ` · ${fmtDateStr}` : ''}. Records were written to the relevant fields.
+          </div>
         </div>
+        {role === 'admin' && (
+          <details style={{ marginBottom: 14 }}>
+            <summary style={{ fontSize: 12.5, color: 'var(--forest-dark)', cursor: 'pointer', fontWeight: 600 }}>Edit completion date</summary>
+            <form action={updateJobCompletionDate} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+              <input type="hidden" name="job_id" value={jobId} />
+              <input type="date" name="completed_on" defaultValue={completedDate} className="input" style={{ flex: 1 }} required />
+              <button type="submit" className="btn-ghost" style={{ whiteSpace: 'nowrap' }}>Save date</button>
+            </form>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.45 }}>
+              Moves this job and the application records it wrote to the new date.
+            </div>
+          </details>
+        )}
         {mapBlock(false)}
         {lines.map((l) => (
           <div key={l.id} className="card" style={{ padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

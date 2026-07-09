@@ -3565,6 +3565,7 @@ interface JobRowForCommit {
   water_l_per_ha: number | null; spray_spec: { name: string; spray_product_id: string | null; l_per_ha: number | null }[] | null;
   title: string; contractor_label: string | null;
   assignee_user_id: string | null;
+  approved_at: string | null;
 }
 interface JobFieldRowForCommit {
   id: string; field_id: string | null; field_name: string; area_ha: number | null;
@@ -3613,6 +3614,7 @@ async function commitJobRecords(
           method: null,
           notes: `From job sheet: ${job.title}`,
           applied_by: job.contractor_label ?? assigneeName ?? 'Job sheet',
+          job_id: job.id,
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -3759,6 +3761,40 @@ export async function reopenJob(formData: FormData) {
 // it). Only valid from 'sent'; records an optional reason and notifies the
 // farm so they can re-assign. The column guard (20260618) permits the
 // status → 'declined' move for the assignee/delegate.
+/** Edit the completion date of a logged (approved) job. Moves the job's
+ *  approved_at AND the date_applied of every application record this job wrote,
+ *  so the job and the Activity feed always agree. Admin only. */
+export async function updateJobCompletionDate(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  await requireAdmin();
+  const id = String(formData.get('job_id') ?? '');
+  const dateStr = String(formData.get('completed_on') ?? '').trim();
+  if (!id) throw new Error('Missing job id');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('Enter a valid date');
+
+  const { job } = await loadJobForAction(supabase, id);
+  if (job.status !== 'approved') throw new Error('Only a logged job’s date can be edited');
+
+  // Preserve the original time-of-day; only shift the calendar date.
+  const prevTime = job.approved_at ? job.approved_at.slice(10) : 'T12:00:00.000Z';
+  const newApprovedAt = `${dateStr}${prevTime}`;
+
+  const { error: jobErr } = await supabase.from('jobs')
+    .update({ approved_at: newApprovedAt }).eq('id', id);
+  if (jobErr) throw new Error(jobErr.message);
+
+  // Cascade to the application records this job wrote.
+  const { error: appErr } = await supabase.from('applications')
+    .update({ date_applied: dateStr }).eq('job_id', id);
+  if (appErr) throw new Error(appErr.message);
+
+  revalidatePath(`/jobs/${id}`);
+  revalidatePath('/');
+  redirect(`/jobs/${id}`);
+}
+
 export async function declineJob(formData: FormData) {
   const supabase = createClient();
   const ctx = await getFarmContext();
