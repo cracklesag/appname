@@ -32,6 +32,8 @@ describe('computeDuplicateSlurryWarnings', () => {
     expect(w[0].fieldName).toBe('13 Acre');
     expect(w[0].daysApart).toBe(4);
     expect(w[0].productName).toBe('Dairy slurry');
+    expect(w[0].laterAppId).toBe('a');   // more recent
+    expect(w[0].earlierAppId).toBe('b'); // for deep-link + highlight
   });
 
   it('does NOT flag beyond the 7-day window', () => {

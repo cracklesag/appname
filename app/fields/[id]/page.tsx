@@ -34,9 +34,12 @@ export default async function FieldDetailPage({
   params, searchParams,
 }: {
   params: { id: string };
-  searchParams: { tab?: 'overview' | 'season'; from?: string };
+  searchParams: { tab?: 'overview' | 'season'; from?: string; flag?: string };
 }) {
   const tab = searchParams.tab === 'season' ? 'season' : 'overview';
+  // Application ids flagged from a home-page warning — floated to the top of the
+  // season timeline and ringed, so a duplicate can be checked/deleted at a glance.
+  const flaggedIds = new Set((searchParams.flag ?? '').split(',').filter(Boolean));
 
   const [field, applications, sprayRecords, cuts, products, settings, groups, grassSystems, farmCtx, allocationTypes, allAgreements, allFieldAgreements] = await Promise.all([
     loadField(params.id),
@@ -707,16 +710,20 @@ export default async function FieldDetailPage({
           )}
 
           {(() => {
-            const items: Array<{ kind: 'app' | 'cut'; date: string; key: string; node: React.ReactNode }> = [];
+            const items: Array<{ kind: 'app' | 'cut'; date: string; key: string; flagged: boolean; node: React.ReactNode }> = [];
             seasonApps.forEach((a) => items.push({
-              kind: 'app', date: a.date_applied, key: `app-${a.id}`,
-              node: <ApplicationCard app={a} products={products} settings={settings} fieldId={field.id} canEdit={canEditEntry(a.created_by)} />,
+              kind: 'app', date: a.date_applied, key: `app-${a.id}`, flagged: flaggedIds.has(a.id),
+              node: <ApplicationCard app={a} products={products} settings={settings} fieldId={field.id} canEdit={canEditEntry(a.created_by)} highlight={flaggedIds.has(a.id)} />,
             }));
             fCuts.forEach((c) => items.push({
-              kind: 'cut', date: c.cut_date, key: `cut-${c.id}`,
+              kind: 'cut', date: c.cut_date, key: `cut-${c.id}`, flagged: false,
               node: <CutEntry cut={c} field={field} settings={settings} canEdit={canEditEntry(c.created_by)} />,
             }));
-            items.sort((a, b) => b.date.localeCompare(a.date));
+            // Flagged first (so a duplicate lands at the very top), then date-desc.
+            items.sort((a, b) => {
+              if (a.flagged !== b.flagged) return a.flagged ? -1 : 1;
+              return b.date.localeCompare(a.date);
+            });
             return items.map((i) => <div key={i.key}>{i.node}</div>);
           })()}
 

@@ -9,7 +9,7 @@ import { deleteApplication, deleteCut } from '@/lib/actions';
 import { Scissors } from 'lucide-react';
 
 export function ApplicationCard({
-  app, products, settings, fieldId, canEdit = true,
+  app, products, settings, fieldId, canEdit = true, highlight = false,
 }: {
   app: Application;
   products: Product[];
@@ -17,6 +17,8 @@ export function ApplicationCard({
   fieldId: string;
   /** Whether to show edit/delete controls. Staff only edit their own entries. */
   canEdit?: boolean;
+  /** Flagged from a home-page warning (possible duplicate) — amber ring + note. */
+  highlight?: boolean;
 }) {
   const product = products.find((p) => p.id === app.product_id);
   const nut = calcNutrients(product, app.rate_value, app.rate_unit, app.date_applied, app.method);
@@ -28,7 +30,12 @@ export function ApplicationCard({
   const nutUnit = nutrientLabel(settings.bagFertUnit);
   const av = (kgHa: number) => Math.round(displayNutrient(kgHa, settings.bagFertUnit).value);
   return (
-    <div className="card" style={{ padding: 12, marginBottom: 8 }}>
+    <div className="card" style={{ padding: 12, marginBottom: 8, ...(highlight ? { borderColor: 'var(--amber)', boxShadow: '0 0 0 2px var(--amber-soft)' } : {}) }}>
+      {highlight && (
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Flagged — possible double entry
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <div>
           <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>{fmtDate(app.date_applied)}</div>

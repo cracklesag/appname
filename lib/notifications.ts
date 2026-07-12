@@ -29,6 +29,9 @@ export type FarmWarning = {
   latestDate: string;
   earlierDate: string;
   daysApart: number;
+  /** The two application ids behind this pair — for deep-linking + highlight. */
+  laterAppId: string;
+  earlierAppId: string;
 };
 
 function daysBetween(aIso: string, bIso: string): number {
@@ -81,6 +84,8 @@ export function computeDuplicateSlurryWarnings(
           latestDate: later.date_applied,
           earlierDate: earlier.date_applied,
           daysApart: gap,
+          laterAppId: later.id,
+          earlierAppId: earlier.id,
         });
       }
     }
