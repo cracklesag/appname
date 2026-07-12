@@ -4,8 +4,11 @@ import { FileDown, Share2, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 
 // One inspection-report row with two actions:
-//   Open  — opens the PDF in a NEW TAB, so you're never stranded in a full-page
-//           PDF with no way back to the app.
+//   Open  — in a normal browser: new tab. In an INSTALLED PWA there are no
+//           tabs, so target=_blank replaces the app view with the raw PDF and
+//           strands you (no chrome, no back — only a hard close). In standalone
+//           mode Open therefore routes through the native share/preview flow,
+//           which always carries its own Done button.
 //   Share — fetches the PDF and hands it to the phone's native share sheet
 //           (Mail, WhatsApp, AirDrop, …). Falls back to opening it if the
 //           browser can't share files.
@@ -21,6 +24,13 @@ export function ReportRow({
   filename: string;
 }) {
   const [busy, setBusy] = useState(false);
+
+  // Installed-PWA detection (iOS standalone or display-mode: standalone).
+  const isStandalone = () => {
+    if (typeof window === 'undefined') return false;
+    const nav = navigator as Navigator & { standalone?: boolean };
+    return nav.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
+  };
 
   const share = async () => {
     if (busy) return;
@@ -62,6 +72,11 @@ export function ReportRow({
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`Open ${title}`}
+          onClick={(e) => {
+            // Installed app: no tabs exist, so _blank would swallow the app
+            // view. Use the native share/preview flow instead — never strands.
+            if (isStandalone()) { e.preventDefault(); void share(); }
+          }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', border: '1px solid var(--line)', borderRadius: 9, color: 'var(--ink)', textDecoration: 'none', fontSize: 12.5 }}
         >
           <ExternalLink size={14} /> Open
