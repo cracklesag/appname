@@ -4,11 +4,12 @@ import { FileDown, Share2, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 
 // One inspection-report row with two actions:
-//   Open  — in a normal browser: new tab. In an INSTALLED PWA there are no
-//           tabs, so target=_blank replaces the app view with the raw PDF and
-//           strands you (no chrome, no back — only a hard close). In standalone
-//           mode Open therefore routes through the native share/preview flow,
-//           which always carries its own Done button.
+//   Open  — in a normal browser: new tab (browser chrome gets you back). In an
+//           INSTALLED PWA there are no tabs, so Open navigates the app view to
+//           the PDF itself — the clean native full-page viewer — generated with
+//           ?nav=1, which stamps a tappable "Back to Swardly" bar on every
+//           page. The way home lives inside the document, so you can never be
+//           stranded.
 //   Share — fetches the PDF and hands it to the phone's native share sheet
 //           (Mail, WhatsApp, AirDrop, …). Falls back to opening it if the
 //           browser can't share files.
@@ -73,9 +74,12 @@ export function ReportRow({
           rel="noopener noreferrer"
           aria-label={`Open ${title}`}
           onClick={(e) => {
-            // Installed app: no tabs exist, so _blank would swallow the app
-            // view. Use the native share/preview flow instead — never strands.
-            if (isStandalone()) { e.preventDefault(); void share(); }
+            // Installed app: no tabs exist. Navigate this view to the nav
+            // build of the PDF — native viewer + in-document back bar.
+            if (isStandalone()) {
+              e.preventDefault();
+              window.location.href = `${url}&nav=1`;
+            }
           }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', border: '1px solid var(--line)', borderRadius: 9, color: 'var(--ink)', textDecoration: 'none', fontSize: 12.5 }}
         >

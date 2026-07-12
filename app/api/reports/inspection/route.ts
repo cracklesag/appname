@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { loadFields, loadAllApplications, loadSprayRecords, loadAllProducts, loadSettings } from '@/lib/data';
 import { getFarmContext } from '@/lib/farm';
 import { getSeasonStart, calcNutrients } from '@/lib/rules';
@@ -29,6 +29,11 @@ class PdfWriter {
   y = 0;
   pageNo = 0;
   title = '';
+  /** When set, every page gets a slim tappable "Back to Swardly" bar linking
+   *  here. Only the in-app view (?nav=1) sets this — shared/emailed PDFs stay
+   *  clean. This is what stops the installed app being stranded in the
+   *  native full-page PDF view: the way home lives inside the document. */
+  navBackUrl: string | null = null;
 
   async init(title: string) {
     this.title = title;
@@ -46,6 +51,27 @@ class PdfWriter {
       this.page.drawText(this.title, { x: MARGIN, y: A4[1] - 24, size: 8, font: this.font, color: MUTED });
     }
     this.page.drawText(`Page ${this.pageNo}`, { x: A4[0] - MARGIN - 40, y: 24, size: 8, font: this.font, color: MUTED });
+    if (this.navBackUrl) this.drawNavBar(this.navBackUrl);
+  }
+
+  /** Slim green bar across the very top with a link annotation back to the
+   *  app. The visible bar is 20pt; the tappable rect extends invisibly to
+   *  44pt so it's an easy thumb target on a phone-fitted A4 page. */
+  drawNavBar(url: string) {
+    const h = 20;
+    this.page.drawRectangle({ x: 0, y: A4[1] - h, width: A4[0], height: h, color: FOREST });
+    this.page.drawText('\u2039  Back to Swardly', {
+      x: MARGIN, y: A4[1] - h + 6, size: 9.5, font: this.bold, color: rgb(1, 1, 1),
+    });
+    const link = this.doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      // Generous invisible hit area: full width, top 44pt of the page.
+      Rect: [0, A4[1] - 44, A4[0], A4[1]],
+      Border: [0, 0, 0],
+      A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+    });
+    this.page.node.set(PDFName.of('Annots'), this.doc.context.obj([this.doc.context.register(link)]));
   }
 
   ensure(space: number) {
@@ -363,6 +389,11 @@ export async function GET(req: NextRequest) {
   };
 
   const w = new PdfWriter();
+  // In-app view (?nav=1): stamp the back bar on every page. Share/downloads
+  // never pass nav, so the document they get is clean.
+  if (req.nextUrl.searchParams.get('nav') === '1') {
+    w.navBackUrl = `${req.nextUrl.origin}/reports/packs`;
+  }
   const farmTitle = `${settings.farmName ? settings.farmName + ' \u2014 ' : ''}${REPORT_TITLES[report]}`;
   await w.init(farmTitle);
 

@@ -32,7 +32,7 @@ export default async function ReportPacksPage() {
           />
         ))}
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, lineHeight: 1.5 }}>
-          Each PDF covers the current season (1 Oct – 30 Sep). <strong>Open</strong> shows it in a new tab; <strong>Share</strong> sends it straight to email, WhatsApp or your Files app.
+          Each PDF covers the current season (1 Oct – 30 Sep). <strong>Open</strong> shows the document — the green <strong>Back to Swardly</strong> bar at the top of any page brings you home. <strong>Share</strong> sends a clean copy (no bar) straight to email, WhatsApp or your Files app.
         </div>
       </div>
     </div>
