@@ -5058,3 +5058,116 @@ export async function updatePartApplicationArea(formData: FormData) {
   revalidatePath(`/fields/${fieldId}`);
   revalidatePath(`/fields/${fieldId}/part-applications`);
 }
+
+// ---- Diary: to-dos + notes ---------------------------------------
+
+/** Create a to-do. Admin only (RLS enforces too). Optional assignee + due date. */
+export async function createTodo(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const title = String(formData.get('title') ?? '').trim().slice(0, 300);
+  if (!title) throw new Error('Give the to-do a title');
+  const assignedTo = String(formData.get('assigned_to') ?? '').trim() || null;
+  const dueRaw = String(formData.get('due_date') ?? '').trim();
+  const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw : null;
+  const notes = String(formData.get('notes') ?? '').trim().slice(0, 2000) || null;
+
+  const { error } = await supabase.from('todos').insert({
+    user_id: ctx.ownerId,
+    created_by: ctx.userId,
+    title,
+    notes,
+    assigned_to: assignedTo,
+    due_date: dueDate,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}
+
+/** Tick a to-do off (or untick). Admins on any; staff on their own assigned
+ *  rows (RLS gates that). Only flips done fields — nothing else. */
+export async function toggleTodoDone(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await getFarmContext();
+  if (!ctx) throw new Error('Not signed in');
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing to-do id');
+  const nowDone = String(formData.get('done') ?? '') === 'true';
+  const { error } = await supabase.from('todos')
+    .update(nowDone
+      ? { done_at: new Date().toISOString(), done_by: ctx.userId }
+      : { done_at: null, done_by: null })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}
+
+/** Reassign a to-do (or clear the assignment). Admin only. */
+export async function reassignTodo(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing to-do id');
+  const assignedTo = String(formData.get('assigned_to') ?? '').trim() || null;
+  const { error } = await supabase.from('todos')
+    .update({ assigned_to: assignedTo }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}
+
+/** Delete a to-do. Admin only. */
+export async function deleteTodo(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing to-do id');
+  const { error } = await supabase.from('todos').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}
+
+/** Create or update a note. Admin only. Pass id to update. */
+export async function saveNote(formData: FormData) {
+  const supabase = createClient();
+  const ctx = await requireAdmin();
+  const id = String(formData.get('id') ?? '').trim();
+  const body = String(formData.get('body') ?? '').trim().slice(0, 8000);
+  if (!body) throw new Error('Write something first');
+  const pinned = String(formData.get('pinned') ?? '') === 'true';
+
+  if (id) {
+    const { error } = await supabase.from('farm_notes')
+      .update({ body, pinned, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from('farm_notes').insert({
+      user_id: ctx.ownerId, created_by: ctx.userId, body, pinned,
+    });
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath('/diary');
+}
+
+/** Toggle a note's pin. Admin only. */
+export async function toggleNotePin(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing note id');
+  const pinned = String(formData.get('pinned') ?? '') === 'true';
+  const { error } = await supabase.from('farm_notes')
+    .update({ pinned, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}
+
+/** Delete a note. Admin only. */
+export async function deleteNote(formData: FormData) {
+  const supabase = createClient();
+  await requireAdmin();
+  const id = String(formData.get('id') ?? '');
+  if (!id) throw new Error('Missing note id');
+  const { error } = await supabase.from('farm_notes').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  revalidatePath('/diary');
+}

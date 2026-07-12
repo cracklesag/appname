@@ -802,3 +802,29 @@ export interface FieldAgreement {
   created_by: string | null;
   created_at: string;
 }
+
+// ---- Diary: to-dos + notes ---------------------------------------
+
+export interface Todo {
+  id: string;
+  user_id: string;
+  created_by: string | null;
+  title: string;
+  notes: string | null;
+  /** Null = the admin's own/unassigned list. Set = pushed to that member. */
+  assigned_to: string | null;
+  due_date: string | null;
+  done_at: string | null;
+  done_by: string | null;
+  created_at: string;
+}
+
+export interface FarmNote {
+  id: string;
+  user_id: string;
+  created_by: string | null;
+  body: string;
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}

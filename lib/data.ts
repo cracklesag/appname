@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { createClient } from './supabase/server';
 import { getFarmContext } from './farm';
-import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor, FieldCropAllocation, Agreement, FieldAgreement, AllocationType } from './types';
+import { Application, ApplicationArea, Cut, DEFAULT_SETTINGS, Field, FieldEvent, GrassSystem, Group, GrazingEvent, PlateReading, Product, ProductAnalysis, Settings, SoilSample, SprayRecord, SprayProduct, SprayPurchase, Job, JobField, ContractorProfile, FarmContractor, FieldCropAllocation, Agreement, FieldAgreement, AllocationType, Todo, FarmNote } from './types';
 import { CropRow, LoadedCrop, loadedCropFromRow } from './crops';
 
 export const loadAllProducts = cache(async function loadAllProductsUncached(): Promise<Product[]> {
@@ -730,4 +730,28 @@ export async function loadDismissedNotificationIds(): Promise<Set<string>> {
     .select('warning_id');
   if (error || !data) return new Set();
   return new Set(data.map((r) => (r as { warning_id: string }).warning_id));
+}
+
+/** Diary to-dos. RLS shapes the result by role: admins get the whole farm's
+ *  list, staff get only rows assigned to them. Open first, then done. */
+export async function loadTodos(): Promise<Todo[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('todos')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return data as Todo[];
+}
+
+/** Diary notes (admin-only via RLS). Pinned first, newest first within. */
+export async function loadNotes(): Promise<FarmNote[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('farm_notes')
+    .select('*')
+    .order('pinned', { ascending: false })
+    .order('updated_at', { ascending: false });
+  if (error || !data) return [];
+  return data as FarmNote[];
 }

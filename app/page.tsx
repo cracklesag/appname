@@ -9,6 +9,7 @@ import {
   loadAllApplications,
   loadAllCuts,
   loadGrassSystems,
+  loadTodos,
   loadSettings, loadAllocationTypes, countJobsAwaitingApproval } from '@/lib/data';
 import {
   getComingUpForField,
@@ -22,6 +23,7 @@ import { loadMapSettings } from '@/lib/map-data';
 import { loadDismissedNotificationIds } from '@/lib/data';
 import { SetupChecklist } from '@/components/SetupChecklist';
 import { HomeNotifications } from '@/components/HomeNotifications';
+import { ListChecks } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,14 +33,18 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
   if (settings.accountType === 'contractor') redirect('/jobs');
   const jobsAwaiting = await countJobsAwaitingApproval();
 
-  const [fields, products, applications, cuts, allocationTypes, grassSystems] = await Promise.all([
+  const [fields, products, applications, cuts, allocationTypes, grassSystems, todos] = await Promise.all([
     loadFields(),
     loadAllProducts(),
     loadAllApplications(),
     loadAllCuts(),
     loadAllocationTypes(),
     loadGrassSystems(),
+    loadTodos(),
   ]);
+  // RLS shapes todos by role: admins see the farm's list, staff only theirs —
+  // so this count is automatically "your to-dos" for staff.
+  const openTodos = todos.filter((t) => !t.done_at).length;
 
   const farmCtx = await getFarmContext();
   const isAdmin = farmCtx?.isAdmin ?? true;
@@ -156,6 +162,15 @@ export default async function HomePage({ searchParams }: { searchParams: { setup
 
       <div style={{ padding: '14px 16px' }}>
         {isAdmin && <HomeNotifications warnings={warnings} />}
+        {openTodos > 0 && (
+          <Link href="/diary" className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', marginBottom: 16, textDecoration: 'none' }}>
+            <ListChecks size={18} style={{ color: 'var(--forest)', flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>
+              {isAdmin ? `To-dos · ${openTodos} open` : `Your to-dos · ${openTodos} to tick off`}
+            </span>
+            <span style={{ color: 'var(--muted)', fontSize: 17 }}>›</span>
+          </Link>
+        )}
         {showSetup && (
           <SetupChecklist
             onboarded={settings.onboarded}

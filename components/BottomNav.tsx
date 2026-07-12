@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Layers, FileText, ClipboardList, Clock, Users, Building2, Sprout, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
+import { Home, Layers, FileText, ClipboardList, Clock, Users, Building2, Sprout, NotebookPen, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 
 interface NavItem { id: string; label: string; icon: LucideIcon; href: string }
 
@@ -10,6 +10,7 @@ const FARM_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: Home, href: '/' },
   { id: 'fields', label: 'Fields', icon: Layers, href: '/fields' },
   { id: 'activity', label: 'Activity', icon: FileText, href: '/activity' },
+  { id: 'diary', label: 'Diary', icon: NotebookPen, href: '/diary' },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, href: '/settings' },
 ];
 
