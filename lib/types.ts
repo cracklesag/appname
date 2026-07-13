@@ -621,6 +621,10 @@ export interface SprayRecord {
   spray_product_id: string | null;
   /** Tank mix — every product in this one spray. Stock draws down per entry. */
   products: SprayProductLine[] | null;
+  /** Optional record hardening — assurance-scheme fields. All nullable. */
+  operator_name: string | null;
+  start_time: string | null;
+  finish_time: string | null;
   created_at: string;
 }
 

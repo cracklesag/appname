@@ -181,3 +181,84 @@ export function computeLoadSplit(args: {
   if (remainder > 1e-6) loads.push(breakdown(remainder, 1));
   return { ok: true, tankL, totalLoads: nFull + (remainder > 1e-6 ? 1 : 0), loads };
 }
+
+// ---- Multi-anchor solver -------------------------------------------------
+// One identity, solved from whichever end you know:
+//   total mix (L) = (water L/ha + Σ product L/ha) × area (ha)
+// Anchors:
+//   'area'          — you know the ground (a field or typed area)
+//   'productVolume' — you know how much of ONE product is going in ("6 L of X")
+//   'tank'          — you're filling one full tank and want what it does
+// Water volume is a FIRST-CLASS INPUT (the number operators actually know);
+// deriving it from sprayer calibration is an optional helper, never a gate.
+// Product volumes and area never require water; water-dependent figures are
+// null until a water volume is known.
+
+export type SprayAnchor = 'area' | 'productVolume' | 'tank';
+
+export interface SpraySolveResult {
+  ok: boolean;
+  reason?: string;
+  areaHa: number;
+  /** water + Σ product rates; null until a water volume is known. */
+  appRateLPerHa: number | null;
+  lines: { name: string; lPerHa: number; volumeL: number }[];
+  totalProductL: number;
+  waterL: number | null;
+  totalSprayL: number | null;
+}
+
+export function solveSprayMix(args: {
+  anchor: SprayAnchor;
+  waterLPerHa: number | null;
+  lines: SprayLine[];
+  areaHa?: number;                                   // anchor 'area'
+  pivot?: { lPerHa: number; volumeL: number };       // anchor 'productVolume'
+  tankL?: number | null;                             // anchor 'tank'
+}): SpraySolveResult {
+  const { anchor, lines } = args;
+  const water = args.waterLPerHa != null && args.waterLPerHa > 0 ? args.waterLPerHa : null;
+  const sumRates = lines.reduce((a, l) => a + (l.lPerHa > 0 ? l.lPerHa : 0), 0);
+  const fail = (reason: string): SpraySolveResult => ({
+    ok: false, reason, areaHa: 0, appRateLPerHa: null,
+    lines: lines.map((l) => ({ name: l.name, lPerHa: l.lPerHa, volumeL: 0 })),
+    totalProductL: 0, waterL: null, totalSprayL: null,
+  });
+
+  if (lines.length === 0 || sumRates <= 0) {
+    return fail('Add at least one spray with its rate (L/ha).');
+  }
+
+  // Resolve the area from the chosen anchor.
+  let areaHa = 0;
+  if (anchor === 'area') {
+    areaHa = args.areaHa ?? 0;
+    if (!(areaHa > 0)) return fail('Pick a field or enter the area to spray.');
+  } else if (anchor === 'productVolume') {
+    const p = args.pivot;
+    areaHa = p ? areaFromProductVolume(p.volumeL, p.lPerHa) : 0;
+    if (!(areaHa > 0)) return fail('Enter how many litres of the chosen spray you\u2019re using.');
+  } else {
+    // 'tank': a full tank T covers T / (water + Σ rates).
+    const tankL = args.tankL ?? 0;
+    if (!(tankL > 0)) return fail('Set your tank size (Sprayer settings) to work from a full tank.');
+    if (water == null) return fail('Enter your water volume (L/ha) to work out what one tank does.');
+    areaHa = tankL / (water + sumRates);
+  }
+
+  const lineVols = lines.map((l) => ({ name: l.name, lPerHa: l.lPerHa, volumeL: (l.lPerHa || 0) * areaHa }));
+  const totalProductL = lineVols.reduce((a, l) => a + l.volumeL, 0);
+  const appRateLPerHa = water != null ? water + sumRates : null;
+  const waterL = water != null ? water * areaHa : null;
+  const totalSprayL = appRateLPerHa != null ? appRateLPerHa * areaHa : null;
+
+  return { ok: true, areaHa, appRateLPerHa, lines: lineVols, totalProductL, waterL, totalSprayL };
+}
+
+/** Optional calibration helper: application volume from the sprayer itself.
+ *  L/ha = total output (L/min) × 600 ÷ (speed km/h × width m). At field rates
+ *  the product fraction is small, so this is used to prefill the water box. */
+export function calibrationLPerHa(totalFlowLMin: number | null, speedKmh: number | null, widthM: number | null): number | null {
+  if (!(totalFlowLMin && totalFlowLMin > 0) || !(speedKmh && speedKmh > 0) || !(widthM && widthM > 0)) return null;
+  return (totalFlowLMin * 600) / (speedKmh * widthM);
+}

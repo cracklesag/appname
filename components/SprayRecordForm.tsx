@@ -268,6 +268,22 @@ export function SprayRecordForm({
           <input type="date" name="date_applied" className="input" defaultValue={today} max={today} required />
         </div>
 
+        {/* Operator + times — optional hardening for assurance-scheme records */}
+        <div style={{ marginBottom: 14 }}>
+          <div className="label">Operator <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--muted)' }}>· optional</span></div>
+          <input type="text" name="operator_name" className="input" placeholder="Who sprayed it" maxLength={80} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Start</div>
+              <input type="time" name="start_time" className="input" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 4 }}>Finish</div>
+              <input type="time" name="finish_time" className="input" />
+            </div>
+          </div>
+        </div>
+
         {/* Sprays used — one or more products in the tank; each draws its own stock */}
         <div className="card" style={{ padding: 14, marginBottom: 14 }}>
           <div className="label" style={{ marginBottom: lines.length > 1 ? 4 : 8 }}>Spray{lines.length > 1 ? 's' : ''} used</div>

@@ -1,13 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, Boxes, SprayCan as SprayIcon } from 'lucide-react';
+import { Plus, Boxes, SprayCan as SprayIcon, Calculator as CalcIcon } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { SprayRecordsList, type SprayView } from '@/components/SprayRecordsList';
-import { SprayCalculator } from '@/components/SprayCalculator';
-import { loadSprayRecords, loadFields, loadSettings, loadSprayProducts } from '@/lib/data';
+import { loadSprayRecords, loadFields, loadSettings } from '@/lib/data';
 import { fmtDate } from '@/lib/rules';
-import { readSprayerSettings } from '@/lib/spray';
-import { bboxOfGeometry, centroidOfBbox, type FieldGeometry } from '@/lib/geo';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,24 +13,13 @@ export default async function SprayRecordsPage({
 }: {
   searchParams: { from?: string };
 }) {
-  const [records, fields, settings, sprayProducts] = await Promise.all([
-    loadSprayRecords(), loadFields(), loadSettings(), loadSprayProducts(),
+  const [records, fields, settings] = await Promise.all([
+    loadSprayRecords(), loadFields(), loadSettings(),
   ]);
   if (!settings.onboarded) redirect('/welcome');
 
   const nameById = new Map(fields.map((f) => [f.id, f.name]));
   const backHref = searchParams.from && searchParams.from.startsWith('/') ? searchParams.from : '/';
-  const sprayer = readSprayerSettings(settings);
-
-  const calcFields = fields.filter((f) => !f.needs_setup).map((f) => {
-    let lat: number | null = null, lng: number | null = null;
-    if (f.boundary) {
-      try { const c = centroidOfBbox(bboxOfGeometry(f.boundary as FieldGeometry)); lat = c.lat; lng = c.lng; } catch { /* unmapped */ }
-    }
-    return { id: f.id, name: f.name, ha: f.ha, lat, lng };
-  });
-  const calcProducts = sprayProducts.map((p) => ({ id: p.id, name: p.name, default_l_per_ha: p.default_l_per_ha }));
-
   const views: SprayView[] = records.map((r) => ({
     id: r.id,
     fieldName: nameById.get(r.field_id) ?? 'Unknown field',
@@ -49,6 +35,9 @@ export default async function SprayRecordsPage({
     weather_note: r.weather_note,
     targets: r.targets,
     notes: r.notes,
+    operator_name: r.operator_name,
+    start_time: r.start_time,
+    finish_time: r.finish_time,
   }));
 
   return (
@@ -68,7 +57,14 @@ export default async function SprayRecordsPage({
             <SprayIcon size={17} /> Sprayer
           </Link>
         </div>
-        <SprayCalculator fields={calcFields} products={calcProducts} sprayer={sprayer} unitSystem={settings.unitSystem} />
+        <Link href="/spray/calculator" className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, marginBottom: 4, textDecoration: 'none' }}>
+          <CalcIcon size={20} style={{ color: 'var(--forest)', flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--ink)' }}>Spray calculator</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Work out the tank from an area, litres of a spray, or one full load — then log it if you want</span>
+          </span>
+          <span style={{ color: 'var(--muted)', fontSize: 17 }}>›</span>
+        </Link>
       </div>
       <SprayRecordsList records={views} unitSystem={settings.unitSystem} />
     </div>

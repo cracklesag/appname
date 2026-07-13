@@ -3149,6 +3149,9 @@ export async function createSprayRecord(formData: FormData): Promise<{ error: st
     weather_note: strOrNull('weather_note'),
     targets: parseTargets(formData.get('targets')),
     notes: strOrNull('notes'),
+    operator_name: strOrNull('operator_name'),
+    start_time: strOrNull('start_time'),
+    finish_time: strOrNull('finish_time'),
   };
   // One field spray = one record. A tank mix lists every product here; each
   // still draws down its own stock. product_name/litres mirror the primary

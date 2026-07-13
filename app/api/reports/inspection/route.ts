@@ -323,6 +323,8 @@ export async function GET(req: NextRequest) {
           r.wind_dir ? `${r.wind_dir}${r.wind_speed_mph != null ? ` ${r.wind_speed_mph}mph` : ''}` : null,
           r.temp_c != null ? `${r.temp_c}\u00b0C` : null,
           r.weather_note,
+          r.operator_name ? `op ${r.operator_name}` : null,
+          (r.start_time || r.finish_time) ? [r.start_time, r.finish_time].filter(Boolean).join('\u2013') : null,
         ].filter(Boolean).join(', ');
         const ha = r.area_ha ?? fieldById.get(r.field_id)?.ha ?? null;
         return [

@@ -20,6 +20,9 @@ export interface SprayView {
   weather_note: string | null;
   targets: string[] | null;
   notes: string | null;
+  operator_name: string | null;
+  start_time: string | null;
+  finish_time: string | null;
 }
 
 export function SprayRecordsList({
@@ -132,6 +135,8 @@ export function SprayRecordsList({
                 )}
                 {r.water_l_per_ha != null && <span>{r.water_l_per_ha} L/ha water</span>}
                 {r.product_litres != null && <span>{r.product_litres} L product</span>}
+                {r.operator_name && <span>By {r.operator_name}</span>}
+                {(r.start_time || r.finish_time) && <span>{[r.start_time, r.finish_time].filter(Boolean).join('–')}</span>}
               </div>
 
               {weatherBits && (
