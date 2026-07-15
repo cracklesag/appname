@@ -74,11 +74,17 @@ export function HomeTiles({
           style={{
             textAlign: 'left',
             cursor: nNow.length > 0 ? 'pointer' : 'default',
-            border: nNow.length > 0 ? '1px solid rgba(250,199,117,0.5)' : '1px solid transparent',
-            background: nNow.length > 0 ? 'rgba(250,199,117,0.18)' : 'rgba(239,231,214,0.1)',
+            // Colour tracks the OPEN state: brighter amber when this tile is
+            // open, a subtle amber tint when closed-but-fields-due (so work
+            // waiting still reads), neutral when nothing's due.
+            border: open === 'n' ? '1px solid rgba(250,199,117,0.9)'
+              : nNow.length > 0 ? '1px solid rgba(250,199,117,0.4)' : '1px solid transparent',
+            background: open === 'n' ? 'rgba(250,199,117,0.34)'
+              : nNow.length > 0 ? 'rgba(250,199,117,0.14)' : 'rgba(239,231,214,0.1)',
             borderRadius: 10,
             padding: '10px 12px',
             fontFamily: 'inherit',
+            transition: 'background 140ms ease, border-color 140ms ease',
           }}
           disabled={nNow.length === 0}
         >
@@ -101,18 +107,21 @@ export function HomeTiles({
           style={{
             textAlign: 'left',
             cursor: grazingDue.length > 0 ? 'pointer' : 'default',
-            border: '1px solid transparent',
-            background: 'rgba(239,231,214,0.1)',
+            // Lights up green/teal only while open — otherwise neutral, so the
+            // colour makes clear which tile you're looking at.
+            border: open === 'grazing' ? '1px solid rgba(150,206,160,0.85)' : '1px solid transparent',
+            background: open === 'grazing' ? 'rgba(120,190,140,0.28)' : 'rgba(239,231,214,0.1)',
             borderRadius: 10,
             padding: '10px 12px',
             fontFamily: 'inherit',
+            transition: 'background 140ms ease, border-color 140ms ease',
           }}
           disabled={grazingDue.length === 0}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 23, fontWeight: 700, color: 'var(--brand-cream)' }}>{grazingDue.length}</span>
+            <span style={{ fontSize: 23, fontWeight: 700, color: open === 'grazing' ? '#AEE3BC' : 'var(--brand-cream)' }}>{grazingDue.length}</span>
             {grazingDue.length > 0 && (open === 'grazing'
-              ? <ChevronUp size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />
+              ? <ChevronUp size={15} style={{ color: '#AEE3BC' }} />
               : <ChevronDown size={15} style={{ color: 'rgba(239,231,214,0.7)' }} />)}
           </div>
           <div style={{ marginTop: 1 }}>
