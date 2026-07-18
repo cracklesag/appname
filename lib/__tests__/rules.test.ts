@@ -647,6 +647,33 @@ describe('getComingUpForField — after-cut N dismissal', () => {
   });
 });
 
+describe('getComingUpForField — grazing cadence consistency', () => {
+  it('uses the report cadence that also drives the grazing report, not the legacy timing value', () => {
+    const f = makeField({ planned_cuts: ['grazing'], cut_profile: 1 });
+    const s = settings();
+    s.reportDefaults.grazingCadenceWeeks = 4;
+    // Deliberately contradictory legacy value: this must no longer drive home.
+    s.timingDefaults.grazingDressingIntervalDays = 14;
+    s.timingDefaults.planLeadTimeDays = 7;
+    const product = makeProduct({ id: 999, n_pct: 27 });
+    const app: Application = {
+      id: 'a1', user_id: 'user-1', created_by: null, field_id: f.id,
+      product_id: product.id, date_applied: '2026-06-01', rate_value: 100,
+      rate_unit: 'kg/ha', method: null, notes: null, applied_by: 'Test',
+      coverage: 'whole', reconciled_at: null, drawn_ha: null,
+      created_at: '2026-06-01',
+    };
+
+    // 20 days after the application: a 14-day interval would be overdue, but
+    // the canonical 4-week interval is still 8 days away and outside a 7-day
+    // planning lead, so no home prompt should be raised yet.
+    const result = getComingUpForField(
+      f, [], [app], [product], s, new Date('2026-06-21'), { dressingRhythm: 'recurring' },
+    );
+    expect(result).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------
 // Grazing N — explicit yield band vs cut_profile fallback
 // ---------------------------------------------------------------------

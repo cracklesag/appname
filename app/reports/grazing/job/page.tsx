@@ -5,7 +5,7 @@ import {
   loadFields, loadAllApplications, loadAllCuts, loadAllProducts,
   loadGrassSystems, loadSettings, loadAllocationTypes, loadCropAllocations,
 } from '@/lib/data';
-import { getSeasonStart } from '@/lib/rules';
+import { getSeasonStart, ukTodayIso } from '@/lib/rules';
 import { computeGrazingSchedule, GrazingDueStatus } from '@/lib/grazing';
 import { activeCropFieldIds } from '@/lib/grouping';
 import { fieldAreaHa } from '@/lib/partials';
@@ -33,7 +33,7 @@ export default async function GrazingJobSheetPage({
     loadCropAllocations(),
   ]);
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = ukTodayIso();
   const seasonStart = getSeasonStart();
 
   // Same scope as the grazing report: drop active-crop fields and review-only

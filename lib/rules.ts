@@ -1719,8 +1719,15 @@ export function getComingUpForField(
 
   if (rhythm === 'recurring') {
     // Recurring dressing, anchored to the last actual spread date (falling back
-    // to the last cut, then season start). Mirrors the grazing report.
-    const due = timing.grazingDressingIntervalDays;
+    // to the last cut, then season start). The report cadence is the canonical
+    // interval for BOTH this home prompt and the grazing report. Previously the
+    // home used timingDefaults.grazingDressingIntervalDays while the report used
+    // reportDefaults.grazingCadenceWeeks, so the two controls could drift.
+    const due = Math.max(
+      7,
+      (settings.reportDefaults?.grazingCadenceWeeks
+        ?? DEFAULT_SETTINGS.reportDefaults.grazingCadenceWeeks) * 7,
+    );
     const anchor = lastNDate ?? (lastCut ? lastCut.cut_date : seasonStart);
     const daysSinceAnchor = daysBetween(anchor, now);
     const daysUntil = due - daysSinceAnchor;

@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/admin';
 import { getFarmContext, requireAdmin, requireMember, requireAgronomistFor, AGRONOMIST_FARM_COOKIE } from '@/lib/farm';
-import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit, Product, ProductAnalysis } from '@/lib/types';
+import { CutType, ProductCategory, YieldClass, ApplicationMethod, RateUnit, Product, ProductAnalysis, DEFAULT_SETTINGS, Settings } from '@/lib/types';
 import { polygonAreaHectares, type FieldGeometry } from '@/lib/geo';
 import { coverageFraction, RECONCILE_COVERAGE_THRESHOLD } from '@/lib/partials';
 import { loadSettings } from '@/lib/data';
@@ -15,7 +15,7 @@ import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { sendPushToUser } from '@/lib/push';
-import { getSeasonStart } from '@/lib/rules';
+import { bagAmountToKgPerHa, getSeasonStart } from '@/lib/rules';
 import {
   clampNotes, isValidIsoDate, RATE_UNITS_BY_TYPE, VALID_APPLICATION_METHODS,
   FIELD_RANGES, NOTES_MAX_LEN,
@@ -732,6 +732,16 @@ export async function saveSettings(formData: FormData) {
   const ctx = await requireAdmin();
   const user = { id: ctx.ownerId };
 
+  // One canonical grazing cadence drives the report, home prompt and job sheet.
+  // Keep the old timingDefaults value mirrored for backwards compatibility with
+  // older clients, but no UI should edit it independently now.
+  const grazingCadenceKgN = Math.max(10, Math.min(80,
+    parseFloat(String(formData.get('report_grazing_n') || '40')) || 40
+  ));
+  const grazingCadenceWeeks = Math.max(1, Math.min(12,
+    parseInt(String(formData.get('report_grazing_weeks') || '4'), 10) || 4
+  ));
+
   // Load the existing settings blob so we preserve any fields the form
   // doesn't submit — most importantly `onboarded`. Overwriting the whole
   // blob without this drops the flag and bounces the user to /welcome.
@@ -778,12 +788,8 @@ export async function saveSettings(formData: FormData) {
       annualNCapKgPerHa: Math.max(100, Math.min(400,
         parseFloat(String(formData.get('report_n_cap') || '320')) || 320
       )),
-      grazingCadenceKgN: Math.max(10, Math.min(80,
-        parseFloat(String(formData.get('report_grazing_n') || '40')) || 40
-      )),
-      grazingCadenceWeeks: Math.max(1, Math.min(12,
-        parseInt(String(formData.get('report_grazing_weeks') || '4'), 10) || 4
-      )),
+      grazingCadenceKgN,
+      grazingCadenceWeeks,
       // Maintenance dose threshold — kg N/ha. Clamped 0-200 to match the
       // settings input bounds and prevent unreachable / runaway values.
       maintenanceDoseThresholdKgN: Math.max(0, Math.min(200,
@@ -821,9 +827,7 @@ export async function saveSettings(formData: FormData) {
       nOverdueAfterCutDays: Math.max(1, Math.min(60,
         parseInt(String(formData.get('timing_n_overdue') || '7'), 10) || 7
       )),
-      grazingDressingIntervalDays: Math.max(7, Math.min(120,
-        parseInt(String(formData.get('timing_grazing_interval') || '28'), 10) || 28
-      )),
+      grazingDressingIntervalDays: grazingCadenceWeeks * 7,
       planLeadTimeDays: Math.max(1, Math.min(30,
         parseInt(String(formData.get('timing_lead') || '7'), 10) || 7
       )),
@@ -846,6 +850,75 @@ export async function saveSettings(formData: FormData) {
 
   revalidatePath('/', 'layout');
   redirect('/settings');
+}
+
+/**
+ * Quick editor used directly on the Grazing top-up report. The user enters the
+ * N dose in their preferred nutrient unit (for example units/ac); storage stays
+ * canonical kg N/ha. This updates the SAME values used by the report, home tile
+ * and dedicated grazing job-sheet workflow.
+ */
+export async function saveGrazingCadence(formData: FormData) {
+  const ctx = await requireAdmin();
+  const supabase = createClient();
+
+  const validUnits: Settings['bagFertUnit'][] = ['kg/ha', 'kg/ac', 'lb/ac', 'units/ac'];
+  const unitRaw = String(formData.get('bag_fert_unit') || 'kg/ha');
+  const unit: Settings['bagFertUnit'] = validUnits.includes(unitRaw as Settings['bagFertUnit'])
+    ? unitRaw as Settings['bagFertUnit']
+    : 'kg/ha';
+  const displayedRate = parseFloat(String(formData.get('grazing_n_display') || ''));
+  const weeksRaw = parseInt(String(formData.get('grazing_weeks') || ''), 10);
+
+  if (!Number.isFinite(displayedRate) || displayedRate <= 0) {
+    throw new Error('Enter a grazing nitrogen dose greater than zero.');
+  }
+  if (!Number.isFinite(weeksRaw) || weeksRaw < 1 || weeksRaw > 12) {
+    throw new Error('Enter a grazing interval between 1 and 12 weeks.');
+  }
+
+  const grazingCadenceKgN = Math.max(10, Math.min(80,
+    bagAmountToKgPerHa(displayedRate, unit),
+  ));
+  const grazingCadenceWeeks = weeksRaw;
+
+  const { data: existingRow, error: readError } = await supabase
+    .from('settings')
+    .select('data')
+    .eq('user_id', ctx.ownerId)
+    .maybeSingle();
+  if (readError) throw new Error(`Could not load settings: ${readError.message}`);
+
+  const existing = (existingRow?.data as Record<string, unknown>) || {};
+  const existingReport = (existing.reportDefaults as Record<string, unknown> | undefined) || {};
+  const existingTiming = (existing.timingDefaults as Record<string, unknown> | undefined) || {};
+  const data = {
+    ...existing,
+    reportDefaults: {
+      ...DEFAULT_SETTINGS.reportDefaults,
+      ...existingReport,
+      grazingCadenceKgN,
+      grazingCadenceWeeks,
+    },
+    // Legacy mirror: older app versions read this value for the home tile.
+    timingDefaults: {
+      ...DEFAULT_SETTINGS.timingDefaults,
+      ...existingTiming,
+      grazingDressingIntervalDays: grazingCadenceWeeks * 7,
+    },
+  };
+
+  const { error } = await supabase.from('settings').upsert({
+    user_id: ctx.ownerId,
+    data,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(`Could not save grazing cadence: ${error.message}`);
+
+  revalidatePath('/');
+  revalidatePath('/reports/grazing');
+  revalidatePath('/reports/grazing/job');
+  redirect('/reports/grazing');
 }
 
 /**

@@ -448,7 +448,7 @@ export default async function SettingsPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Grazing N cadence</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Top-up rate while continually grazing. Used by the grazing report.</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Top-up rate while continually grazing. Also drives the home grazing alert and top-up job sheet.</div>
               </div>
               <input
                 type="number" min="10" max="80" step="5"
@@ -590,15 +590,6 @@ export default async function SettingsPage() {
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>Days after a cut before N is flagged overdue (amber).</div>
               </div>
               <input type="number" min="1" max="60" step="1" name="timing_n_overdue" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.nOverdueAfterCutDays} />
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Grazing dressing interval</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Days between topping dressings on grazing ground.</div>
-              </div>
-              <input type="number" min="7" max="120" step="1" name="timing_grazing_interval" className="input" style={{ width: 70, textAlign: 'right' }} defaultValue={s.timingDefaults.grazingDressingIntervalDays} />
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>days</span>
             </div>
 
