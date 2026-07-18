@@ -186,7 +186,7 @@ export function HomeTiles({
       {open === 'grazing' && grazingDue.length > 0 && (
         <div style={{ marginTop: 10, background: 'rgba(0,0,0,0.16)', borderRadius: 10, padding: 8 }}>
           <Link
-            href={`/plan?preselect=${grazingDue.map((c) => c.fieldId).join(',')}&from=/`}
+            href="/reports/grazing/job?from=%2F"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(239,231,214,0.92)', color: 'var(--forest-dark)', borderRadius: 7, padding: '10px 11px', marginBottom: 6, textDecoration: 'none', fontSize: 12.5, fontWeight: 700 }}
           >
             <ClipboardList size={14} /> Create job sheets · {grazingDue.length} field{grazingDue.length === 1 ? '' : 's'}
