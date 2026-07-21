@@ -14,7 +14,7 @@ import {
   organicReleaseFraction, dairySlurryNAvailability, nAvailability,
   effectiveProductOn, calcNutrients, getOfftakeForCut, sumNutrients,
   getFieldNRecommendation, getFieldPKRecommendation, planFieldFertiliser,
-  nutrientPerArea, displayBagAmount, getSplitTarget, displayNutrient, nutrientLabel,
+  nutrientPerArea, displayBagAmount, displayBagProductRate, getSplitTarget, displayNutrient, nutrientLabel,
   getComingUpForField,
 } from '@/lib/rules';
 import * as rb209 from '@/lib/rb209';
@@ -490,6 +490,12 @@ describe('display conversions', () => {
   });
   it('units/ac uses 1.12 lb × lb/ac factor', () => {
     expect(displayBagAmount(100, 'units/ac').value).toBeCloseTo(100 / (1.12 * 1.1209), 6);
+  });
+  it('keeps product weight separate from nutrient units and rounds to whole kg', () => {
+    const canKgHa = 40 / 0.27;
+    expect(displayBagProductRate(canKgHa, 'acres')).toEqual({ value: 60, unit: 'kg/ac' });
+    expect(displayBagProductRate(canKgHa, 'hectares')).toEqual({ value: 148, unit: 'kg/ha' });
+    expect(Math.round(displayNutrient(40, 'units/ac').value)).toBe(32);
   });
 });
 

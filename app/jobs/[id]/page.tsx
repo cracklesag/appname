@@ -9,7 +9,7 @@ import { loadJob, loadSettings, loadAllProducts, loadFarmMembers } from '@/lib/d
 import { getFarmContext } from '@/lib/farm';
 import { deleteJob, forwardJob, duplicateJob, reopenJob } from '@/lib/actions';
 import { jobTypeDef } from '@/lib/jobTypes';
-import { fmtDate } from '@/lib/rules';
+import { bagAmountToKgPerHa, displayNutrient, fmtDate } from '@/lib/rules';
 import { bboxOfGeometry, centroidOfBbox, type FieldGeometry } from '@/lib/geo';
 import { SprayWeather } from '@/components/SprayWeather';
 
@@ -32,6 +32,15 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const def = jobTypeDef(job.job_type);
   const hasRate = def?.commitsTo === 'applications' || def?.id === 'spray';
   const product = job.product_id != null ? products.find((p) => p.id === job.product_id) : null;
+  const nRate = (() => {
+    if (def?.id !== 'fertiliser' || !product?.n_pct || job.rate_value == null || !job.rate_unit) return null;
+    if (!['kg/ha', 'kg/ac', 'lb/ac', 'units/ac'].includes(job.rate_unit)) return null;
+    const productKgHa = bagAmountToKgPerHa(
+      job.rate_value,
+      job.rate_unit as 'kg/ha' | 'kg/ac' | 'lb/ac' | 'units/ac',
+    );
+    return displayNutrient(productKgHa * (product.n_pct / 100), settings.bagFertUnit);
+  })();
   const areaUnit = settings.unitSystem === 'acres' ? 'ac' : 'ha';
   // Spray jobs: forecast at the first mapped field's centroid.
   let weatherSpot: { lat: number; lng: number; name: string } | null = null;
@@ -48,7 +57,14 @@ export default async function JobPage({ params }: { params: { id: string } }) {
   const shareUrl = job.share_token ? `${origin}/jobs/share/${job.share_token}` : null;
 
   const instructionLine = (() => {
-    if (def?.commitsTo === 'applications') return `${product?.name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${def.rateNoun}` : ''}`;
+    if (def?.id === 'fertiliser') {
+      const productRate = job.rate_value != null
+        ? ` @ ${Math.round(job.rate_value)} ${job.rate_unit ?? def.rateNoun ?? ''} product`
+        : '';
+      const suppliedN = nRate ? ` · supplies ${Math.round(nRate.value)} ${nRate.unit} N` : '';
+      return `${product?.name ?? 'Product'}${productRate}${suppliedN}`;
+    }
+    if (def?.commitsTo === 'applications') return `${product?.name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${job.rate_unit ?? def.rateNoun ?? ''}` : ''}`;
     if (def?.id === 'spray') {
       const mix = (job.spray_spec ?? []).map((s) => `${s.name}${s.l_per_ha != null ? ` @ ${s.l_per_ha} L/ha` : ''}`).join(' + ');
       return `${mix || 'Spray'}${job.water_l_per_ha != null ? ` · ${job.water_l_per_ha} L/ha water` : ''}`;

@@ -10,7 +10,7 @@ type FStatus = 'pending' | 'done' | 'partial' | 'skipped';
 type Phase = 'loading' | 'needpin' | 'badpin' | 'locked' | 'notfound' | 'expired' | 'ready' | 'submitted' | 'queued';
 
 interface SField { id: string; field_name: string; boundary: unknown | null; area_ha: number | null; planned_rate_value: number | null; planned_rate_unit: string | null; status: string; actual_rate_value: number | null; }
-interface SJob { id: string; title: string; job_type: string; farm_name: string | null; instruction: string | null; product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null; water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null; notes: string | null; due_date: string | null; contractor_label: string | null; status: string; business_name: string | null; }
+interface SJob { id: string; title: string; job_type: string; farm_name: string | null; instruction: string | null; product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null; n_rate_value: number | null; n_rate_unit: string | null; water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null; notes: string | null; due_date: string | null; contractor_label: string | null; status: string; business_name: string | null; }
 interface Line extends SField { uiStatus: FStatus; actualStr: string; }
 
 const OPTS: { v: FStatus; label: string }[] = [{ v: 'done', label: 'Done' }, { v: 'partial', label: 'Part' }, { v: 'skipped', label: 'Not done' }];
@@ -44,7 +44,16 @@ export function SharedJobView({ token }: { token: string }) {
   const hasRate = !!isApp || job?.job_type === 'spray';
   const instructionLine = (() => {
     if (!job) return '';
-    if (isApp) return `${job.product_name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${job.rate_noun ?? ''}` : ''}`;
+    if (job.job_type === 'fertiliser') {
+      const productRate = job.rate_value != null
+        ? ` @ ${Math.round(job.rate_value)} ${job.rate_unit ?? job.rate_noun ?? ''} product`
+        : '';
+      const suppliedN = job.n_rate_value != null
+        ? ` · supplies ${Math.round(job.n_rate_value)} ${job.n_rate_unit ?? ''} N`
+        : '';
+      return `${job.product_name ?? 'Product'}${productRate}${suppliedN}`;
+    }
+    if (isApp) return `${job.product_name ?? 'Product'}${job.rate_value != null ? ` @ ${job.rate_value} ${job.rate_unit ?? job.rate_noun ?? ''}` : ''}`;
     if (job.job_type === 'spray') {
       const mix = (job.spray_spec ?? []).map((s) => `${s.name}${s.l_per_ha != null ? ` @ ${s.l_per_ha} L/ha` : ''}`).join(' + ');
       return `${mix || 'Spray'}${job.water_l_per_ha != null ? ` · ${job.water_l_per_ha} L/ha water` : ''}`;

@@ -15,7 +15,7 @@ import { STARTER_PRODUCTS } from '@/lib/starter-products';
 import { jobTypeDef } from '@/lib/jobTypes';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { sendPushToUser } from '@/lib/push';
-import { bagAmountToKgPerHa, getSeasonStart } from '@/lib/rules';
+import { bagAmountToKgPerHa, displayBagProductRate, displayNutrient, getSeasonStart } from '@/lib/rules';
 import {
   clampNotes, isValidIsoDate, RATE_UNITS_BY_TYPE, VALID_APPLICATION_METHODS,
   FIELD_RANGES, NOTES_MAX_LEN,
@@ -3506,11 +3506,17 @@ export async function createJobsFromPlan(formData: FormData) {
 
   const productIds = [...new Set([...items.map((i) => i.product_id), ...organicItems.map((i) => i.product_id)])];
   const { data: prodRows } = await supabase
-    .from('products').select('id, name, type').in('id', productIds);
-  const prodById = new Map((prodRows ?? []).map((p) => [p.id as number, { name: p.name as string, type: p.type as string }]));
+    .from('products').select('id, name, type, n_pct').in('id', productIds);
+  const prodById = new Map((prodRows ?? []).map((p) => [p.id as number, {
+    name: p.name as string,
+    type: p.type as string,
+    nPct: (p.n_pct as number | null) ?? 0,
+  }]));
 
   const { data: stRow } = await supabase.from('settings').select('data').eq('user_id', ctx.ownerId).maybeSingle();
-  const farmName = (stRow?.data as { farmName?: string } | null)?.farmName ?? null;
+  const storedSettings = (stRow?.data ?? {}) as Partial<Settings>;
+  const farmName = storedSettings.farmName ?? null;
+  const unitSystem = storedSettings.unitSystem ?? DEFAULT_SETTINGS.unitSystem;
 
   // One job sheet per product; fields ride together, each carrying its own rate.
   const groups = new Map<number, { fieldId: string; rate: number }[]>();
@@ -3522,18 +3528,23 @@ export async function createJobsFromPlan(formData: FormData) {
 
   for (const [productId, rows] of groups.entries()) {
     const pName = prodById.get(productId)?.name ?? 'Fertiliser';
-    const rates = [...new Set(rows.map((r) => r.rate))];
+    const displayRows = rows.map((r) => ({
+      fieldId: r.fieldId,
+      ...displayBagProductRate(r.rate, unitSystem),
+    }));
+    const rates = [...new Set(displayRows.map((r) => r.value))];
     const uniform = rates.length === 1 ? rates[0] : null;
+    const productUnit = displayRows[0]?.unit ?? (unitSystem === 'acres' ? 'kg/ac' : 'kg/ha');
     const { data: job, error } = await supabase.from('jobs').insert({
       user_id: ctx.ownerId,
       created_by: ctx.userId,
       farm_name: farmName,
-      title: uniform != null ? `Spread ${pName} @ ${uniform} kg/ha` : `Spread ${pName}`,
+      title: uniform != null ? `Spread ${pName} @ ${uniform} ${productUnit}` : `Spread ${pName}`,
       job_type: 'fertiliser',
       status: 'sent',
       product_id: productId,
       rate_value: uniform,
-      rate_unit: 'kg/ha',
+      rate_unit: productUnit,
       water_l_per_ha: null,
       spray_spec: null,
       instruction: null,
@@ -3544,7 +3555,7 @@ export async function createJobsFromPlan(formData: FormData) {
     }).select('id').single();
     if (error || !job) continue;
 
-    const fieldsInsert = rows.map((r, i) => {
+    const fieldsInsert = displayRows.map((r, i) => {
       const f = fieldById.get(r.fieldId);
       return {
         job_id: job.id as string,
@@ -3552,8 +3563,8 @@ export async function createJobsFromPlan(formData: FormData) {
         field_name: (f?.name as string) ?? 'Field',
         boundary: f?.boundary ?? null,
         area_ha: typeof f?.ha === 'number' ? f.ha : null,
-        planned_rate_value: r.rate,
-        planned_rate_unit: 'kg/ha',
+        planned_rate_value: r.value,
+        planned_rate_unit: r.unit,
         sort_order: i,
       };
     });
@@ -3980,6 +3991,7 @@ interface SharedJobResult {
   job?: {
     id: string; title: string; job_type: string; instruction: string | null;
     product_name: string | null; rate_value: number | null; rate_unit: string | null; rate_noun: string | null;
+    n_rate_value: number | null; n_rate_unit: string | null;
     water_l_per_ha: number | null; spray_spec: { name: string; l_per_ha: number | null }[] | null;
     notes: string | null; due_date: string | null; contractor_label: string | null; status: string; farm_name: string | null; business_name: string | null;
   };
@@ -4042,9 +4054,11 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
   }
   const def = jobTypeDef(j.job_type as string);
   let productName: string | null = null;
+  let productNPct = 0;
   if (def?.commitsTo === 'applications' && j.product_id != null) {
-    const { data: p } = await svc.from('products').select('name').eq('id', j.product_id).maybeSingle();
+    const { data: p } = await svc.from('products').select('name, n_pct').eq('id', j.product_id).maybeSingle();
     productName = (p as { name: string } | null)?.name ?? null;
+    productNPct = (p as { n_pct?: number | null } | null)?.n_pct ?? 0;
   }
   const { data: fields } = await svc.from('job_fields').select('*').eq('job_id', j.id as string).order('sort_order');
   const spec = Array.isArray(j.spray_spec) ? (j.spray_spec as { name: string; l_per_ha: number | null }[]).map((s) => ({ name: s.name, l_per_ha: s.l_per_ha })) : null;
@@ -4052,11 +4066,27 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
   // contractor/worker sees who sent the sheet (business name + farm name).
   let businessName: string | null = null;
   let ownerFarmName: string | null = null;
+  let bagFertUnit: Settings['bagFertUnit'] = DEFAULT_SETTINGS.bagFertUnit;
   if (j.user_id) {
     const { data: st } = await svc.from('settings').select('data').eq('user_id', j.user_id as string).maybeSingle();
-    const sd = (st?.data ?? {}) as { businessName?: string; farmName?: string };
+    const sd = (st?.data ?? {}) as Partial<Settings>;
     businessName = (sd.businessName ?? '').trim() || null;
     ownerFarmName = (sd.farmName ?? '').trim() || null;
+    bagFertUnit = sd.bagFertUnit ?? DEFAULT_SETTINGS.bagFertUnit;
+  }
+  let nRateValue: number | null = null;
+  let nRateUnit: string | null = null;
+  if (
+    j.job_type === 'fertiliser'
+    && productNPct > 0
+    && typeof j.rate_value === 'number'
+    && typeof j.rate_unit === 'string'
+    && ['kg/ha', 'kg/ac', 'lb/ac', 'units/ac'].includes(j.rate_unit)
+  ) {
+    const productKgHa = bagAmountToKgPerHa(j.rate_value, j.rate_unit as Settings['bagFertUnit']);
+    const nutrient = displayNutrient(productKgHa * (productNPct / 100), bagFertUnit);
+    nRateValue = Math.round(nutrient.value);
+    nRateUnit = nutrient.unit;
   }
   return {
     status: 'ok',
@@ -4069,6 +4099,8 @@ export async function loadSharedJob(token: string, pin?: string): Promise<Shared
       rate_value: (j.rate_value as number) ?? null,
       rate_unit: (j.rate_unit as string) ?? null,
       rate_noun: def?.rateNoun ?? null,
+      n_rate_value: nRateValue,
+      n_rate_unit: nRateUnit,
       water_l_per_ha: (j.water_l_per_ha as number) ?? null,
       spray_spec: spec,
       notes: (j.notes as string) ?? null,

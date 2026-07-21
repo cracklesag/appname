@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { createJobsFromPlan } from '@/lib/actions';
-import { displayBagAmount, bagAmountToKgPerHa } from '@/lib/rules';
+import { displayNutrient, bagAmountToKgPerHa, displayBagProductRate } from '@/lib/rules';
 import { Settings } from '@/lib/types';
 
 export interface GrazingJobField {
@@ -34,7 +34,7 @@ export function GrazingJobSheetForm({
   cadenceKgN: number;
 }) {
   const unit = settings.bagFertUnit;
-  const rateUnit = displayBagAmount(0, unit).unit;
+  const nutrientUnit = displayNutrient(0, unit).unit;
   const acres = settings.unitSystem === 'acres';
 
   const sortedProducts = useMemo(
@@ -47,7 +47,8 @@ export function GrazingJobSheetForm({
 
   // Product rate (kg/ha) that delivers the cadence N with the chosen product.
   const defaultRateKgHa = product && product.nPct > 0 ? cadenceKgN / (product.nPct / 100) : 0;
-  const defaultRateDisp = defaultRateKgHa > 0 ? Math.round(displayBagAmount(defaultRateKgHa, unit).value) : 0;
+  const defaultProductRate = displayBagProductRate(defaultRateKgHa, settings.unitSystem);
+  const defaultNDisp = Math.round(displayNutrient(cadenceKgN, unit).value);
 
   const [enabled, setEnabled] = useState<Record<string, boolean>>(
     () => Object.fromEntries(fields.map((f) => [f.id, f.due])),
@@ -64,7 +65,7 @@ export function GrazingJobSheetForm({
 
   const rateFor = (id: string): string => {
     const r = rates[id];
-    return r !== undefined && r !== '' ? r : defaultRateDisp ? String(defaultRateDisp) : '';
+    return r !== undefined && r !== '' ? r : defaultNDisp ? String(defaultNDisp) : '';
   };
 
   const items = fields
@@ -72,13 +73,13 @@ export function GrazingJobSheetForm({
     .map((f) => ({
       field_id: f.id,
       product_id: Number(productId),
-      rate_kg_ha: bagAmountToKgPerHa(parseFloat(rateFor(f.id)) || 0, unit),
+      rate_kg_ha: product && product.nPct > 0
+        ? bagAmountToKgPerHa(parseFloat(rateFor(f.id)) || 0, unit) / (product.nPct / 100)
+        : 0,
     }))
     .filter((it) => it.product_id && it.rate_kg_ha > 0);
 
   const onCount = fields.filter((f) => enabled[f.id]).length;
-  const cadenceDisp = Math.round(displayBagAmount(cadenceKgN, unit).value);
-
   const areaOf = (ha: number) => (acres ? ha * HA_TO_AC : ha).toFixed(1) + (acres ? ' ac' : ' ha');
 
   if (products.length === 0) {
@@ -115,13 +116,14 @@ export function GrazingJobSheetForm({
           style={{ width: '100%' }}
         >
           {sortedProducts.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} ({p.nPct}% N)</option>
+            <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
         {product && (
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-            Default rate <strong style={{ color: 'var(--ink-soft)' }}>{defaultRateDisp} {rateUnit}</strong> delivers your
-            grazing cadence (~{cadenceDisp} {rateUnit} of N). Adjust any field below.
+            Default top-up <strong style={{ color: 'var(--ink-soft)' }}>{defaultNDisp} {nutrientUnit} N</strong>.
+            With this product, that is about {defaultProductRate.value} {defaultProductRate.unit} of product.
+            Adjust the N for any field below.
           </div>
         )}
       </div>
@@ -168,7 +170,7 @@ export function GrazingJobSheetForm({
                   onChange={(e) => setRates((p) => ({ ...p, [f.id]: e.target.value }))}
                   style={{ width: 72, textAlign: 'right' }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--muted)', width: 48 }}>{rateUnit}</span>
+                <span style={{ fontSize: 11, color: 'var(--muted)', width: 76 }}>{nutrientUnit} N</span>
               </div>
             </div>
           );

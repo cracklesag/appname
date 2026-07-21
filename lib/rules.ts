@@ -456,6 +456,21 @@ export function bagAmountToKgPerHa(value: number, unit: Settings['bagFertUnit'])
   }
 }
 
+/**
+ * Display a bagged-fertiliser PRODUCT rate. Product weight is deliberately
+ * separate from the preferred nutrient unit: an acres farm always spreads
+ * kg/ac of product, even when nutrient targets are shown as units/ac.
+ * Operator-facing product rates are rounded to the nearest whole kilogram.
+ */
+export function displayBagProductRate(
+  kgPerHa: number,
+  system: Settings['unitSystem'],
+): { value: number; unit: 'kg/ha' | 'kg/ac' } {
+  return system === 'acres'
+    ? { value: Math.round(kgPerHa / KG_HA_PER_KG_AC), unit: 'kg/ac' }
+    : { value: Math.round(kgPerHa), unit: 'kg/ha' };
+}
+
 export function displayRate(app: Application, settings: Settings, productType: ProductType): { value: number; unit: string } {
   if (productType === 'bag_fert') {
     // Liquid fert is dosed and displayed in litres — show the stored litre
